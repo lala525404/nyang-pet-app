@@ -1,0 +1,37 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  background: transparent !important;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+.yar-root {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.yar-fadeout { opacity: 0; }
+
+/* 떨어지는 이모지 */
+.yar-drop {
+  position: absolute;
+  top: -80px;
+  line-height: 1;
+  animation: yarFall linear forwards;
+  will-change: transform;
+  user-select: none;
+}
+
+@keyframes yarFall {
+  0%   { top: -80px; opacity: 0; transform: translateX(0px) rotate(0deg); }
+  8%   { opacity: 1; }
+  50%  { transform: translateX(var(--wobble, 0px)) rotate(10deg); }
+  92%  { opacity: 1; }
+  100% { top: 110vh; opacity: 0; transform: translateX(0px) rotate(-5deg); }
+}
