@@ -19,6 +19,9 @@ interface PetSettings {
   useCustomMode: boolean;
   buddyMode: 'chill' | 'buddy' | 'chaos' | 'custom';
   size: number; // 50~200
+  breakTimeEnabled: boolean;
+  lunchTime: string;
+  leaveTime: string;
 }
 
 const DEFAULT: PetSettings = {
@@ -27,6 +30,7 @@ const DEFAULT: PetSettings = {
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
+  breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
 };
 
 const MODE_PRESETS: Record<string, Partial<PetSettings>> = {
@@ -35,7 +39,7 @@ const MODE_PRESETS: Record<string, Partial<PetSettings>> = {
   chaos: { moveSpeed: 10, distractEmoji: true, distractInterval: 10, yarEnabled: true, yarInterval: 30, buddyMode: 'chaos' },
 };
 
-type NavPage = 'buddy' | 'mode' | 'display' | 'yar' | 'custom' | 'help';
+type NavPage = 'buddy' | 'mode' | 'display' | 'yar' | 'breaktime' | 'custom' | 'help';
 
 function loadSettings(): PetSettings {
   try {
@@ -132,6 +136,7 @@ export default function SettingsPage() {
     { id: 'mode',    icon: '✨', label: '모드 선택',   badge: draft.buddyMode === 'custom' ? '커스텀' : draft.buddyMode === 'chill' ? 'Chill' : draft.buddyMode === 'buddy' ? 'Buddy' : 'Chaos' },
     { id: 'display', icon: '👁️', label: '표시 설정',   badge: draft.petVisible ? '보임' : '숨김' },
     { id: 'yar',     icon: '🎉', label: '야르~ 타임',  badge: draft.yarEnabled ? `${draft.yarInterval}분` : '꺼짐' },
+    { id: 'breaktime', icon: '🍱', label: '알림', badge: draft.breakTimeEnabled ? '켜짐' : '꺼짐' },
     { id: 'custom',  icon: '⚙️', label: '커스텀 설정' },
     { id: 'help',    icon: '💡', label: '사용 방법' },
   ];
@@ -361,6 +366,54 @@ export default function SettingsPage() {
                     onClick={() => window.electronAPI?.yarNow()}>
                     🎉 지금 야르~ 타임!
                   </button>
+                </>
+              )}
+            </Acc>
+          )}
+
+          {/* 출퇴근 알림 */}
+          {page === 'breaktime' && (
+            <Acc icon="🍱" title="알림 설정"
+              badge={draft.breakTimeEnabled ? '켜짐' : '꺼짐'}
+              badgeOn={draft.breakTimeEnabled}
+              open={openSection === 'breaktime'} onToggle={() => toggleSection('breaktime')}>
+              <p className="section-desc">점심시간, 퇴근시간에 화면 가득 알림이 떠요! 🎉</p>
+              <div className="radio-group" style={{ marginBottom: 12 }}>
+                <label className={`radio-item ${draft.breakTimeEnabled ? 'radio-selected' : ''}`}>
+                  <input type="radio" name="breaktime" checked={draft.breakTimeEnabled}
+                    onChange={() => update({ breakTimeEnabled: true })} />
+                  <span>켜기</span>
+                </label>
+                <label className={`radio-item ${!draft.breakTimeEnabled ? 'radio-selected' : ''}`}>
+                  <input type="radio" name="breaktime" checked={!draft.breakTimeEnabled}
+                    onChange={() => update({ breakTimeEnabled: false })} />
+                  <span>끄기</span>
+                </label>
+              </div>
+              {draft.breakTimeEnabled && (
+                <>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, marginBottom:6, color:'#666' }}>🍚 점심시간</label>
+                    <input type="time" className="time-input"
+                      value={draft.lunchTime}
+                      onChange={e => update({ lunchTime: e.target.value })} />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, marginBottom:6, color:'#666' }}>🏃 퇴근시간</label>
+                    <input type="time" className="time-input"
+                      value={draft.leaveTime}
+                      onChange={e => update({ leaveTime: e.target.value })} />
+                  </div>
+                  <div className="btn-row">
+                    <button className="btn btn-accent" style={{ flex: 1, justifyContent:'center' }}
+                      onClick={() => window.electronAPI?.testBreakTime('lunch')}>
+                      🍱 점심 테스트
+                    </button>
+                    <button className="btn btn-accent" style={{ flex: 1, justifyContent:'center' }}
+                      onClick={() => window.electronAPI?.testBreakTime('leave')}>
+                      🏃 퇴근 테스트
+                    </button>
+                  </div>
                 </>
               )}
             </Acc>

@@ -386,8 +386,85 @@ ipcMain.on('sync-settings', (_e, settings) => {
   } else {
     stopYarTimer();
   }
+  // 점심/퇴근 알림 동기화
+  startBreakTimeChecker(settings);
 });
 
 ipcMain.on('yar-now', () => {
   createYarWindow();
+});
+
+// ★ 점심/퇴근 알림 윈도우
+let breakTimeWindow = null;
+let breakTimeChecker = null;
+let lastBreakTrigger = { lunch: '', leave: '' };
+
+function createBreakTimeWindow(type) {
+  if (breakTimeWindow && !breakTimeWindow.isDestroyed()) {
+    breakTimeWindow.destroy();
+    breakTimeWindow = null;
+  }
+
+  const { width, height } = screen.getPrimaryDisplay().bounds;
+
+  breakTimeWindow = new BrowserWindow({
+    width,
+    height,
+    x: 0,
+    y: 0,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    movable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  breakTimeWindow.setAlwaysOnTop(true, 'screen-saver');
+  breakTimeWindow.setIgnoreMouseEvents(true, { forward: true });
+  breakTimeWindow.loadURL(getPageURL(`/breaktime?type=${type}`));
+
+  setTimeout(() => {
+    if (breakTimeWindow && !breakTimeWindow.isDestroyed()) {
+      breakTimeWindow.close();
+      breakTimeWindow = null;
+    }
+  }, 3000);
+}
+
+function startBreakTimeChecker(settings) {
+  if (breakTimeChecker) clearInterval(breakTimeChecker);
+  if (!settings || !settings.breakTimeEnabled) return;
+
+  breakTimeChecker = setInterval(() => {
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const today = now.toDateString();
+
+    if (settings.lunchTime && currentTime === settings.lunchTime && lastBreakTrigger.lunch !== today) {
+      lastBreakTrigger.lunch = today;
+      createBreakTimeWindow('lunch');
+    }
+
+    if (settings.leaveTime && currentTime === settings.leaveTime && lastBreakTrigger.leave !== today) {
+      lastBreakTrigger.leave = today;
+      createBreakTimeWindow('leave');
+    }
+  }, 10000);
+}
+
+function stopBreakTimeChecker() {
+  if (breakTimeChecker) { clearInterval(breakTimeChecker); breakTimeChecker = null; }
+}
+
+ipcMain.on('test-break-time', (_e, type) => {
+  createBreakTimeWindow(type);
 });

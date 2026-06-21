@@ -17,5 +17,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ★ 야르타임
   setYarTimer:      (intervalMinutes) => ipcRenderer.send('set-yar-timer', intervalMinutes),
   yarNow:           () => ipcRenderer.send('yar-now'),
+  testBreakTime:    (type) => ipcRenderer.send('test-break-time', type),
   getPetPosition:     () => ipcRenderer.invoke('get-pet-position'),
 });

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import SettingsPage from './pages/SettingsPage';
 import PetPage from './pages/PetPage';
 import YarPage from './pages/YarPage';
+import BreakTimePage from './pages/BreakTimePage';
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/pet" element={<PetPage />} />
       <Route path="/yar" element={<YarPage />} />
+      <Route path="/breaktime" element={<BreakTimePage />} />
       <Route path="*" element={<Navigate to="/settings" replace />} />
     </Routes>
   );

@@ -13,7 +13,7 @@
   },
   "build": {
     "appId": "com.choeae.app",
-    "productName": "최애를 풀어놨습니다",
+    "productName": "choeae-app",
     "files": [
       "dist/**/*",
       "main.cjs",

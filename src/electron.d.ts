@@ -14,6 +14,7 @@ interface ElectronAPI {
   platform: string;
   setYarTimer: (intervalMinutes: number) => void;
   yarNow: () => void;
+  testBreakTime: (type: string) => void;
   getPetPosition: () => Promise<{x:number,y:number}|null>;
 }
 
