@@ -440,25 +440,70 @@ function createBreakTimeWindow(type) {
   }, 3000);
 }
 
+function getPreAlertTime(timeStr, minutes) {
+  const [h, m] = timeStr.split(':').map(Number);
+  const total = h * 60 + m - minutes;
+  const ph = Math.floor(((total % 1440) + 1440) % 1440 / 60);
+  const pm = ((total % 1440) + 1440) % 1440 % 60;
+  return `${String(ph).padStart(2, '0')}:${String(pm).padStart(2, '0')}`;
+}
+
 function startBreakTimeChecker(settings) {
   if (breakTimeChecker) clearInterval(breakTimeChecker);
-  if (!settings || !settings.breakTimeEnabled) return;
 
   breakTimeChecker = setInterval(() => {
     const now = new Date();
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const today = now.toDateString();
 
-    if (settings.lunchTime && currentTime === settings.lunchTime && lastBreakTrigger.lunch !== today) {
-      lastBreakTrigger.lunch = today;
-      createBreakTimeWindow('lunch');
-    }
+    // 점심/퇴근 알림
+    if (settings && settings.breakTimeEnabled) {
+      if (settings.lunchTime && currentTime === settings.lunchTime && lastBreakTrigger.lunch !== today) {
+        lastBreakTrigger.lunch = today;
+        createBreakTimeWindow('lunch');
+      }
+      if (settings.leaveTime && currentTime === settings.leaveTime && lastBreakTrigger.leave !== today) {
+        lastBreakTrigger.leave = today;
+        createBreakTimeWindow('leave');
+      }
 
-    if (settings.leaveTime && currentTime === settings.leaveTime && lastBreakTrigger.leave !== today) {
-      lastBreakTrigger.leave = today;
-      createBreakTimeWindow('leave');
+      // 미리 알림
+      const preMin = settings.preAlertMinutes || 5;
+      if (settings.lunchTime) {
+        const lunchPreTime = getPreAlertTime(settings.lunchTime, preMin);
+        const key = `pre_lunch_${today}`;
+        if (currentTime === lunchPreTime && !lastBreakTrigger[key]) {
+          lastBreakTrigger[key] = today;
+          if (petWindow && !petWindow.isDestroyed()) {
+            petWindow.webContents.send('show-toast', `점심시간 ${preMin}분 전이에요! 🍱`);
+          }
+        }
+      }
+      if (settings.leaveTime) {
+        const leavePreTime = getPreAlertTime(settings.leaveTime, preMin);
+        const key = `pre_leave_${today}`;
+        if (currentTime === leavePreTime && !lastBreakTrigger[key]) {
+          lastBreakTrigger[key] = today;
+          if (petWindow && !petWindow.isDestroyed()) {
+            petWindow.webContents.send('show-toast', `퇴근 ${preMin}분 전이에요! 🏃`);
+          }
+        }
+      }
     }
-  }, 10000);
+    */
+
+    // 일반 알람
+    if (settings && settings.alarms) {
+      settings.alarms.forEach(alarm => {
+        if (!alarm.enabled) return;
+        const key = `alarm_${alarm.id}_${today}`;
+        if (currentTime === alarm.time && !lastBreakTrigger[key]) {
+          lastBreakTrigger[key] = today;
+          createBreakTimeWindow('alarm');
+        }
+      });
+    }
+  }, 1000);
 }
 
 function stopBreakTimeChecker() {
