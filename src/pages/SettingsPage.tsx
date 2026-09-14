@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/settings.css';
 import { ANIMALS } from '../data/animals';
 
@@ -32,8 +32,7 @@ const DEFAULT: PetSettings = {
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
-  breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5,
-  alarms: [],
+  breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5, alarms: [],
 };
 
 const MODE_PRESETS: Record<string, Partial<PetSettings>> = {
@@ -419,6 +418,7 @@ export default function SettingsPage() {
                       🏃 퇴근 테스트
                     </button>
                   </div>
+
                   {/* 미리 알림 */}
                   <div style={{ marginTop: 16 }}>
                     <label style={{ display:'block', fontSize:12, fontWeight:700, marginBottom:6, color:'#666' }}>⏰ 미리 알림 (1~30분 전)</label>
@@ -434,11 +434,12 @@ export default function SettingsPage() {
               )}
             </Acc>
 
+            {/* 일반 알람 */}
             <Acc icon="⏰" title="일반 알람"
-              badge={`${(draft.alarms || []).filter((a) => a.enabled).length}개 켜짐`}
+              badge={`${(draft.alarms || []).filter((a: {enabled: boolean}) => a.enabled).length}개 켜짐`}
               open={openSection === 'alarms'} onToggle={() => toggleSection('alarms')}>
               <p className="section-desc">원하는 시간에 화면 가득 알람이 울려요! 최대 5개</p>
-              {(draft.alarms || []).map((alarm, idx) => (
+              {(draft.alarms || []).map((alarm: {id: string; time: string; enabled: boolean}, idx: number) => (
                 <div key={alarm.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                   <input type="checkbox" checked={alarm.enabled}
                     onChange={e => {
@@ -455,7 +456,7 @@ export default function SettingsPage() {
                     }} />
                   <button className="btn btn-secondary" style={{ padding:'4px 8px', fontSize:11 }}
                     onClick={() => {
-                      const newAlarms = (draft.alarms || []).filter((_, i) => i !== idx);
+                      const newAlarms = (draft.alarms || []).filter((_: unknown, i: number) => i !== idx);
                       update({ alarms: newAlarms });
                     }}>삭제</button>
                 </div>

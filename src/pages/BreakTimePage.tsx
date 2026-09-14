@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import '../styles/breaktime.css';
 
 const LUNCH_EMOJIS = ['🍚', '🍜', '🍣', '🍱', '🍙', '🥪', '🍕', '🍔', '🥗', '🍲', '🍰', '🥘', '🍝', '🍛', '🧋'];
+const ALARM_EMOJIS = ['⏰', '🔔', '⏰', '🔔', '⏰'];
+
 const LEAVE_EMOJIS = ['🏃', '✨', '🎉', '🎊', '🚀', '🌟', '💨', '🙌', '🔥', '⚡', '🥳', '🎆', '🍾', '🌈', '💃'];
 
 interface SideBurst {
@@ -27,11 +29,11 @@ interface UpBurst {
 }
 
 interface BreakTimePageProps {
-  type?: 'lunch' | 'leave';
+  type?: 'lunch' | 'leave' | 'alarm';
 }
 
 export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
-  const [type, setType] = useState<'lunch' | 'leave'>(propType || 'lunch');
+  const [type, setType] = useState<'lunch' | 'leave' | 'alarm'>(propType || 'lunch');
   const [sideBursts, setSideBursts] = useState<SideBurst[]>([]);
   const [upBursts, setUpBursts] = useState<UpBurst[]>([]);
   const [visible, setVisible] = useState(true);
@@ -43,7 +45,7 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
     const queryString = queryIndex >= 0 ? hash.substring(queryIndex + 1) : '';
     const params = new URLSearchParams(queryString);
     const urlType = params.get('type');
-    if (urlType === 'lunch' || urlType === 'leave') {
+    if (urlType === 'lunch' || urlType === 'leave' || urlType === 'alarm') {
       setType(urlType);
     }
   }, []);
@@ -82,6 +84,10 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
       }
       setSideBursts(newBursts);
       setUpBursts([]);
+    } else if (type === 'alarm') {
+      // 알람: 시계 이모지 크게 중앙에
+      setSideBursts([]);
+      setUpBursts([]);
     } else {
       const emojiSet = LEAVE_EMOJIS;
       const count = Math.floor(window.innerWidth / 30) + 16;
@@ -108,8 +114,8 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
     };
   }, [type]);
 
-  const label = type === 'lunch' ? '점 심' : '퇴 근';
-  const subLabel = type === 'lunch' ? '맛있게 드세요 🍴' : '오늘도 수고했어요 👋';
+  const label = type === 'lunch' ? '점 심' : type === 'alarm' ? '알 람' : '퇴 근';
+  const subLabel = type === 'lunch' ? '맛있게 드세요 🍴' : type === 'alarm' ? '⏰ 알람이 울렸어요!' : '오늘도 수고했어요 👋';
 
   return (
     <div className={`breaktime-root ${!visible ? 'breaktime-fadeout' : ''}`}>
@@ -146,7 +152,15 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
         </div>
       ))}
 
-      {showText && (
+      {type === 'alarm' && showText && (
+        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', textAlign:'center', animation:'textPop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
+          <div style={{ fontSize: 120, lineHeight: 1, marginBottom: 16 }}>⏰</div>
+          <div style={{ fontSize: 160, fontWeight: 900, background:'linear-gradient(135deg, #FF6B6B, #FFE66D)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', letterSpacing: 12 }}>알 람</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color:'white', textShadow:'0 2px 12px rgba(0,0,0,0.4)', marginTop: 12 }}>⏰ 알람이 울렸어요!</div>
+        </div>
+      )}
+
+      {showText && type !== 'alarm' && (
         <div className={`breaktime-text-wrap ${type === 'lunch' ? 'breaktime-text-wrap--lunch' : 'breaktime-text-wrap--leave'}`}>
           <div className="breaktime-text">{label}</div>
           <div className="breaktime-subtext">{subLabel}</div>
