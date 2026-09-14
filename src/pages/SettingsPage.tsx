@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import '../styles/settings.css';
 import { ANIMALS } from '../data/animals';
 
@@ -22,6 +22,8 @@ interface PetSettings {
   breakTimeEnabled: boolean;
   lunchTime: string;
   leaveTime: string;
+  preAlertMinutes: number;
+  alarms: { id: string; time: string; enabled: boolean }[];
 }
 
 const DEFAULT: PetSettings = {
@@ -30,7 +32,8 @@ const DEFAULT: PetSettings = {
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
-  breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
+  breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5,
+  alarms: [],
 };
 
 const MODE_PRESETS: Record<string, Partial<PetSettings>> = {
@@ -123,6 +126,7 @@ export default function SettingsPage() {
     if (draft.petVisible) window.electronAPI?.showPet();
     else window.electronAPI?.hidePet();
     window.electronAPI?.setYarTimer(draft.yarEnabled ? draft.yarInterval : 0);
+    window.electronAPI?.syncSettings(draft as unknown as Record<string, unknown>);
     setToast(true);
     setTimeout(() => setToast(false), 2000);
   };
@@ -373,6 +377,7 @@ export default function SettingsPage() {
 
           {/* 출퇴근 알림 */}
           {page === 'breaktime' && (
+            <>
             <Acc icon="🍱" title="알림 설정"
               badge={draft.breakTimeEnabled ? '켜짐' : '꺼짐'}
               badgeOn={draft.breakTimeEnabled}
@@ -414,9 +419,56 @@ export default function SettingsPage() {
                       🏃 퇴근 테스트
                     </button>
                   </div>
+                  {/* 미리 알림 */}
+                  <div style={{ marginTop: 16 }}>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, marginBottom:6, color:'#666' }}>⏰ 미리 알림 (1~30분 전)</label>
+                    <div className="interval-row">
+                      <input type="range" min={1} max={30} step={1}
+                        value={draft.preAlertMinutes || 5}
+                        onChange={e => update({ preAlertMinutes: Number(e.target.value) })}
+                        className="interval-slider" />
+                      <span className="interval-value">{draft.preAlertMinutes || 5}분 전</span>
+                    </div>
+                  </div>
                 </>
               )}
             </Acc>
+
+            <Acc icon="⏰" title="일반 알람"
+              badge={`${(draft.alarms || []).filter((a) => a.enabled).length}개 켜짐`}
+              open={openSection === 'alarms'} onToggle={() => toggleSection('alarms')}>
+              <p className="section-desc">원하는 시간에 화면 가득 알람이 울려요! 최대 5개</p>
+              {(draft.alarms || []).map((alarm, idx) => (
+                <div key={alarm.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                  <input type="checkbox" checked={alarm.enabled}
+                    onChange={e => {
+                      const newAlarms = [...(draft.alarms || [])];
+                      newAlarms[idx] = { ...alarm, enabled: e.target.checked };
+                      update({ alarms: newAlarms });
+                    }} />
+                  <input type="time" className="time-input"
+                    value={alarm.time}
+                    onChange={e => {
+                      const newAlarms = [...(draft.alarms || [])];
+                      newAlarms[idx] = { ...alarm, time: e.target.value };
+                      update({ alarms: newAlarms });
+                    }} />
+                  <button className="btn btn-secondary" style={{ padding:'4px 8px', fontSize:11 }}
+                    onClick={() => {
+                      const newAlarms = (draft.alarms || []).filter((_, i) => i !== idx);
+                      update({ alarms: newAlarms });
+                    }}>삭제</button>
+                </div>
+              ))}
+              {(draft.alarms || []).length < 5 && (
+                <button className="btn btn-accent" style={{ width:'100%', justifyContent:'center', marginTop:4 }}
+                  onClick={() => {
+                    const newAlarms = [...(draft.alarms || []), { id: Date.now().toString(), time: '09:00', enabled: true }];
+                    update({ alarms: newAlarms });
+                  }}>+ 알람 추가</button>
+              )}
+            </Acc>
+            </>
           )}
 
           {/* 커스텀 설정 - 아코디언 그룹 (하나만 열림) */}

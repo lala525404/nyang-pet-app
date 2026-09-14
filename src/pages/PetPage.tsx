@@ -146,7 +146,9 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
 
   useEffect(() => {
     const r = (a: number, b: number) => Math.random() * (b - a) + a;
-    const sw = window.screen.width, sh = window.screen.height;
+    let sw = window.screen.width;
+    let sh = window.screen.height;
+    window.electronAPI?.getAllDisplays?.().then(d => { if (d) { sw = d.width; sh = d.height; } });
     stateRef.current.wx = sw - 230;
     stateRef.current.wy = sh - 230;
 
@@ -231,6 +233,14 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
 // ── 메인 컴포넌트 ──────────────────────────────────────────────────
 export default function PetPage() {
   const [bubble, setBubble] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.electronAPI?.onShowToast?.((msg) => {
+      setToast(msg);
+      setTimeout(() => setToast(null), 3000);
+    });
+  }, []);
   const [bubbleKey, setBubbleKey] = useState(0);
   const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle | null>(null);
   const [mood, setMood] = useState('normal');
@@ -417,9 +427,10 @@ export default function PetPage() {
         if (!stateRef.current.escaping && !isSleepingRef.current) {
           // 연기 효과 후 반대편으로 이동
           setMotionClass('motion-teleport-out');
-          setTimeout(() => {
-            const sw = window.screen.width;
-            const sh = window.screen.height;
+          setTimeout(async () => {
+            const displays = await window.electronAPI?.getAllDisplays?.();
+            const sw = displays ? displays.width : window.screen.width;
+            const sh = displays ? displays.height : window.screen.height;
             // 현재 위치 반대편으로
             const newX = stateRef.current.wx < sw / 2 ? sw - 230 : 40;
             const newY = Math.round(Math.random() * (sh - 250) + 40);
@@ -625,6 +636,15 @@ export default function PetPage() {
 
   return (
     <div className="pet-root">
+      {toast && (
+        <div style={{
+          position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(30,30,30,0.85)", color: "white", padding: "10px 20px",
+          borderRadius: 16, fontSize: 14, fontWeight: 700, zIndex: 9999,
+          backdropFilter: "blur(8px)", whiteSpace: "nowrap", pointerEvents: "none",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+        }}>{toast}</div>
+      )}
       <div className="pet-container">
         <div className="bubble-slot" style={{ marginBottom: `${-8 + (petSize - 100) * 0.3}px` }}>
             {bubble && (
