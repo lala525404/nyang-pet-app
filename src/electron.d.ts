@@ -16,6 +16,8 @@ interface ElectronAPI {
   yarNow: () => void;
   testBreakTime: (type: string) => void;
   syncSettings: (settings: Record<string, unknown>) => void;
+  onShowToast: (cb: (msg: string) => void) => void;
+  getAllDisplays: () => Promise<{ all: { minX: number; minY: number; width: number; height: number }; monitors: { id: number; label: string; bounds: { x: number; y: number; width: number; height: number } }[] }>;
   getPetPosition: () => Promise<{x:number,y:number}|null>;
 }
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 
 const isDev = !app.isPackaged;
@@ -490,7 +490,6 @@ function startBreakTimeChecker(settings) {
         }
       }
     }
-    */
 
     // 일반 알람
     if (settings && settings.alarms) {
@@ -509,6 +508,22 @@ function startBreakTimeChecker(settings) {
 function stopBreakTimeChecker() {
   if (breakTimeChecker) { clearInterval(breakTimeChecker); breakTimeChecker = null; }
 }
+
+ipcMain.handle('get-all-displays', () => {
+  const displays = screen.getAllDisplays();
+  const minX = Math.min(...displays.map(d => d.bounds.x));
+  const minY = Math.min(...displays.map(d => d.bounds.y));
+  const maxX = Math.max(...displays.map(d => d.bounds.x + d.bounds.width));
+  const maxY = Math.max(...displays.map(d => d.bounds.y + d.bounds.height));
+  return {
+    all: { minX, minY, width: maxX - minX, height: maxY - minY },
+    monitors: displays.map((d, i) => ({
+      id: i,
+      label: 'Monitor ' + (i + 1) + (d.id === screen.getPrimaryDisplay().id ? ' (Primary)' : ''),
+      bounds: d.bounds
+    }))
+  };
+});
 
 ipcMain.on('test-break-time', (_e, type) => {
   createBreakTimeWindow(type);

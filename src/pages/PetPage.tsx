@@ -148,7 +148,7 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
     const r = (a: number, b: number) => Math.random() * (b - a) + a;
     let sw = window.screen.width;
     let sh = window.screen.height;
-    window.electronAPI?.getAllDisplays?.().then(d => { if (d) { sw = d.width; sh = d.height; } });
+    window.electronAPI?.getAllDisplays?.().then(d => { if (d) { sw = d.all.width; sh = d.all.height; } });
     stateRef.current.wx = sw - 230;
     stateRef.current.wy = sh - 230;
 
@@ -429,8 +429,8 @@ export default function PetPage() {
           setMotionClass('motion-teleport-out');
           setTimeout(async () => {
             const displays = await window.electronAPI?.getAllDisplays?.();
-            const sw = displays ? displays.width : window.screen.width;
-            const sh = displays ? displays.height : window.screen.height;
+            const sw = displays ? displays.all.width : window.screen.width;
+            const sh = displays ? displays.all.height : window.screen.height;
             // 현재 위치 반대편으로
             const newX = stateRef.current.wx < sw / 2 ? sw - 230 : 40;
             const newY = Math.round(Math.random() * (sh - 250) + 40);
