@@ -432,11 +432,11 @@ function createBreakTimeWindow(type) {
   breakTimeWindow.setIgnoreMouseEvents(true, { forward: true });
   breakTimeWindow.loadURL(getPageURL(`/breaktime?type=${type}`));
 
+  // 생성 시점의 창을 캡처해 그 창만 닫는다 (연속 생성 시 새 창이 닫히는 것 방지)
+  const w = breakTimeWindow;
   setTimeout(() => {
-    if (breakTimeWindow && !breakTimeWindow.isDestroyed()) {
-      breakTimeWindow.close();
-      breakTimeWindow = null;
-    }
+    if (w && !w.isDestroyed()) w.close();
+    if (breakTimeWindow === w) breakTimeWindow = null;
   }, 3000);
 }
 
