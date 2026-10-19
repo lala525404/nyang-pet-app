@@ -32,6 +32,9 @@
       "icon": "public/icon.png",
       "category": "public.app-category.entertainment"
     },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
     "extraResources": [
       {
         "from": "public",
