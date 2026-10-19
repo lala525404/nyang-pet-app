@@ -519,6 +519,8 @@ ipcMain.handle('get-all-displays', () => {
     all: { minX, minY, width: maxX - minX, height: maxY - minY },
     monitors: displays.map((d, i) => ({
       id: i,
+      displayId: d.id,
+      isPrimary: d.id === screen.getPrimaryDisplay().id,
       label: 'Monitor ' + (i + 1) + (d.id === screen.getPrimaryDisplay().id ? ' (Primary)' : ''),
       bounds: d.bounds
     }))

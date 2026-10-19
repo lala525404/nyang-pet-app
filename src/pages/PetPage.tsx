@@ -118,7 +118,7 @@ const PET_WINDOW_SIZE = 190;
 // monitor = -1 이면 전체 모니터, 아니면 해당 모니터 (없으면 전체로 폴백)
 function computeArea(d: DisplaysInfo | null, monitor: number): Rect {
   if (!d) return { x: 0, y: 0, w: window.screen.width, h: window.screen.height };
-  const m = monitor >= 0 ? d.monitors[monitor] : undefined;
+  const m = monitor >= 0 ? d.monitors.find(mm => mm.displayId === monitor) : undefined;
   if (m) return { x: m.bounds.x, y: m.bounds.y, w: m.bounds.width, h: m.bounds.height };
   return { x: d.all.minX, y: d.all.minY, w: d.all.width, h: d.all.height };
 }
@@ -256,11 +256,17 @@ export default function PetPage() {
   const [bubble, setBubble] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    window.electronAPI?.onShowToast?.((msg) => {
+    const unsubscribe = window.electronAPI?.onShowToast?.((msg) => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       setToast(msg);
-      setTimeout(() => setToast(null), 3000);
+      toastTimerRef.current = setTimeout(() => setToast(null), 3000);
     });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
   const [bubbleKey, setBubbleKey] = useState(0);
   const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle | null>(null);
@@ -324,6 +330,7 @@ export default function PetPage() {
 
   // ── 설정 로드 (2초마다 폴링) ─────────────────────────────────────
   const initialSyncedRef = useRef(false);
+  const displaysReadyRef = useRef(false);
   useEffect(() => {
     const load = () => {
       try {
@@ -331,13 +338,18 @@ export default function PetPage() {
         if (raw) {
           const parsed = JSON.parse(raw);
           setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-          // 앱 시작 시 1회만 메인 프로세스와 동기화 (알림/알람/야르 타이머 활성화)
-          if (!initialSyncedRef.current) {
-            initialSyncedRef.current = true;
-            window.electronAPI?.syncSettings(parsed as Record<string, unknown>);
-          }
         }
       } catch {}
+      // 앱 시작 시 1회만 메인 프로세스와 동기화 (저장값이 없거나 파싱 실패해도 기본값으로 동기화)
+      if (!initialSyncedRef.current) {
+        initialSyncedRef.current = true;
+        let merged: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+        try {
+          const raw2 = localStorage.getItem('petSettings');
+          if (raw2) merged = { ...DEFAULT_SETTINGS, ...JSON.parse(raw2) };
+        } catch {}
+        window.electronAPI?.syncSettings(merged);
+      }
     };
     // 디스플레이 정보 갱신 (모니터 추가/제거/해상도 변경 반영)
     const refreshDisplays = async () => {
@@ -346,6 +358,18 @@ export default function PetPage() {
         if (d) {
           displaysRef.current = d;
           areaRef.current = computeArea(d, monitorRef.current);
+          // 첫 응답 시 현재 위치가 영역 밖이면 안으로 1회 재배치
+          if (!displaysReadyRef.current) {
+            displaysReadyRef.current = true;
+            const b = getMovementBounds(areaRef.current, zoneRef.current || 0);
+            const st = stateRef.current;
+            const nx = Math.min(Math.max(st.wx, b.minX), b.maxX);
+            const ny = Math.min(Math.max(st.wy, b.minY), b.maxY);
+            if (nx !== st.wx || ny !== st.wy) {
+              st.wx = nx; st.wy = ny;
+              window.electronAPI?.movePetWindow(Math.round(nx), Math.round(ny));
+            }
+          }
         }
       } catch {}
     };

@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPetPosition:     () => ipcRenderer.invoke('get-pet-position'),
   onShowToast:      (cb) => {
     ipcRenderer.removeAllListeners('show-toast');
-    ipcRenderer.on('show-toast', (_e, msg) => cb(msg));
+    const handler = (_e, msg) => cb(msg);
+    ipcRenderer.on('show-toast', handler);
+    return () => ipcRenderer.removeListener('show-toast', handler);
   },
 });

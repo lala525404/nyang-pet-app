@@ -109,14 +109,14 @@ export default function SettingsPage() {
   // 아코디언 열린 섹션 (한 번에 하나만)
   const [openSection, setOpenSection] = useState<string>('speed');
   // 연결된 모니터 목록
-  const [monitors, setMonitors] = useState<{ id: number; label: string }[]>([]);
+  const [monitors, setMonitors] = useState<{ displayId: number; isPrimary: boolean; index: number }[]>([]);
   useEffect(() => {
     window.electronAPI?.getAllDisplays?.()
-      .then(d => { if (d) setMonitors(d.monitors.map(m => ({ id: m.id, label: m.label }))); })
+      .then(d => { if (d) setMonitors(d.monitors.map(m => ({ displayId: m.displayId, isPrimary: m.isPrimary, index: m.id }))); })
       .catch(() => {});
   }, []);
-  const monitorName = (m: { id: number; label: string }) =>
-    `모니터 ${m.id + 1}${m.label.includes('Primary') ? ' (주)' : ''}`;
+  const monitorName = (m: { index: number; isPrimary: boolean }) =>
+    `모니터 ${m.index + 1}${m.isPrimary ? ' (주)' : ''}`;
 
   const toggleSection = (key: string) =>
     setOpenSection(prev => prev === key ? '' : key);
@@ -556,27 +556,27 @@ export default function SettingsPage() {
 
               <Acc icon="📍" title="활동 구역"
                 badge={(() => {
-                  const mon = draft.monitor >= 0 ? monitors.find(m => m.id === draft.monitor) : undefined;
+                  const mon = draft.monitor >= 0 ? monitors.find(m => m.displayId === draft.monitor) : undefined;
                   const zoneName = draft.zone === 0 ? '' : ['','좌상단','우상단','좌하단','우하단'][draft.zone];
                   if (!mon && !zoneName) return '전체';
-                  return [mon ? `모니터 ${mon.id + 1}` : '', zoneName].filter(Boolean).join(' ');
+                  return [mon ? `모니터 ${mon.index + 1}` : '', zoneName].filter(Boolean).join(' ');
                 })()}
-                badgeOn={draft.zone !== 0 || (draft.monitor >= 0 && monitors.some(m => m.id === draft.monitor))}
+                badgeOn={draft.zone !== 0 || (draft.monitor >= 0 && monitors.some(m => m.displayId === draft.monitor))}
                 open={openSection === 'zone'} onToggle={() => toggleSection('zone')}>
                 <p className="section-desc">버디가 돌아다닐 화면 구역을 선택해요.</p>
                 {monitors.length > 1 && (
                   <>
                     <div style={{ fontSize:12, fontWeight:700, color:'#666', marginBottom:6 }}>🖥️ 모니터 선택</div>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-                      <button className={`mode-tab ${draft.monitor < 0 || !monitors.some(m => m.id === draft.monitor) ? 'mode-tab--active' : ''}`}
+                      <button className={`mode-tab ${draft.monitor < 0 || !monitors.some(m => m.displayId === draft.monitor) ? 'mode-tab--active' : ''}`}
                         style={{ gridColumn:'1 / -1' }}
                         onClick={() => update({ monitor: -1 })}>
                         전체 모니터
                       </button>
                       {monitors.map(m => (
-                        <button key={m.id}
-                          className={`mode-tab ${draft.monitor === m.id ? 'mode-tab--active' : ''}`}
-                          onClick={() => update({ monitor: m.id })}>
+                        <button key={m.displayId}
+                          className={`mode-tab ${draft.monitor === m.displayId ? 'mode-tab--active' : ''}`}
+                          onClick={() => update({ monitor: m.displayId })}>
                           {monitorName(m)}
                         </button>
                       ))}
