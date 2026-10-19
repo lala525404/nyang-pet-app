@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import '../styles/pet.css';
 import CatEmoji from '../components/CatEmoji';
+import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
 
 // ── 시간대별 멘트 ─────────────────────────────────────────────────
@@ -75,6 +76,7 @@ interface Settings {
   distractInterval: number;
   imageRotateInterval: number;
   useCustomMode: boolean;
+  customShape: CustomShape;
   moveSpeed: number;
   zone: number;
   monitor: number; // -1 = 전체 모니터, 0~ = 해당 모니터
@@ -87,7 +89,7 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
-  distractInterval: 30, imageRotateInterval: 60, useCustomMode: true, moveSpeed: 5, zone: 0, monitor: -1,
+  distractInterval: 30, imageRotateInterval: 60, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
 };
 
@@ -763,6 +765,7 @@ export default function PetPage() {
                 size={Math.round(64 * (petSize/100))}
                 className="cat-emoji"
                 customImage={currentCustomImage}
+                customShape={settings.customShape}
               />
             )}
           </div>

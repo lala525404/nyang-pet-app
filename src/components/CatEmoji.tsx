@@ -7,14 +7,22 @@ function emojiToCodepoint(emoji: string): string {
     .join('-');
 }
 
+// 커스텀 버디 표시 모양 (저장 이미지는 항상 정사각형, 표시할 때만 적용)
+export type CustomShape = 'round' | 'rounded';
+
+export function customShapeRadius(shape?: CustomShape): string {
+  return shape === 'rounded' ? '18%' : '50%';
+}
+
 interface CatEmojiProps {
   emoji: string;
   size?: number;
   className?: string;
   customImage?: string | null; // base64 또는 null
+  customShape?: CustomShape;
 }
 
-export default function CatEmoji({ emoji, size = 64, className = '', customImage }: CatEmojiProps) {
+export default function CatEmoji({ emoji, size = 64, className = '', customImage, customShape = 'round' }: CatEmojiProps) {
   // 커스텀 이미지가 있으면 우선 표시
   if (customImage) {
     return (
@@ -29,7 +37,7 @@ export default function CatEmoji({ emoji, size = 64, className = '', customImage
           display: 'block',
           userSelect: 'none',
           objectFit: 'contain',
-          borderRadius: '50%',
+          borderRadius: customShapeRadius(customShape),
         }}
       />
     );

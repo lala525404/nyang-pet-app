@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import '../styles/settings.css';
 import { ANIMALS } from '../data/animals';
 import CropModal from '../components/CropModal';
+import { customShapeRadius } from '../components/CatEmoji';
+import type { CustomShape } from '../components/CatEmoji';
 import '../styles/crop.css';
 
 interface PetSettings {
@@ -20,6 +22,7 @@ interface PetSettings {
   yarEnabled: boolean;
   yarInterval: number;
   useCustomMode: boolean;
+  customShape: CustomShape; // 커스텀 버디 표시 모양
   buddyMode: 'chill' | 'buddy' | 'chaos' | 'custom';
   size: number; // 50~200
   breakTimeEnabled: boolean;
@@ -33,7 +36,7 @@ const DEFAULT: PetSettings = {
   alwaysOnTop: true, petVisible: true, distractEmoji: true,
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
-  imageRotateInterval: 60, useCustomMode: true, moveSpeed: 5, zone: 0, monitor: -1,
+  imageRotateInterval: 60, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5, alarms: [],
 };
@@ -180,6 +183,8 @@ export default function SettingsPage() {
           key={cropState.src}
           src={cropState.src}
           onCancel={closeCrop}
+          shape={draft.customShape}
+          onShapeChange={(customShape) => setDraft(p => ({ ...p, customShape }))}
           onApply={(dataUrl) => {
             const slot = cropState.slot;
             setDraft(p => {
@@ -279,13 +284,25 @@ export default function SettingsPage() {
                       <span className="spec-tag">자동으로 정사각형 512px 이하로 저장</span>
                       <span className="spec-tag">최대 5MB</span>
                     </p>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#666', margin:'4px 0 6px' }}>🔷 버디 모양</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                      {([['round', '⚪ 원형'], ['rounded', '▢ 사각형']] as [CustomShape, string][]).map(([s, label]) => (
+                        <button key={s} type="button"
+                          className={`mode-tab ${draft.customShape === s ? 'mode-tab--active' : ''}`}
+                          aria-pressed={draft.customShape === s}
+                          onClick={() => setDraft(p => ({ ...p, customShape: s }))}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="upload-grid">
                       {[0, 1, 2].map(i => (
                         <div key={i} className={`upload-slot ${draft.customImages[i] ? 'upload-slot--filled' : ''}`}>
                           <div className="upload-slot-num">{i + 1}</div>
                           {draft.customImages[i] ? (
                             <>
-                              <img src={draft.customImages[i]!} alt={`custom ${i+1}`} className="upload-slot-img" />
+                              <img src={draft.customImages[i]!} alt={`custom ${i+1}`} className="upload-slot-img"
+                                style={{ borderRadius: customShapeRadius(draft.customShape) }} />
                               <button className="upload-slot-remove" onClick={() => {
                                 const next = [...draft.customImages]; next[i] = null;
                                 setDraft(p => ({ ...p, customImages: next }));

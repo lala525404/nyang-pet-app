@@ -5,8 +5,6 @@ export interface PixelCrop {
   height: number;
 }
 
-export type CropShape = 'rect' | 'round';
-
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -19,13 +17,11 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 /**
  * 원본 이미지에서 pixelCrop 영역을 잘라 정사각형 PNG dataURL로 반환한다.
  * 배경을 채우지 않아 투명이 유지되며, 한 변은 maxSize를 넘지 않는다.
- * shape가 'round'면 원 밖(모서리)은 투명하게 저장한다.
  */
 export async function getCroppedImage(
   src: string,
   pixelCrop: PixelCrop,
   maxSize = 512,
-  shape: CropShape = 'rect',
 ): Promise<string> {
   const img = await loadImage(src);
   const hasNaturalSize = img.naturalWidth > 0 && img.naturalHeight > 0;
@@ -49,13 +45,6 @@ export async function getCroppedImage(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  ctx.save();
-  if (shape === 'round') {
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-  }
   if (useCrop) {
     ctx.drawImage(img, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, size, size);
   } else {
@@ -66,6 +55,5 @@ export async function getCroppedImage(
     const dh = ih * ratio;
     ctx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
   }
-  ctx.restore();
   return canvas.toDataURL('image/png');
 }

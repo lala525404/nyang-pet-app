@@ -3,19 +3,21 @@ import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import '../styles/crop.css';
 import { getCroppedImage } from '../utils/cropImage';
+import type { CustomShape } from './CatEmoji';
 
 interface CropModalProps {
   src: string;
   onCancel: () => void;
   onApply: (dataUrl: string) => void;
+  shape: CustomShape;
+  onShapeChange: (shape: CustomShape) => void;
 }
 
 const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
-export default function CropModal({ src, onCancel, onApply }: CropModalProps) {
+export default function CropModal({ src, onCancel, onApply, shape, onShapeChange }: CropModalProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [shape, setShape] = useState<'rect' | 'round'>('rect');
   const [pixels, setPixels] = useState<Area | null>(null);
   const [busy, setBusy] = useState(false);
   const zoomId = useId();
@@ -66,7 +68,7 @@ export default function CropModal({ src, onCancel, onApply }: CropModalProps) {
     busyRef.current = true;
     setBusy(true);
     try {
-      const url = await getCroppedImage(src, pixels, 512, shape);
+      const url = await getCroppedImage(src, pixels, 512);
       if (cancelledRef.current) return;
       onApply(url);
     } catch {
@@ -86,7 +88,7 @@ export default function CropModal({ src, onCancel, onApply }: CropModalProps) {
           <p className="crop-subtitle">버디로 쓸 영역을 정사각형으로 골라주세요</p>
         </div>
 
-        <div className="crop-area">
+        <div className={`crop-area ${shape === 'rounded' ? 'crop-area--rounded' : ''}`}>
           <Cropper
             image={src}
             crop={crop}
@@ -112,12 +114,12 @@ export default function CropModal({ src, onCancel, onApply }: CropModalProps) {
             <span className="crop-zoom-value">{zoom.toFixed(1)}x</span>
           </div>
           <div className="crop-shape-toggle">
-            <button type="button" className={`crop-shape-btn ${shape === 'rect' ? 'crop-shape-btn--active' : ''}`}
-              aria-pressed={shape === 'rect'} onClick={() => setShape('rect')}>⬜ 사각</button>
             <button type="button" className={`crop-shape-btn ${shape === 'round' ? 'crop-shape-btn--active' : ''}`}
-              aria-pressed={shape === 'round'} onClick={() => setShape('round')}>⚪ 원형</button>
+              aria-pressed={shape === 'round'} onClick={() => onShapeChange('round')}>⚪ 원형</button>
+            <button type="button" className={`crop-shape-btn ${shape === 'rounded' ? 'crop-shape-btn--active' : ''}`}
+              aria-pressed={shape === 'rounded'} onClick={() => onShapeChange('rounded')}>▢ 사각형</button>
           </div>
-          <p className="crop-hint">드래그로 이동 · 휠로 확대/축소{shape === 'round' ? ' · 원형은 모서리가 투명하게 저장돼요' : ''}</p>
+          <p className="crop-hint">드래그로 이동 · 휠로 확대/축소 · 버디는 가이드와 같은 모양으로 보여요</p>
         </div>
 
         <div className="crop-footer">

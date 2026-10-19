@@ -75,6 +75,8 @@
   border-color: rgba(255, 255, 255, 0.3);
 }
 .crop-area .reactEasyCrop_CropAreaGrid { color: rgba(255, 255, 255, 0.3); }
+/* 사각형(둥근 모서리) 가이드 — 버디 표시 모양(CatEmoji customShapeRadius)과 같은 비율 */
+.crop-area--rounded .reactEasyCrop_CropArea { border-radius: 18%; }
 
 .crop-controls { display: flex; flex-direction: column; gap: 10px; }
 
