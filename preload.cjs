@@ -21,4 +21,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncSettings:     (settings) => ipcRenderer.send('sync-settings', settings),
   getAllDisplays:   () => ipcRenderer.invoke('get-all-displays'),
   getPetPosition:     () => ipcRenderer.invoke('get-pet-position'),
+  onShowToast:      (cb) => {
+    ipcRenderer.removeAllListeners('show-toast');
+    ipcRenderer.on('show-toast', (_e, msg) => cb(msg));
+  },
 });

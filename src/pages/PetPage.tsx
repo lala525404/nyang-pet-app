@@ -295,6 +295,7 @@ export default function PetPage() {
   const animal = getAnimal(settings.animalId);
 
   // ── 설정 로드 (2초마다 폴링) ─────────────────────────────────────
+  const initialSyncedRef = useRef(false);
   useEffect(() => {
     const load = () => {
       try {
@@ -302,6 +303,11 @@ export default function PetPage() {
         if (raw) {
           const parsed = JSON.parse(raw);
           setSettings({ ...DEFAULT_SETTINGS, ...parsed });
+          // 앱 시작 시 1회만 메인 프로세스와 동기화 (알림/알람/야르 타이머 활성화)
+          if (!initialSyncedRef.current) {
+            initialSyncedRef.current = true;
+            window.electronAPI?.syncSettings(parsed as Record<string, unknown>);
+          }
         }
       } catch {}
     };
@@ -638,10 +644,12 @@ export default function PetPage() {
     <div className="pet-root">
       {toast && (
         <div style={{
-          position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(30,30,30,0.85)", color: "white", padding: "10px 20px",
-          borderRadius: 16, fontSize: 14, fontWeight: 700, zIndex: 9999,
-          backdropFilter: "blur(8px)", whiteSpace: "nowrap", pointerEvents: "none",
+          position: "fixed", top: 10, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(30,30,30,0.85)", color: "white", padding: "8px 12px",
+          borderRadius: 14, fontSize: 12, fontWeight: 700, zIndex: 9999,
+          backdropFilter: "blur(8px)", whiteSpace: "normal", wordBreak: "keep-all",
+          width: "max-content", maxWidth: 170, textAlign: "center", lineHeight: 1.4,
+          pointerEvents: "none",
           boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
         }}>{toast}</div>
       )}
