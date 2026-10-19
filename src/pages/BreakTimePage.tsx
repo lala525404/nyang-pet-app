@@ -32,23 +32,24 @@ interface BreakTimePageProps {
   type?: 'lunch' | 'leave' | 'alarm';
 }
 
+type BreakType = 'lunch' | 'leave' | 'alarm';
+
+// URL 해시(#/breaktime?type=alarm)에서 타입을 첫 렌더부터 바로 읽는다
+function readTypeFromHash(fallback?: BreakType): BreakType {
+  const hash = window.location.hash;
+  const queryIndex = hash.indexOf('?');
+  const queryString = queryIndex >= 0 ? hash.substring(queryIndex + 1) : '';
+  const urlType = new URLSearchParams(queryString).get('type');
+  if (urlType === 'lunch' || urlType === 'leave' || urlType === 'alarm') return urlType;
+  return fallback || 'lunch';
+}
+
 export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
-  const [type, setType] = useState<'lunch' | 'leave' | 'alarm'>(propType || 'lunch');
+  const [type] = useState<BreakType>(() => readTypeFromHash(propType));
   const [sideBursts, setSideBursts] = useState<SideBurst[]>([]);
   const [upBursts, setUpBursts] = useState<UpBurst[]>([]);
   const [visible, setVisible] = useState(true);
   const [showText, setShowText] = useState(false);
-
-  useEffect(() => {
-    const hash = window.location.hash;
-    const queryIndex = hash.indexOf('?');
-    const queryString = queryIndex >= 0 ? hash.substring(queryIndex + 1) : '';
-    const params = new URLSearchParams(queryString);
-    const urlType = params.get('type');
-    if (urlType === 'lunch' || urlType === 'leave' || urlType === 'alarm') {
-      setType(urlType);
-    }
-  }, []);
 
   useEffect(() => {
     const rand = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];

@@ -417,6 +417,10 @@ export default function SettingsPage() {
                       onClick={() => window.electronAPI?.testBreakTime('leave')}>
                       🏃 퇴근 테스트
                     </button>
+                    <button className="btn btn-accent" style={{ flex: 1, justifyContent:'center' }}
+                      onClick={() => window.electronAPI?.testBreakTime('alarm')}>
+                      ⏰ 알람 테스트
+                    </button>
                   </div>
 
                   {/* 미리 알림 */}
