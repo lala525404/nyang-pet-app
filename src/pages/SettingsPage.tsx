@@ -164,7 +164,7 @@ export default function SettingsPage() {
           <div className="sidebar-title">
             최애를<br/><span>풀어놨습니다</span>
           </div>
-          <div className="sidebar-version">v1.0.5</div>
+          <div className="sidebar-version">v1.0.9</div>
         </div>
         <nav className="sidebar-nav">
           {NAV.map(n => (
