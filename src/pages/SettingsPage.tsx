@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import '../styles/settings.css';
 import { ANIMALS } from '../data/animals';
+import CropModal from '../components/CropModal';
+import '../styles/crop.css';
 
 interface PetSettings {
   alwaysOnTop: boolean;
@@ -108,6 +110,14 @@ export default function SettingsPage() {
   const [page, setPage] = useState<NavPage>('buddy');
   // 아코디언 열린 섹션 (한 번에 하나만)
   const [openSection, setOpenSection] = useState<string>('speed');
+  // 커스텀 사진 크롭 상태 (src는 ObjectURL)
+  const [cropState, setCropState] = useState<{ slot: number; src: string } | null>(null);
+  const cropSrcRef = useRef<string | null>(null);
+  const closeCrop = () => {
+    if (cropSrcRef.current) { URL.revokeObjectURL(cropSrcRef.current); cropSrcRef.current = null; }
+    setCropState(null);
+  };
+  useEffect(() => () => { if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current); }, []);
   // 연결된 모니터 목록
   const [monitors, setMonitors] = useState<{ displayId: number; isPrimary: boolean; index: number }[]>([]);
   useEffect(() => {
@@ -157,6 +167,21 @@ export default function SettingsPage() {
   return (
     <div className="settings-root">
       {toast && <div className="toast">✅ 설정이 저장됐어요!</div>}
+      {cropState && (
+        <CropModal
+          src={cropState.src}
+          onCancel={closeCrop}
+          onApply={(dataUrl) => {
+            const slot = cropState.slot;
+            setDraft(p => {
+              const next = [...p.customImages];
+              next[slot] = dataUrl;
+              return { ...p, customImages: next };
+            });
+            closeCrop();
+          }}
+        />
+      )}
 
       {/* 사이드바 */}
       <aside className="sidebar">
@@ -233,12 +258,16 @@ export default function SettingsPage() {
               )}
 
               {draft.useCustomMode && (
+                <>
+                <div className="custom-hero-hint">
+                  📸 내 사진으로 나만의 버디를 만들어 보세요! 사진이 없으면 기본 동물로 보여요.
+                </div>
                 <div className="dark-card">
                   <div className="dark-card-body">
                     <p className="section-desc">
                       최대 3개 업로드 → 순서대로 돌아가요.<br/>
                       <span className="spec-tag">PNG / SVG</span>
-                      <span className="spec-tag">100×100 ~ 300×300px</span>
+                      <span className="spec-tag">자동으로 정사각형 512px 이하로 저장</span>
                       <span className="spec-tag">최대 5MB</span>
                     </p>
                     <div className="upload-grid">
@@ -260,14 +289,12 @@ export default function SettingsPage() {
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (!file) return;
-                                  if (file.size > 5 * 1024 * 1024) { alert('5MB 이하로 해주세요!'); return; }
-                                  const reader = new FileReader();
-                                  reader.onload = (ev) => {
-                                    const next = [...draft.customImages];
-                                    next[i] = ev.target?.result as string;
-                                    setDraft(p => ({ ...p, customImages: next }));
-                                  };
-                                  reader.readAsDataURL(file);
+                                  if (file.size > 5 * 1024 * 1024) { alert('5MB 이하로 해주세요!'); e.target.value = ''; return; }
+                                  e.target.value = ''; // 같은 파일 재선택 가능
+                                  if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current);
+                                  const url = URL.createObjectURL(file);
+                                  cropSrcRef.current = url;
+                                  setCropState({ slot: i, src: url });
                                 }} />
                             </label>
                           )}
@@ -289,6 +316,7 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </div>
+                </>
               )}
             </>
           )}
