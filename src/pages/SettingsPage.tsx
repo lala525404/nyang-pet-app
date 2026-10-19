@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import '../styles/settings.css';
 import { ANIMALS } from '../data/animals';
 import CropModal from '../components/CropModal';
@@ -52,8 +52,13 @@ function loadSettings(): PetSettings {
     return s ? { ...DEFAULT, ...JSON.parse(s) } : DEFAULT;
   } catch { return DEFAULT; }
 }
-function saveSettings(s: PetSettings) {
-  localStorage.setItem('petSettings', JSON.stringify(s));
+function saveSettings(s: PetSettings): boolean {
+  try {
+    localStorage.setItem('petSettings', JSON.stringify(s));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // 아코디언 컴포넌트 (외부에서 open 제어)
@@ -113,10 +118,10 @@ export default function SettingsPage() {
   // 커스텀 사진 크롭 상태 (src는 ObjectURL)
   const [cropState, setCropState] = useState<{ slot: number; src: string } | null>(null);
   const cropSrcRef = useRef<string | null>(null);
-  const closeCrop = () => {
+  const closeCrop = useCallback(() => {
     if (cropSrcRef.current) { URL.revokeObjectURL(cropSrcRef.current); cropSrcRef.current = null; }
     setCropState(null);
-  };
+  }, []);
   useEffect(() => () => { if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current); }, []);
   // 연결된 모니터 목록
   const [monitors, setMonitors] = useState<{ displayId: number; isPrimary: boolean; index: number }[]>([]);
@@ -139,7 +144,10 @@ export default function SettingsPage() {
   const applyMode = (mode: 'chill' | 'buddy' | 'chaos') =>
     setDraft(prev => ({ ...prev, ...MODE_PRESETS[mode], size: prev.size }));
   const handleApply = () => {
-    saveSettings(draft);
+    if (!saveSettings(draft)) {
+      alert('저장 공간이 부족해요. 이미지 수를 줄여 주세요.');
+      return;
+    }
     setSaved(draft);
     window.electronAPI?.setAlwaysOnTop(draft.alwaysOnTop);
     if (draft.petVisible) window.electronAPI?.showPet();
@@ -169,6 +177,7 @@ export default function SettingsPage() {
       {toast && <div className="toast">✅ 설정이 저장됐어요!</div>}
       {cropState && (
         <CropModal
+          key={cropState.src}
           src={cropState.src}
           onCancel={closeCrop}
           onApply={(dataUrl) => {
@@ -266,7 +275,7 @@ export default function SettingsPage() {
                   <div className="dark-card-body">
                     <p className="section-desc">
                       최대 3개 업로드 → 순서대로 돌아가요.<br/>
-                      <span className="spec-tag">PNG / SVG</span>
+                      <span className="spec-tag">PNG / JPG / WEBP / SVG</span>
                       <span className="spec-tag">자동으로 정사각형 512px 이하로 저장</span>
                       <span className="spec-tag">최대 5MB</span>
                     </p>

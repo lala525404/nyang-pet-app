@@ -5,6 +5,8 @@ export interface PixelCrop {
   height: number;
 }
 
+export type CropShape = 'rect' | 'round';
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -17,10 +19,27 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 /**
  * 원본 이미지에서 pixelCrop 영역을 잘라 정사각형 PNG dataURL로 반환한다.
  * 배경을 채우지 않아 투명이 유지되며, 한 변은 maxSize를 넘지 않는다.
+ * shape가 'round'면 원 밖(모서리)은 투명하게 저장한다.
  */
-export async function getCroppedImage(src: string, pixelCrop: PixelCrop, maxSize = 512): Promise<string> {
+export async function getCroppedImage(
+  src: string,
+  pixelCrop: PixelCrop,
+  maxSize = 512,
+  shape: CropShape = 'rect',
+): Promise<string> {
   const img = await loadImage(src);
-  const size = Math.max(1, Math.min(Math.round(pixelCrop.width), maxSize));
+  const hasNaturalSize = img.naturalWidth > 0 && img.naturalHeight > 0;
+  const validCrop =
+    [pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height].every(Number.isFinite) &&
+    pixelCrop.width > 0 && pixelCrop.height > 0;
+
+  // 크기 정보가 없는 SVG 등은 크롭 좌표를 신뢰할 수 없으므로 maxSize 정사각형에 contain으로 그린다
+  const useCrop = hasNaturalSize && validCrop;
+  if (!useCrop && hasNaturalSize === true) {
+    throw new Error('잘못된 자르기 영역이에요.');
+  }
+
+  const size = useCrop ? Math.max(1, Math.min(Math.round(pixelCrop.width), maxSize)) : maxSize;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -29,11 +48,24 @@ export async function getCroppedImage(src: string, pixelCrop: PixelCrop, maxSize
   ctx.clearRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+
+  ctx.save();
+  if (shape === 'round') {
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+  }
+  if (useCrop) {
     ctx.drawImage(img, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, size, size);
   } else {
-    // 크기 정보가 없는 SVG: 전체를 캔버스에 맞춰 그린다
-    ctx.drawImage(img, 0, 0, size, size);
+    const iw = img.width || size;
+    const ih = img.height || size;
+    const ratio = Math.min(size / iw, size / ih);
+    const dw = iw * ratio;
+    const dh = ih * ratio;
+    ctx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
   }
+  ctx.restore();
   return canvas.toDataURL('image/png');
 }

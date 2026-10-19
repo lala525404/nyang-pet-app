@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import '../styles/crop.css';
-import { getCroppedImage, type PixelCrop } from '../utils/cropImage';
+import { getCroppedImage } from '../utils/cropImage';
 
 interface CropModalProps {
   src: string;
@@ -9,39 +10,77 @@ interface CropModalProps {
   onApply: (dataUrl: string) => void;
 }
 
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
 export default function CropModal({ src, onCancel, onApply }: CropModalProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [shape, setShape] = useState<'rect' | 'round'>('rect');
-  const [pixels, setPixels] = useState<PixelCrop | null>(null);
+  const [pixels, setPixels] = useState<Area | null>(null);
   const [busy, setBusy] = useState(false);
   const zoomId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCancelRef = useRef(onCancel);
+  const busyRef = useRef(false);
+  const cancelledRef = useRef(false);
 
-  const onCropComplete = useCallback((_area: unknown, areaPixels: PixelCrop) => {
+  useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
+
+  const onCropComplete = useCallback((_area: Area, areaPixels: Area) => {
     setPixels(areaPixels);
   }, []);
 
+  // 마운트 시 1회: 포커스 이동/복원, Esc 취소, Tab 순환
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    cancelledRef.current = false;
+    const prev = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (!busyRef.current) onCancelRef.current();
+        return;
+      }
+      if (e.key === 'Tab' && dialogRef.current) {
+        const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+        if (items.length === 0) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || active === dialogRef.current)) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault(); first.focus();
+        }
+      }
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
+    return () => {
+      cancelledRef.current = true;
+      window.removeEventListener('keydown', onKey);
+      if (prev && document.contains(prev)) prev.focus();
+    };
+  }, []);
 
   const handleApply = async () => {
-    if (!pixels || busy) return;
+    if (!pixels || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
-      const url = await getCroppedImage(src, pixels, 512);
+      const url = await getCroppedImage(src, pixels, 512, shape);
+      if (cancelledRef.current) return;
       onApply(url);
     } catch {
+      if (cancelledRef.current) return;
       alert('이미지를 자르지 못했어요. 다른 사진으로 시도해 주세요.');
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   return (
     <div className="crop-overlay">
-      <div className="crop-modal" role="dialog" aria-modal="true" aria-labelledby={`${zoomId}-title`}>
+      <div className="crop-modal" role="dialog" aria-modal="true" aria-labelledby={`${zoomId}-title`}
+        ref={dialogRef} tabIndex={-1}>
         <div className="crop-header">
           <h3 className="crop-title" id={`${zoomId}-title`}>✂️ 사진 자르기</h3>
           <p className="crop-subtitle">버디로 쓸 영역을 정사각형으로 골라주세요</p>
@@ -78,7 +117,7 @@ export default function CropModal({ src, onCancel, onApply }: CropModalProps) {
             <button type="button" className={`crop-shape-btn ${shape === 'round' ? 'crop-shape-btn--active' : ''}`}
               aria-pressed={shape === 'round'} onClick={() => setShape('round')}>⚪ 원형</button>
           </div>
-          <p className="crop-hint">드래그로 이동 · 휠로 확대/축소</p>
+          <p className="crop-hint">드래그로 이동 · 휠로 확대/축소{shape === 'round' ? ' · 원형은 모서리가 투명하게 저장돼요' : ''}</p>
         </div>
 
         <div className="crop-footer">
