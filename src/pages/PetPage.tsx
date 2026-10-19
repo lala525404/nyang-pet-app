@@ -87,7 +87,7 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
-  distractInterval: 30, imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0, monitor: -1,
+  distractInterval: 30, imageRotateInterval: 60, useCustomMode: true, moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
 };
 

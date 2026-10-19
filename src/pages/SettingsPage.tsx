@@ -31,7 +31,7 @@ const DEFAULT: PetSettings = {
   alwaysOnTop: true, petVisible: true, distractEmoji: true,
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
-  imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0, monitor: -1,
+  imageRotateInterval: 60, useCustomMode: true, moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5, alarms: [],
 };
@@ -145,7 +145,7 @@ export default function SettingsPage() {
   const headerEmoji = draft.useCustomMode && activeImages.length > 0 ? '🖼️' : currentAnimal.emoji;
 
   const NAV: { id: NavPage; icon: string; label: string; badge?: string }[] = [
-    { id: 'buddy',   icon: '🎮', label: '버디 설정',   badge: draft.useCustomMode ? '커스텀' : currentAnimal.name },
+    { id: 'buddy',   icon: '🎮', label: '버디 설정',   badge: draft.useCustomMode && activeImages.length > 0 ? '커스텀' : currentAnimal.name },
     { id: 'mode',    icon: '✨', label: '모드 선택',   badge: draft.buddyMode === 'custom' ? '커스텀' : draft.buddyMode === 'chill' ? 'Chill' : draft.buddyMode === 'buddy' ? 'Buddy' : 'Chaos' },
     { id: 'display', icon: '👁️', label: '표시 설정',   badge: draft.petVisible ? '보임' : '숨김' },
     { id: 'yar',     icon: '🎉', label: '야르~ 타임',  badge: draft.yarEnabled ? `${draft.yarInterval}분` : '꺼짐' },
@@ -209,13 +209,13 @@ export default function SettingsPage() {
           {page === 'buddy' && (
             <>
               <div className="mode-tabs">
-                <button className={`mode-tab ${!draft.useCustomMode ? 'mode-tab--active' : ''}`}
-                  onClick={() => setDraft(p => ({ ...p, useCustomMode: false }))}>
-                  🐾 이모지 버디
-                </button>
                 <button className={`mode-tab ${draft.useCustomMode ? 'mode-tab--active' : ''}`}
                   onClick={() => setDraft(p => ({ ...p, useCustomMode: true }))}>
                   🖼️ 커스텀 이미지
+                </button>
+                <button className={`mode-tab ${!draft.useCustomMode ? 'mode-tab--active' : ''}`}
+                  onClick={() => setDraft(p => ({ ...p, useCustomMode: false }))}>
+                  🐾 이모지 버디
                 </button>
               </div>
 
