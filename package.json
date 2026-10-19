@@ -32,6 +32,9 @@
       "icon": "public/icon.png",
       "category": "public.app-category.entertainment"
     },
+    "portable": {
+      "artifactName": "${productName}-${version}.${ext}"
+    },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
