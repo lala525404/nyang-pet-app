@@ -14,6 +14,7 @@ interface PetSettings {
   imageRotateInterval: number;
   moveSpeed: number;
   zone: number;
+  monitor: number; // -1 = 전체 모니터
   yarEnabled: boolean;
   yarInterval: number;
   useCustomMode: boolean;
@@ -30,7 +31,7 @@ const DEFAULT: PetSettings = {
   alwaysOnTop: true, petVisible: true, distractEmoji: true,
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
-  imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0,
+  imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5, alarms: [],
 };
@@ -107,6 +108,15 @@ export default function SettingsPage() {
   const [page, setPage] = useState<NavPage>('buddy');
   // 아코디언 열린 섹션 (한 번에 하나만)
   const [openSection, setOpenSection] = useState<string>('speed');
+  // 연결된 모니터 목록
+  const [monitors, setMonitors] = useState<{ id: number; label: string }[]>([]);
+  useEffect(() => {
+    window.electronAPI?.getAllDisplays?.()
+      .then(d => { if (d) setMonitors(d.monitors.map(m => ({ id: m.id, label: m.label }))); })
+      .catch(() => {});
+  }, []);
+  const monitorName = (m: { id: number; label: string }) =>
+    `모니터 ${m.id + 1}${m.label.includes('Primary') ? ' (주)' : ''}`;
 
   const toggleSection = (key: string) =>
     setOpenSection(prev => prev === key ? '' : key);
@@ -545,10 +555,35 @@ export default function SettingsPage() {
               </Acc>
 
               <Acc icon="📍" title="활동 구역"
-                badge={draft.zone === 0 ? '전체' : ['','좌상단','우상단','좌하단','우하단'][draft.zone]}
-                badgeOn={draft.zone !== 0}
+                badge={(() => {
+                  const mon = draft.monitor >= 0 ? monitors.find(m => m.id === draft.monitor) : undefined;
+                  const zoneName = draft.zone === 0 ? '' : ['','좌상단','우상단','좌하단','우하단'][draft.zone];
+                  if (!mon && !zoneName) return '전체';
+                  return [mon ? `모니터 ${mon.id + 1}` : '', zoneName].filter(Boolean).join(' ');
+                })()}
+                badgeOn={draft.zone !== 0 || (draft.monitor >= 0 && monitors.some(m => m.id === draft.monitor))}
                 open={openSection === 'zone'} onToggle={() => toggleSection('zone')}>
                 <p className="section-desc">버디가 돌아다닐 화면 구역을 선택해요.</p>
+                {monitors.length > 1 && (
+                  <>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#666', marginBottom:6 }}>🖥️ 모니터 선택</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                      <button className={`mode-tab ${draft.monitor < 0 || !monitors.some(m => m.id === draft.monitor) ? 'mode-tab--active' : ''}`}
+                        style={{ gridColumn:'1 / -1' }}
+                        onClick={() => update({ monitor: -1 })}>
+                        전체 모니터
+                      </button>
+                      {monitors.map(m => (
+                        <button key={m.id}
+                          className={`mode-tab ${draft.monitor === m.id ? 'mode-tab--active' : ''}`}
+                          onClick={() => update({ monitor: m.id })}>
+                          {monitorName(m)}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#666', marginBottom:6 }}>📍 구역 (선택한 모니터 기준)</div>
+                  </>
+                )}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
                   {[
                     { val:1, label:'↖️ 좌상단' },

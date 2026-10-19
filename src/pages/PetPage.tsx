@@ -77,6 +77,7 @@ interface Settings {
   useCustomMode: boolean;
   moveSpeed: number;
   zone: number;
+  monitor: number; // -1 = 전체 모니터, 0~ = 해당 모니터
   yarEnabled: boolean;
   yarInterval: number;
   buddyMode: string;
@@ -86,7 +87,7 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
-  distractInterval: 30, imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0,
+  distractInterval: 30, imageRotateInterval: 60, useCustomMode: false, moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
 };
 
@@ -108,13 +109,38 @@ function getTimeCategory(workStart: string, workEnd: string): string {
   return 'night';
 }
 
+// ── 활동 영역 ─────────────────────────────────────────────────────
+interface Rect { x: number; y: number; w: number; h: number; }
+type DisplaysInfo = Awaited<ReturnType<NonNullable<typeof window.electronAPI>['getAllDisplays']>>;
+
+const PET_WINDOW_SIZE = 190;
+
+// monitor = -1 이면 전체 모니터, 아니면 해당 모니터 (없으면 전체로 폴백)
+function computeArea(d: DisplaysInfo | null, monitor: number): Rect {
+  if (!d) return { x: 0, y: 0, w: window.screen.width, h: window.screen.height };
+  const m = monitor >= 0 ? d.monitors[monitor] : undefined;
+  if (m) return { x: m.bounds.x, y: m.bounds.y, w: m.bounds.width, h: m.bounds.height };
+  return { x: d.all.minX, y: d.all.minY, w: d.all.width, h: d.all.height };
+}
+
+// 선택된 영역(area) 안에서 zone(0=전체, 1=좌상, 2=우상, 3=좌하, 4=우하)을 적용한 절대 좌표 경계
+function getMovementBounds(area: Rect, zone: number) {
+  const halfW = Math.floor(area.w / 2);
+  const halfH = Math.floor(area.h / 2);
+  const minX = area.x + ((zone === 2 || zone === 4) ? halfW : 0);
+  const maxX = area.x + ((zone === 1 || zone === 3) ? halfW : area.w) - PET_WINDOW_SIZE;
+  const minY = area.y + ((zone === 3 || zone === 4) ? halfH : 0);
+  const maxY = area.y + ((zone === 1 || zone === 2) ? halfH : area.h) - PET_WINDOW_SIZE;
+  return { minX, maxX: Math.max(minX, maxX), minY, maxY: Math.max(minY, maxY) };
+}
+
 // ── 물리 엔진 ─────────────────────────────────────────────────────
 interface PhysicsState {
   wx: number; wy: number; vx: number; vy: number;
   rotate: number; vr: number; scale: number; targetScale: number; escaping: boolean;
 }
 
-function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: React.MutableRefObject<number>) {
+function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: React.MutableRefObject<number>, areaRef: React.MutableRefObject<Rect>) {
   const stateRef = useRef<PhysicsState>({
     wx: 0, wy: 0, vx: 0, vy: 0, rotate: 0, vr: 0, scale: 1, targetScale: 1, escaping: false,
   });
@@ -146,11 +172,9 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
 
   useEffect(() => {
     const r = (a: number, b: number) => Math.random() * (b - a) + a;
-    let sw = window.screen.width;
-    let sh = window.screen.height;
-    window.electronAPI?.getAllDisplays?.().then(d => { if (d) { sw = d.all.width; sh = d.all.height; } });
-    stateRef.current.wx = sw - 230;
-    stateRef.current.wy = sh - 230;
+    const initArea = areaRef.current;
+    stateRef.current.wx = initArea.x + initArea.w - 230;
+    stateRef.current.wy = initArea.y + initArea.h - 230;
 
     const triggerEvent = () => {
       const s = stateRef.current;
@@ -195,11 +219,8 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
 
       const br = (a: number, b: number) => Math.random() * (b - a) + a;
       // ★ zone 기반 경계 (0=전체, 1=좌상, 2=우상, 3=좌하, 4=우하)
-      const zone = zoneRef.current || 0;
-      const minX = (zone === 2 || zone === 4) ? Math.floor(sw / 2) : 0;
-      const maxX = (zone === 1 || zone === 3) ? Math.floor(sw / 2) - 190 : sw - 190;
-      const minY = (zone === 3 || zone === 4) ? Math.floor(sh / 2) : 0;
-      const maxY = (zone === 1 || zone === 2) ? Math.floor(sh / 2) - 190 : sh - 190;
+      // ★ 선택된 모니터(영역) 기준 절대 좌표 경계 (영역 밖이면 매 프레임 안으로 clamp)
+      const { minX, maxX, minY, maxY } = getMovementBounds(areaRef.current, zoneRef.current || 0);
       const prevWx = s.wx, prevWy = s.wy;
       if (s.wx < minX) { s.wx = minX; s.vx =  Math.abs(s.vx) * br(0.6,1.0); }
       if (s.wx > maxX) { s.wx = maxX; s.vx = -Math.abs(s.vx) * br(0.6,1.0); }
@@ -267,10 +288,17 @@ export default function PetPage() {
 
   const speedRef = useRef(5);
   const zoneRef = useRef(0);
+  const monitorRef = useRef(-1);
+  const displaysRef = useRef<DisplaysInfo | null>(null);
+  const areaRef = useRef<Rect>(computeArea(null, -1));
   const [petSize, setPetSize] = useState(settings.size || 100);
   const sizeRef = useRef(100);
   useEffect(() => { speedRef.current = settings.moveSpeed || 5; }, [settings.moveSpeed]);
   useEffect(() => { zoneRef.current = settings.zone || 0; }, [settings.zone]);
+  useEffect(() => {
+    monitorRef.current = typeof settings.monitor === 'number' ? settings.monitor : -1;
+    areaRef.current = computeArea(displaysRef.current, monitorRef.current);
+  }, [settings.monitor]);
   useEffect(() => {
     const s = settings.size || 100;
     sizeRef.current = s;
@@ -281,7 +309,7 @@ export default function PetPage() {
     window.electronAPI?.resizePetWindow(newSize, newSize);
   }, [settings.size]);
 
-  const { displayTransform, reset, triggerEscape, stateRef, draggingRef, setOnWallHit } = useScreenMovement(speedRef, zoneRef);
+  const { displayTransform, reset, triggerEscape, stateRef, draggingRef, setOnWallHit } = useScreenMovement(speedRef, zoneRef, areaRef);
   const { rotate, scale } = displayTransform;
 
   const rand = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -311,8 +339,19 @@ export default function PetPage() {
         }
       } catch {}
     };
-    load();
-    const t = setInterval(load, 2000);
+    // 디스플레이 정보 갱신 (모니터 추가/제거/해상도 변경 반영)
+    const refreshDisplays = async () => {
+      try {
+        const d = await window.electronAPI?.getAllDisplays?.();
+        if (d) {
+          displaysRef.current = d;
+          areaRef.current = computeArea(d, monitorRef.current);
+        }
+      } catch {}
+    };
+    const loadAll = () => { refreshDisplays(); load(); };
+    loadAll();
+    const t = setInterval(loadAll, 2000);
     return () => clearInterval(t);
   }, []);
 
@@ -434,12 +473,17 @@ export default function PetPage() {
           // 연기 효과 후 반대편으로 이동
           setMotionClass('motion-teleport-out');
           setTimeout(async () => {
-            const displays = await window.electronAPI?.getAllDisplays?.();
-            const sw = displays ? displays.all.width : window.screen.width;
-            const sh = displays ? displays.all.height : window.screen.height;
-            // 현재 위치 반대편으로
-            const newX = stateRef.current.wx < sw / 2 ? sw - 230 : 40;
-            const newY = Math.round(Math.random() * (sh - 250) + 40);
+            try {
+              const d = await window.electronAPI?.getAllDisplays?.();
+              if (d) {
+                displaysRef.current = d;
+                areaRef.current = computeArea(d, monitorRef.current);
+              }
+            } catch {}
+            // 선택된 모니터/구역 안에서 현재 위치 반대편으로
+            const b = getMovementBounds(areaRef.current, zoneRef.current || 0);
+            const newX = stateRef.current.wx < (b.minX + b.maxX) / 2 ? b.maxX : b.minX;
+            const newY = Math.round(b.minY + Math.random() * (b.maxY - b.minY));
             window.electronAPI?.movePetWindow(newX, newY);
             stateRef.current.wx = newX;
             stateRef.current.wy = newY;
