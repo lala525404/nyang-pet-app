@@ -1,0 +1,15 @@
+# 줄바꿈 규칙: 저장소에는 항상 LF로 저장하고, Windows 작업 폴더에서는 CRLF로 꺼낸다.
+# (PC마다 다른 core.autocrlf 설정과 상관없이 같은 결과가 나오게 고정)
+* text=auto eol=crlf
+
+# 바이너리 — 줄바꿈 변환 금지
+*.png binary
+*.ico binary
+*.icns binary
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.jpg binary
+*.webp binary
+*.dmg binary
+*.exe binary
