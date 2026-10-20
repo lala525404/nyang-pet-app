@@ -41,15 +41,18 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   id: string; label: string; value: string; end: boolean;
   open: boolean; onOpen: () => void; onClose: () => void; children: ReactNode;
 }) {
+  // onClose는 매 렌더 새로 만들어지므로 ref로 들고, 리스너는 열린 동안 한 번만 붙인다
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const outside = (e: Event) => { if (!wrapRef.current?.contains(e.target as Node)) onClose(); };
+    const outside = (e: Event) => { if (!wrapRef.current?.contains(e.target as Node)) onCloseRef.current(); };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); btnRef.current?.focus(); }
+      if (e.key === 'Escape') { e.preventDefault(); onCloseRef.current(); btnRef.current?.focus(); }
     };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('focusin', outside);
@@ -59,7 +62,7 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
       document.removeEventListener('focusin', outside);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <div className="st-chip-wrap" ref={wrapRef}>
@@ -82,12 +85,12 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   );
 }
 
-function NoticeCard({ icon, title, enabled, time, pre, onEnabled, onTime, onPre, onTest, testLabel }: {
-  icon: ReactNode; title: string; enabled: boolean; time: string; pre: number;
+function NoticeCard({ id, icon, title, enabled, time, pre, onEnabled, onTime, onPre, onTest, testLabel }: {
+  id: string; icon: ReactNode; title: string; enabled: boolean; time: string; pre: number;
   onEnabled: (v: boolean) => void; onTime: (v: string) => void; onPre: (v: number) => void;
   onTest: () => void; testLabel: string;
 }) {
-  const preId = `${title}-pre`;
+  const preId = `${id}-pre`;
   return (
     <article className="st-card st-notice" data-state={enabled ? 'on' : 'off'}>
       <div className="st-notice-head">
@@ -299,11 +302,11 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
       </article>
 
       <div className="st-notices">
-        <NoticeCard icon={<Utensils className="ui-i" strokeWidth={1.5} aria-hidden />} title={lunch.label} enabled={lunch.enabled}
+        <NoticeCard id="lunch" icon={<Utensils className="ui-i" strokeWidth={1.5} aria-hidden />} title={lunch.label} enabled={lunch.enabled}
           time={lunch.time} pre={lunch.pre} testLabel="점심 테스트"
           onEnabled={v => update({ lunchEnabled: v })} onTime={v => update({ lunchTime: v })}
           onPre={v => update({ lunchPreAlertMinutes: v })} onTest={() => window.electronAPI?.testBreakTime('lunch')} />
-        <NoticeCard icon={<LogOut className="ui-i" strokeWidth={1.5} aria-hidden />} title={leave.label} enabled={leave.enabled}
+        <NoticeCard id="leave" icon={<LogOut className="ui-i" strokeWidth={1.5} aria-hidden />} title={leave.label} enabled={leave.enabled}
           time={leave.time} pre={leave.pre} testLabel="퇴근 테스트"
           onEnabled={v => update({ leaveEnabled: v })} onTime={v => update({ leaveTime: v })}
           onPre={v => update({ leavePreAlertMinutes: v })} onTest={() => window.electronAPI?.testBreakTime('leave')} />
