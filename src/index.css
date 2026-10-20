@@ -10,6 +10,6 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Nanum Gothic', sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

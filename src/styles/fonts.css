@@ -1,0 +1,9 @@
+/* 앱에 포함된 글꼴 (오프라인 동작). Pretendard는 main.tsx에서 npm 패키지(OFL)로 불러온다. */
+
+/* 박다현체: 로고·앱 이름에만 사용 */
+@font-face {
+  font-family: 'OngleipParkDahyeon';
+  src: url('/fonts/Ownglyph_ParkDaHyun.woff2') format('woff2');
+  font-weight: normal;
+  font-display: swap;
+}

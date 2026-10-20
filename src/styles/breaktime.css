@@ -143,10 +143,3 @@
     transform: translateX(var(--drift)) rotate(180deg) scale(1.2);
   }
 }
-
-@font-face {
-  font-family: 'OngleipParkDahyeon';
-  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2411-3@1.0/Ownglyph_ParkDaHyun.woff2') format('woff2');
-  font-weight: normal;
-  font-display: swap;
-}
