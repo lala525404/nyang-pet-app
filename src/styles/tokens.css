@@ -1,0 +1,61 @@
+/* 디자인 토큰 — docs/ui-redesign-spec.md 2장 수치. html[data-theme]로 라이트/다크 전환
+   (color-scheme은 투명 창의 바탕에 영향을 주지 않도록 설정창 루트에서만 지정한다) */
+:root {
+  --ui-win: #F4F4F4;          /* 창 바탕 */
+  --ui-panel: #FFFFFF;        /* 패널 */
+  --ui-item: #F4F4F4;         /* 패널 안 항목 면 */
+  --ui-track: #EFEFEF;        /* 세그먼트 트랙 · 회색 버튼 */
+  --ui-hover: #E8E8E8;
+  --ui-line: #ECECEC;
+  --ui-ink: #111111;
+  --ui-sub: #6B6B6B;          /* 보조 글자 (흰 면 5.3:1) */
+  --ui-accent: #2563EB;       /* 포인트 색 1개 */
+  --ui-accent-ink: #FFFFFF;
+  --ui-accent-tint: #E8EFFE;
+  --ui-link: #1D4ED8;
+  --ui-primary: #111111;      /* 화면당 1개 검정 버튼 */
+  --ui-primary-ink: #FFFFFF;
+  --ui-primary-hover: #333333;
+  --ui-seg-on: #FFFFFF;
+  --ui-switch-off: #C4C4C9;
+  --ui-knob: #FFFFFF;
+  --ui-scrim: rgba(17, 17, 17, 0.32);
+  --ui-crop-dim: rgba(17, 17, 17, 0.45);
+  --ui-guide: #FFFFFF;
+  --ui-tip: #111111;
+  --ui-tip-ink: #FFFFFF;
+  --ui-shadow-float: 0 2px 8px rgba(17, 17, 17, 0.06);   /* 팝오버·모달 */
+  --ui-shadow-toast: 0 4px 12px rgba(17, 17, 17, 0.08);  /* 토스트·알림 (blur 12px) */
+  --ui-r-panel: 16px;
+  --ui-r-inner: 10px;
+  --ui-r-pill: 999px;
+  --ui-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html[data-theme="dark"] {
+  --ui-win: #0F0F10;
+  --ui-panel: #18181A;
+  --ui-item: #222225;
+  --ui-track: #26262A;
+  --ui-hover: #303035;
+  --ui-line: #2A2A2E;
+  --ui-ink: #F2F2F2;
+  --ui-sub: #9A9AA0;          /* 패널 6.3:1 · 항목 면 5.7:1 · 트랙 5.4:1 */
+  --ui-accent: #3B82F6;
+  --ui-accent-ink: #FFFFFF;
+  --ui-accent-tint: #1C2B4D;
+  --ui-link: #7DB0FF;
+  --ui-primary: #FFFFFF;
+  --ui-primary-ink: #111111;
+  --ui-primary-hover: #E4E4E4;
+  --ui-seg-on: #3A3A3F;
+  --ui-switch-off: #3A3A3F;
+  --ui-knob: #FFFFFF;
+  --ui-scrim: rgba(0, 0, 0, 0.6);
+  --ui-crop-dim: rgba(0, 0, 0, 0.55);
+  --ui-guide: #FFFFFF;
+  --ui-tip: #F2F2F2;
+  --ui-tip-ink: #111111;
+  --ui-shadow-float: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --ui-shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
