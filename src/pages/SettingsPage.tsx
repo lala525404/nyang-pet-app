@@ -681,6 +681,7 @@ export default function SettingsPage() {
 
           {/* 사용 방법 */}
           {page === 'help' && (
+            <>
             <div className="dark-card">
               <div className="dark-card-body">
                 <ul className="tips-list">
@@ -696,6 +697,10 @@ export default function SettingsPage() {
                 </ul>
               </div>
             </div>
+            <p style={{ fontSize: 12, color: '#777', margin: '12px 4px 0' }}>
+              버디 이미지: Twemoji © Twitter, Inc. and other contributors · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
+            </p>
+            </>
           )}
 
         </div>
