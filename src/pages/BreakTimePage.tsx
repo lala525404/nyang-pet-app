@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlarmClock, LogOut, Utensils } from 'lucide-react';
 import '../styles/breaktime.css';
+import CatEmoji from '../components/CatEmoji';
+import { getAnimal } from '../data/animals';
+import { formatTime, loadSettings } from '../utils/settings';
 
 const LUNCH_EMOJIS = ['🍚', '🍜', '🍣', '🍱', '🍙', '🥪', '🍕', '🍔', '🥗', '🍲', '🍰', '🥘', '🍝', '🍛', '🧋'];
 const ALARM_EMOJIS = ['⏰', '🔔', '⏰', '🔔', '⏰'];
@@ -54,8 +58,8 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
   useEffect(() => {
     const rand = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 
-    if (type === 'lunch') {
-      const emojiSet = LUNCH_EMOJIS;
+    if (type === 'lunch' || type === 'alarm') {
+      const emojiSet = type === 'lunch' ? LUNCH_EMOJIS : ALARM_EMOJIS;
       const count = Math.floor(window.innerHeight / 32) + 12;
       const newBursts: SideBurst[] = [];
 
@@ -85,10 +89,6 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
       }
       setSideBursts(newBursts);
       setUpBursts([]);
-    } else if (type === 'alarm') {
-      // 알람: 시계 이모지 크게 중앙에
-      setSideBursts([]);
-      setUpBursts([]);
     } else {
       const emojiSet = LEAVE_EMOJIS;
       const count = Math.floor(window.innerWidth / 30) + 16;
@@ -115,8 +115,17 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
     };
   }, [type]);
 
-  const label = type === 'lunch' ? '점 심' : type === 'alarm' ? '알 람' : '퇴 근';
-  const subLabel = type === 'lunch' ? '맛있게 드세요 🍴' : type === 'alarm' ? '⏰ 알람이 울렸어요!' : '오늘도 수고했어요 👋';
+  const settings = useMemo(() => loadSettings(), []);
+  const animal = getAnimal(settings.animalId);
+  const photos = settings.customImages.filter(Boolean) as string[];
+  const photo = settings.useCustomMode && photos.length > 0 ? photos[0] : null;
+
+  const label = type === 'lunch' ? '점심' : type === 'alarm' ? '알람' : '퇴근';
+  const subLabel = type === 'lunch' ? '맛있게 드세요' : type === 'alarm' ? '알람이 울렸어요!' : '오늘도 수고했어요';
+  const Icon = type === 'lunch' ? Utensils : type === 'alarm' ? AlarmClock : LogOut;
+  const meta = type === 'lunch' ? formatTime(settings.lunchTime)
+    : type === 'leave' ? formatTime(settings.leaveTime)
+    : formatTime(`${new Date().getHours()}:${new Date().getMinutes()}`);
 
   return (
     <div className={`breaktime-root ${!visible ? 'breaktime-fadeout' : ''}`}>
@@ -153,18 +162,19 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
         </div>
       ))}
 
-      {type === 'alarm' && showText && (
-        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', textAlign:'center', animation:'textPop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
-          <div style={{ fontSize: 120, lineHeight: 1, marginBottom: 16 }}>⏰</div>
-          <div style={{ fontSize: 160, fontWeight: 900, background:'linear-gradient(135deg, #FF6B6B, #FFE66D)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', letterSpacing: 12 }}>알 람</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color:'white', textShadow:'0 2px 12px rgba(0,0,0,0.4)', marginTop: 12 }}>⏰ 알람이 울렸어요!</div>
-        </div>
-      )}
-
-      {showText && type !== 'alarm' && (
-        <div className={`breaktime-text-wrap ${type === 'lunch' ? 'breaktime-text-wrap--lunch' : 'breaktime-text-wrap--leave'}`}>
-          <div className="breaktime-text">{label}</div>
-          <div className="breaktime-subtext">{subLabel}</div>
+      {showText && (
+        <div className="bt-center">
+          <div className="bt-card" role="status">
+            <div className="bt-top">
+              <Icon strokeWidth={1.5} aria-hidden />
+              <span className="bt-meta">{meta}</span>
+            </div>
+            <div className="bt-buddy">
+              <CatEmoji emoji={animal.emoji} size={144} forceImage customImage={photo} customShape={settings.customShape} />
+            </div>
+            <div className="bt-word">{label}</div>
+            <div className="bt-sub">{subLabel}</div>
+          </div>
         </div>
       )}
     </div>
