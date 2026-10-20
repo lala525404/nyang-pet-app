@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
 
 const isDev = !app.isPackaged;
@@ -94,11 +94,16 @@ function createSettingsWindow() {
     minWidth: 700, minHeight: 580,
     frame: true, resizable: true, show: false,
     title: '최애를 풀어놨습니다',
-    backgroundColor: '#f7f3ee',
+    backgroundColor: '#F4F4F4',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, nodeIntegration: false, sandbox: false,
     },
+  });
+  // 출처 링크(CC BY 4.0)는 새 앱 창이 아니라 기본 브라우저로 연다
+  settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
   });
   settingsWindow.loadURL(getPageURL('/settings'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());

@@ -1,725 +1,210 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { CircleHelp, House, Bell, Monitor as MonitorIcon, Moon, Power, Sun } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import '../styles/settings.css';
-import { ANIMALS } from '../data/animals';
 import CropModal from '../components/CropModal';
-import { customShapeRadius } from '../components/CatEmoji';
-import type { CustomShape } from '../components/CatEmoji';
-import '../styles/crop.css';
-import { readStoredSettings } from '../utils/settings';
+import AnimalModal from '../components/settings/AnimalModal';
+import HomePane from '../components/settings/HomePane';
+import AlarmPane from '../components/settings/AlarmPane';
+import HelpPane from '../components/settings/HelpPane';
+import type { Monitor } from '../components/settings/shared';
+import { MODE_PRESETS, loadSettings, saveSettings } from '../utils/settings';
+import type { PetSettings } from '../utils/settings';
+import { getThemePref, nextThemePref, setThemePref } from '../utils/theme';
+import type { ThemePref } from '../utils/theme';
 
-interface PetSettings {
-  alwaysOnTop: boolean;
-  petVisible: boolean;
-  distractEmoji: boolean;
-  workStart: string;
-  workEnd: string;
-  animalId: string;
-  customImages: (string | null)[];
-  distractInterval: number;
-  imageRotateInterval: number;
-  moveSpeed: number;
-  zone: number;
-  monitor: number; // -1 = 전체 모니터
-  yarEnabled: boolean;
-  yarInterval: number;
-  useCustomMode: boolean;
-  customShape: CustomShape; // 커스텀 버디 표시 모양
-  buddyMode: 'chill' | 'buddy' | 'chaos' | 'custom';
-  size: number; // 50~200
-  breakTimeEnabled: boolean;
-  lunchEnabled: boolean;
-  leaveEnabled: boolean;
-  lunchPreAlertMinutes: number;
-  leavePreAlertMinutes: number;
-  lunchTime: string;
-  leaveTime: string;
-  preAlertMinutes: number;
-  alarms: { id: string; time: string; enabled: boolean }[];
-}
+type NavPage = 'home' | 'alarm' | 'help';
 
-const DEFAULT: PetSettings = {
-  alwaysOnTop: true, petVisible: true, distractEmoji: true,
-  workStart: '09:00', workEnd: '18:00', animalId: 'cat',
-  customImages: [null, null, null], distractInterval: 30,
-  imageRotateInterval: 60, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
-  yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
-  breakTimeEnabled: false, lunchEnabled: false, leaveEnabled: false, lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5, alarms: [],
+const PAGES: Record<NavPage, { label: string; title: string; desc: string; icon: LucideIcon }> = {
+  home: { label: '홈', title: '내 버디', desc: '버디를 고르고 움직임과 알림을 바꿔요. 바꾼 값은 바로 적용돼요.', icon: House },
+  alarm: { label: '알람', title: '알람', desc: '원하는 시간에 화면 가득 알람이 울려요! 최대 5개', icon: Bell },
+  help: { label: '사용 방법', title: '사용 방법', desc: '버디와 함께하는 방법을 알아봐요', icon: CircleHelp },
 };
 
-const MODE_PRESETS: Record<string, Partial<PetSettings>> = {
-  chill: { moveSpeed: 1, distractEmoji: false, yarEnabled: false, buddyMode: 'chill' },
-  buddy: { moveSpeed: 5, distractEmoji: true, distractInterval: 30, yarEnabled: false, buddyMode: 'buddy' },
-  chaos: { moveSpeed: 10, distractEmoji: true, distractInterval: 10, yarEnabled: true, yarInterval: 30, buddyMode: 'chaos' },
+const THEME_UI: Record<ThemePref, { icon: LucideIcon; name: string }> = {
+  light: { icon: Sun, name: '라이트' },
+  dark: { icon: Moon, name: '다크' },
+  system: { icon: MonitorIcon, name: '시스템' },
 };
 
-type NavPage = 'buddy' | 'mode' | 'display' | 'yar' | 'breaktime' | 'custom' | 'help';
-
-function loadSettings(): PetSettings {
-  try {
-    const s = readStoredSettings();
-    return s ? { ...DEFAULT, ...s } as PetSettings : DEFAULT;
-  } catch { return DEFAULT; }
-}
-function saveSettings(s: PetSettings): boolean {
-  try {
-    localStorage.setItem('petSettings', JSON.stringify(s));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// 아코디언 컴포넌트 (외부에서 open 제어)
-function Acc({ icon, title, badge, badgeOn, open, onToggle, children }: {
-  icon: string; title: string; badge?: string;
-  badgeOn?: boolean; open: boolean; onToggle: () => void; children: React.ReactNode;
-}) {
-  return (
-    <div className="settings-section">
-      <button className="section-label" onClick={onToggle}>
-        <span className="section-icon">{icon}</span>
-        <span>{title}</span>
-        {badge !== undefined && (
-          <span className={`badge ${badgeOn ? 'badge-on' : 'badge-off'}`}>{badge}</span>
-        )}
-        <span className={`section-arrow ${open ? 'open' : ''}`}>▼</span>
-      </button>
-      {open && <div className="section-content">{children}</div>}
-    </div>
-  );
-}
-
-function TimePreview({ workStart, workEnd }: { workStart: string; workEnd: string }) {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
-  const h = now.getHours(), m = now.getMinutes();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const total = h * 60 + m;
-  const [sh, sm] = workStart.split(':').map(Number);
-  const [eh, em] = workEnd.split(':').map(Number);
-  const startMin = sh * 60 + sm, endMin = eh * 60 + em;
-  let zone = '';
-  if (total < 5 * 60)            zone = '🌙 새벽';
-  else if (total < startMin)     zone = '☀️ 출근 전';
-  else if (total < 12 * 60)      zone = '💼 오전 근무 중';
-  else if (total < 13 * 60)      zone = '🍱 점심시간';
-  else if (total < endMin - 60)  zone = '💻 오후 근무 중';
-  else if (total < endMin)       zone = '⏰ 퇴근 임박!';
-  else if (total < endMin + 60)  zone = '🎉 퇴근 시간!';
-  else if (total < 21 * 60)      zone = '🏠 저녁';
-  else                           zone = '🌙 밤';
-  return (
-    <div className="time-preview-box">
-      <span className="preview-time">지금 {pad(h)}:{pad(m)}</span>
-      <span className="preview-zone">{zone}</span>
-    </div>
-  );
-}
+const SAVE_DELAY_MS = 300;
 
 export default function SettingsPage() {
-  const [saved, setSaved] = useState<PetSettings>(loadSettings);
-  const [draft, setDraft] = useState<PetSettings>(loadSettings);
-  const [toast, setToast] = useState(false);
-  const [page, setPage] = useState<NavPage>('buddy');
-  // 아코디언 열린 섹션 (한 번에 하나만)
-  const [openSection, setOpenSection] = useState<string>('speed');
-  // 커스텀 사진 크롭 상태 (src는 ObjectURL)
-  const [cropState, setCropState] = useState<{ slot: number; src: string } | null>(null);
-  const cropSrcRef = useRef<string | null>(null);
-  const closeCrop = useCallback(() => {
-    if (cropSrcRef.current) { URL.revokeObjectURL(cropSrcRef.current); cropSrcRef.current = null; }
-    setCropState(null);
+  const [settings, setSettings] = useState<PetSettings>(loadSettings);
+  const [page, setPage] = useState<NavPage>('home');
+  const [animalOpen, setAnimalOpen] = useState(false);
+  const [themePref, setPref] = useState<ThemePref>(getThemePref);
+  const [themeNote, setThemeNote] = useState('');
+
+  // ── 값이 바뀌면 300ms 뒤 즉시 적용 (저장 + 메인 프로세스 동기화) ─────────────
+  const latestRef = useRef(settings);
+  const appliedRef = useRef(settings);
+  const dirtyRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveFailedRef = useRef(false);
+
+  const apply = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (!dirtyRef.current) return;
+    dirtyRef.current = false;
+    const next = latestRef.current;
+    if (!saveSettings(next)) {
+      if (!saveFailedRef.current) alert('저장 공간이 부족해요. 이미지 수를 줄여 주세요.');
+      saveFailedRef.current = true;
+      return;
+    }
+    saveFailedRef.current = false;
+    const prev = appliedRef.current;
+    appliedRef.current = next;
+    const api = window.electronAPI;
+    if (next.alwaysOnTop !== prev.alwaysOnTop) api?.setAlwaysOnTop(next.alwaysOnTop);
+    if (next.petVisible !== prev.petVisible) { if (next.petVisible) api?.showPet(); else api?.hidePet(); }
+    if (next.yarEnabled !== prev.yarEnabled || next.yarInterval !== prev.yarInterval) {
+      api?.setYarTimer(next.yarEnabled ? next.yarInterval : 0);
+    }
+    api?.syncSettings(next as unknown as Record<string, unknown>);
   }, []);
-  useEffect(() => () => { if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current); }, []);
-  // 연결된 모니터 목록
-  const [monitors, setMonitors] = useState<{ displayId: number; isPrimary: boolean; index: number }[]>([]);
+
+  const change = useCallback((fn: (prev: PetSettings) => PetSettings) => {
+    // 연속 호출에도 최신 값 위에 쌓이도록 ref 기준으로 계산한다
+    const next = fn(latestRef.current);
+    latestRef.current = next;
+    setSettings(next);
+    dirtyRef.current = true;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(apply, SAVE_DELAY_MS);
+  }, [apply]);
+
+  // 창을 닫거나 화면을 벗어날 때 기다리던 변경을 바로 적용
+  useEffect(() => {
+    window.addEventListener('pagehide', apply);
+    return () => { window.removeEventListener('pagehide', apply); apply(); };
+  }, [apply]);
+
+  // 예전 앱과 같은 규칙: update는 모드를 "커스텀"으로, patch는 모드를 건드리지 않는다
+  const update = useCallback((p: Partial<PetSettings>) => change(prev => ({ ...prev, ...p, buddyMode: 'custom' })), [change]);
+  const patch = useCallback((p: Partial<PetSettings>) => change(prev => ({ ...prev, ...p })), [change]);
+  const applyMode = useCallback((mode: 'chill' | 'buddy' | 'chaos') =>
+    change(prev => ({ ...prev, ...MODE_PRESETS[mode], size: prev.size })), [change]);
+
+  // ── 연결된 모니터 목록 ──────────────────────────────────────────────
+  const [monitors, setMonitors] = useState<Monitor[]>([]);
   useEffect(() => {
     window.electronAPI?.getAllDisplays?.()
       .then(d => { if (d) setMonitors(d.monitors.map(m => ({ displayId: m.displayId, isPrimary: m.isPrimary, index: m.id }))); })
       .catch(() => {});
   }, []);
-  const monitorName = (m: { index: number; isPrimary: boolean }) =>
-    `모니터 ${m.index + 1}${m.isPrimary ? ' (주)' : ''}`;
 
-  const toggleSection = (key: string) =>
-    setOpenSection(prev => prev === key ? '' : key);
+  // ── 커스텀 사진: 파일 선택 → 자르기 (src는 ObjectURL) ───────────────────────
+  const [cropState, setCropState] = useState<{ slot: number; src: string } | null>(null);
+  const cropSrcRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingSlotRef = useRef(0);
+  const closeCrop = useCallback(() => {
+    if (cropSrcRef.current) { URL.revokeObjectURL(cropSrcRef.current); cropSrcRef.current = null; }
+    setCropState(null);
+  }, []);
+  useEffect(() => () => { if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current); }, []);
 
-  useEffect(() => { const s = loadSettings(); setSaved(s); setDraft(s); }, []);
-
-  const isDirty = JSON.stringify(saved) !== JSON.stringify(draft);
-  const update = (patch: Partial<PetSettings>) =>
-    setDraft(prev => ({ ...prev, ...patch, buddyMode: 'custom' }));
-  const applyMode = (mode: 'chill' | 'buddy' | 'chaos') =>
-    setDraft(prev => ({ ...prev, ...MODE_PRESETS[mode], size: prev.size }));
-  const handleApply = () => {
-    if (!saveSettings(draft)) {
-      alert('저장 공간이 부족해요. 이미지 수를 줄여 주세요.');
-      return;
-    }
-    setSaved(draft);
-    window.electronAPI?.setAlwaysOnTop(draft.alwaysOnTop);
-    if (draft.petVisible) window.electronAPI?.showPet();
-    else window.electronAPI?.hidePet();
-    window.electronAPI?.setYarTimer(draft.yarEnabled ? draft.yarInterval : 0);
-    window.electronAPI?.syncSettings(draft as unknown as Record<string, unknown>);
-    setToast(true);
-    setTimeout(() => setToast(false), 2000);
+  const pickPhoto = (slot: number) => {
+    pendingSlotRef.current = slot;
+    fileInputRef.current?.click();
+  };
+  // "사진 올리기": 빈 칸이 있으면 바로 파일 선택, 3장이 다 찼으면 사진 관리 창을 연다
+  const upload = () => {
+    const slot = settings.customImages.findIndex(img => !img);
+    if (slot < 0) { patch({ useCustomMode: true }); setAnimalOpen(true); } else pickPhoto(slot);
+  };
+  const onFileChosen = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 같은 파일 재선택 가능
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert('5MB 이하로 해주세요!'); return; }
+    if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current);
+    const url = URL.createObjectURL(file);
+    cropSrcRef.current = url;
+    setCropState({ slot: pendingSlotRef.current, src: url });
   };
 
-  const currentAnimal = ANIMALS.find(a => a.id === draft.animalId) || ANIMALS[0];
-  const activeImages = draft.customImages.filter(Boolean);
-  const headerEmoji = draft.useCustomMode && activeImages.length > 0 ? '🖼️' : currentAnimal.emoji;
+  const cycleTheme = () => {
+    const next = nextThemePref(themePref);
+    setThemePref(next);
+    setPref(next);
+    setThemeNote(`화면 테마 ${THEME_UI[next].name}`);
+  };
 
-  const NAV: { id: NavPage; icon: string; label: string; badge?: string }[] = [
-    { id: 'buddy',   icon: '🎮', label: '버디 설정',   badge: draft.useCustomMode && activeImages.length > 0 ? '커스텀' : currentAnimal.name },
-    { id: 'mode',    icon: '✨', label: '모드 선택',   badge: draft.buddyMode === 'custom' ? '커스텀' : draft.buddyMode === 'chill' ? 'Chill' : draft.buddyMode === 'buddy' ? 'Buddy' : 'Chaos' },
-    { id: 'display', icon: '👁️', label: '표시 설정',   badge: draft.petVisible ? '보임' : '숨김' },
-    { id: 'yar',     icon: '🎉', label: '야르~ 타임',  badge: draft.yarEnabled ? `${draft.yarInterval}분` : '꺼짐' },
-    { id: 'breaktime', icon: '🍱', label: '알림', badge: draft.breakTimeEnabled ? '켜짐' : '꺼짐' },
-    { id: 'custom',  icon: '⚙️', label: '커스텀 설정' },
-    { id: 'help',    icon: '💡', label: '사용 방법' },
-  ];
+  const info = PAGES[page];
+  const ThemeIcon = THEME_UI[themePref].icon;
+  const nextName = THEME_UI[nextThemePref(themePref)].name;
 
   return (
     <div className="settings-root">
-      {toast && <div className="toast">✅ 설정이 저장됐어요!</div>}
+      <input ref={fileInputRef} type="file" accept=".png,.svg,.jpg,.jpeg,.webp" hidden onChange={onFileChosen} />
+
       {cropState && (
         <CropModal
           key={cropState.src}
           src={cropState.src}
           onCancel={closeCrop}
-          shape={draft.customShape}
-          onShapeChange={(customShape) => setDraft(p => ({ ...p, customShape }))}
+          shape={settings.customShape}
+          onShapeChange={(customShape) => patch({ customShape })}
           onApply={(dataUrl) => {
             const slot = cropState.slot;
-            setDraft(p => {
-              const next = [...p.customImages];
+            change(prev => {
+              const next = [...prev.customImages];
               next[slot] = dataUrl;
-              return { ...p, customImages: next };
+              return { ...prev, customImages: next, useCustomMode: true };
             });
             closeCrop();
           }}
         />
       )}
 
-      {/* 사이드바 */}
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="sidebar-title">
-            최애를<br/><span>풀어놨습니다</span>
-          </div>
-          <div className="sidebar-version">v1.0.9</div>
-        </div>
-        <nav className="sidebar-nav">
-          {NAV.map(n => (
-            <button key={n.id}
-              className={`nav-item ${page === n.id ? 'nav-item--active' : ''}`}
-              onClick={() => setPage(n.id)}>
-              <span className="nav-icon">{n.icon}</span>
-              <span className="nav-label">{n.label}</span>
-              {n.badge && <span className="nav-badge">{n.badge}</span>}
-            </button>
-          ))}
+      {animalOpen && (
+        <AnimalModal settings={settings} update={update} patch={patch}
+          onClose={() => setAnimalOpen(false)} onPickPhoto={pickPhoto} suspended={cropState !== null} />
+      )}
+
+      <div className="st-rail-col">
+        <nav className="st-rail" aria-label="설정 메뉴">
+          {(Object.keys(PAGES) as NavPage[]).map(id => {
+            const Icon = PAGES[id].icon;
+            return (
+              <button key={id} type="button" className="st-rbtn" data-label={PAGES[id].label} aria-label={PAGES[id].label}
+                aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}>
+                <Icon className="ui-i" strokeWidth={1.5} aria-hidden />
+              </button>
+            );
+          })}
+          <button type="button" className="st-rbtn st-rail-gap" data-label="앱 종료" aria-label="앱 종료"
+            onClick={() => window.electronAPI?.quitApp()}>
+            <Power className="ui-i" strokeWidth={1.5} aria-hidden />
+          </button>
         </nav>
-        <div className="sidebar-footer">
-          <button className="btn-quit" onClick={() => window.electronAPI?.quitApp()}>
-            ⏻ 앱 종료
-          </button>
-        </div>
-      </aside>
-
-      {/* 메인 */}
-      <div className="settings-main">
-        <div className="main-header">
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div>
-              <div className="main-title">{NAV.find(n => n.id === page)?.icon} {NAV.find(n => n.id === page)?.label}</div>
-              <div className="main-desc">
-                {page === 'buddy'   && '함께할 버디를 선택해요'}
-                {page === 'mode'    && '클릭 한 번으로 설정이 자동으로 맞춰져요'}
-                {page === 'display' && '버디 표시 여부와 위치를 설정해요'}
-                {page === 'yar'     && '정해진 간격마다 이모지가 쏟아져요!'}
-                {page === 'custom'  && '세부 설정을 직접 조절해요'}
-                {page === 'help'    && '버디와 함께하는 방법을 알아봐요'}
-              </div>
-            </div>
-            {isDirty && <div className="unsaved-badge">저장 안 됨</div>}
-          </div>
-        </div>
-
-        <div className="main-body">
-
-          {/* 버디 설정 */}
-          {page === 'buddy' && (
-            <>
-              <div className="mode-tabs">
-                <button className={`mode-tab ${draft.useCustomMode ? 'mode-tab--active' : ''}`}
-                  onClick={() => setDraft(p => ({ ...p, useCustomMode: true }))}>
-                  🖼️ 커스텀 이미지
-                </button>
-                <button className={`mode-tab ${!draft.useCustomMode ? 'mode-tab--active' : ''}`}
-                  onClick={() => setDraft(p => ({ ...p, useCustomMode: false }))}>
-                  🐾 이모지 버디
-                </button>
-              </div>
-
-              {!draft.useCustomMode && (
-                <div className="animal-grid">
-                  {ANIMALS.map(animal => (
-                    <button key={animal.id}
-                      className={`animal-btn ${draft.animalId === animal.id ? 'animal-selected' : ''}`}
-                      onClick={() => setDraft(p => ({ ...p, animalId: animal.id }))}>
-                      <span className="animal-emoji">{animal.emoji}</span>
-                      <span className="animal-name">{animal.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {draft.useCustomMode && (
-                <>
-                <div className="custom-hero-hint">
-                  📸 내 사진으로 나만의 버디를 만들어 보세요! 사진이 없으면 기본 동물로 보여요.
-                </div>
-                <div className="dark-card">
-                  <div className="dark-card-body">
-                    <p className="section-desc">
-                      최대 3개 업로드 → 순서대로 돌아가요.<br/>
-                      <span className="spec-tag">PNG / JPG / WEBP / SVG</span>
-                      <span className="spec-tag">자동으로 정사각형 512px 이하로 저장</span>
-                      <span className="spec-tag">최대 5MB</span>
-                    </p>
-                    <div style={{ fontSize:12, fontWeight:700, color:'#666', margin:'4px 0 6px' }}>🔷 버디 모양</div>
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-                      {([['round', '⚪ 원형'], ['rounded', '▢ 사각형']] as [CustomShape, string][]).map(([s, label]) => (
-                        <button key={s} type="button"
-                          className={`mode-tab ${draft.customShape === s ? 'mode-tab--active' : ''}`}
-                          aria-pressed={draft.customShape === s}
-                          onClick={() => setDraft(p => ({ ...p, customShape: s }))}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="upload-grid">
-                      {[0, 1, 2].map(i => (
-                        <div key={i} className={`upload-slot ${draft.customImages[i] ? 'upload-slot--filled' : ''}`}>
-                          <div className="upload-slot-num">{i + 1}</div>
-                          {draft.customImages[i] ? (
-                            <>
-                              <img src={draft.customImages[i]!} alt={`custom ${i+1}`} className="upload-slot-img"
-                                style={{ borderRadius: customShapeRadius(draft.customShape) }} />
-                              <button className="upload-slot-remove" onClick={() => {
-                                const next = [...draft.customImages]; next[i] = null;
-                                setDraft(p => ({ ...p, customImages: next }));
-                              }}>✕</button>
-                            </>
-                          ) : (
-                            <label className="upload-slot-add">
-                              +
-                              <input type="file" accept=".png,.svg,.jpg,.jpeg,.webp" style={{ display: 'none' }}
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  if (file.size > 5 * 1024 * 1024) { alert('5MB 이하로 해주세요!'); e.target.value = ''; return; }
-                                  e.target.value = ''; // 같은 파일 재선택 가능
-                                  if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current);
-                                  const url = URL.createObjectURL(file);
-                                  cropSrcRef.current = url;
-                                  setCropState({ slot: i, src: url });
-                                }} />
-                            </label>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {activeImages.length >= 2 && (
-                      <div className="interval-row" style={{ marginTop: 12 }}>
-                        <span className="interval-label">🔄 교체 주기</span>
-                        <input type="range" min={30} max={1800} step={30}
-                          value={draft.imageRotateInterval}
-                          onChange={e => update({ imageRotateInterval: Number(e.target.value) })}
-                          className="interval-slider" />
-                        <span className="interval-value">
-                          {draft.imageRotateInterval < 60 ? `${draft.imageRotateInterval}초`
-                            : `${Math.floor(draft.imageRotateInterval / 60)}분`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                </>
-              )}
-            </>
-          )}
-
-          {/* 모드 선택 */}
-          {page === 'mode' && (
-            <>
-              <div className="mode-tabs-3">
-                {(['chill', 'buddy', 'chaos'] as const).map(m => (
-                  <button key={m}
-                    className={`mode-tab-3 ${draft.buddyMode === m ? 'mode-tab-3--active' : ''}`}
-                    onClick={() => applyMode(m)}>
-                    <span className="mode-tab-emoji">{m === 'chill' ? '🧘' : m === 'buddy' ? '🐾' : '🔥'}</span>
-                    <span className="mode-tab-name">{m === 'chill' ? 'Chill' : m === 'buddy' ? 'Buddy' : 'Chaos'}</span>
-                    <span className="mode-tab-desc">{m === 'chill' ? '조용히 옆에' : m === 'buddy' ? '기본 친구' : '신나게 난리'}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="mode-desc-box">
-                {draft.buddyMode === 'chill'  && '🧘 거의 안 움직이고 조용히 있어요. 집중이 필요할 때!'}
-                {draft.buddyMode === 'buddy'  && '🐾 가끔 움직이고 말풍선도 띄워요. 기본 설정이에요.'}
-                {draft.buddyMode === 'chaos'  && '🔥 광속으로 날아다니고 기습 이모지에 야르타임까지! 재미용!'}
-                {draft.buddyMode === 'custom' && '⚙️ 커스텀 설정으로 직접 조절 중이에요.'}
-              </div>
-              <div style={{ fontSize: 11.5, color: '#bbb', textAlign: 'center' }}>
-                💡 커스텀 설정에서 좀 더 상세히 설정할 수 있어요
-              </div>
-            </>
-          )}
-
-          {/* 표시 설정 */}
-          {page === 'display' && (
-            <div className="dark-card">
-              <div className="dark-card-body">
-                <div className="btn-row" style={{ marginBottom: 16 }}>
-                  <button className="btn btn-primary"
-                    onClick={() => setDraft(p => ({ ...p, petVisible: true }))}
-                    disabled={draft.petVisible}>✨ 보이기</button>
-                  <button className="btn btn-secondary"
-                    onClick={() => setDraft(p => ({ ...p, petVisible: false }))}
-                    disabled={!draft.petVisible}>🙈 숨기기</button>
-                  <button className="btn btn-accent"
-                    onClick={() => window.electronAPI?.callPet()}>📣 버디 부르기!</button>
-                </div>
-                <div className="btn-row">
-                  <button className={`btn ${draft.alwaysOnTop ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => update({ alwaysOnTop: true })}
-                    disabled={draft.alwaysOnTop}>📌 항상 위 켜기</button>
-                  <button className={`btn ${!draft.alwaysOnTop ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => update({ alwaysOnTop: false })}
-                    disabled={!draft.alwaysOnTop}>🔓 항상 위 끄기</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 야르 타임 */}
-          {page === 'yar' && (
-            <Acc icon="🎉" title="야르~ 타임 설정"
-              badge={draft.yarEnabled ? `${draft.yarInterval}분마다` : '꺼짐'}
-              badgeOn={draft.yarEnabled}
-              open={openSection === 'yar'} onToggle={() => toggleSection('yar')}>
-              <p className="section-desc">정해진 간격마다 이모지가 화면에 쏟아져요! 🎊</p>
-              <div className="radio-group" style={{ marginBottom: 12 }}>
-                <label className={`radio-item ${draft.yarEnabled ? 'radio-selected' : ''}`}>
-                  <input type="radio" name="yar" checked={draft.yarEnabled}
-                    onChange={() => update({ yarEnabled: true })} />
-                  <span>켜기</span>
-                </label>
-                <label className={`radio-item ${!draft.yarEnabled ? 'radio-selected' : ''}`}>
-                  <input type="radio" name="yar" checked={!draft.yarEnabled}
-                    onChange={() => update({ yarEnabled: false })} />
-                  <span>끄기</span>
-                </label>
-              </div>
-              {draft.yarEnabled && (
-                <>
-                  <select className="time-input" style={{ marginBottom: 12, fontSize: 13 }}
-                    value={draft.yarInterval}
-                    onChange={e => update({ yarInterval: Number(e.target.value) })}>
-                    <option value={30}>30분마다</option>
-                    <option value={60}>1시간마다</option>
-                    <option value={90}>1시간 30분마다</option>
-                    <option value={120}>2시간마다</option>
-                    <option value={180}>3시간마다</option>
-                  </select>
-                  <button className="btn btn-accent" style={{ width:'100%', justifyContent:'center' }}
-                    onClick={() => window.electronAPI?.yarNow()}>
-                    🎉 지금 야르~ 타임!
-                  </button>
-                </>
-              )}
-            </Acc>
-          )}
-
-          {/* 출퇴근 알림 */}
-          {page === 'breaktime' && (
-            <>
-            <Acc icon="🍱" title="알림 설정"
-              badge={draft.breakTimeEnabled ? '켜짐' : '꺼짐'}
-              badgeOn={draft.breakTimeEnabled}
-              open={openSection === 'breaktime'} onToggle={() => toggleSection('breaktime')}>
-              <p className="section-desc">점심시간, 퇴근시간에 화면 가득 알림이 떠요! 🎉</p>
-              <div className="radio-group" style={{ marginBottom: 12 }}>
-                <label className={`radio-item ${draft.breakTimeEnabled ? 'radio-selected' : ''}`}>
-                  <input type="radio" name="breaktime" checked={draft.breakTimeEnabled}
-                    onChange={() => update({ breakTimeEnabled: true, lunchEnabled: true, leaveEnabled: true })} />
-                  <span>켜기</span>
-                </label>
-                <label className={`radio-item ${!draft.breakTimeEnabled ? 'radio-selected' : ''}`}>
-                  <input type="radio" name="breaktime" checked={!draft.breakTimeEnabled}
-                    onChange={() => update({ breakTimeEnabled: false, lunchEnabled: false, leaveEnabled: false })} />
-                  <span>끄기</span>
-                </label>
-              </div>
-              {draft.breakTimeEnabled && (
-                <>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ display:'block', fontSize:12, fontWeight:700, marginBottom:6, color:'#666' }}>🍚 점심시간</label>
-                    <input type="time" className="time-input"
-                      value={draft.lunchTime}
-                      onChange={e => update({ lunchTime: e.target.value })} />
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ display:'block', fontSize:12, fontWeight:700, marginBottom:6, color:'#666' }}>🏃 퇴근시간</label>
-                    <input type="time" className="time-input"
-                      value={draft.leaveTime}
-                      onChange={e => update({ leaveTime: e.target.value })} />
-                  </div>
-                  <div className="btn-row">
-                    <button className="btn btn-accent" style={{ flex: 1, justifyContent:'center' }}
-                      onClick={() => window.electronAPI?.testBreakTime('lunch')}>
-                      🍱 점심 테스트
-                    </button>
-                    <button className="btn btn-accent" style={{ flex: 1, justifyContent:'center' }}
-                      onClick={() => window.electronAPI?.testBreakTime('leave')}>
-                      🏃 퇴근 테스트
-                    </button>
-                    <button className="btn btn-accent" style={{ flex: 1, justifyContent:'center' }}
-                      onClick={() => window.electronAPI?.testBreakTime('alarm')}>
-                      ⏰ 알람 테스트
-                    </button>
-                  </div>
-
-                  {/* 미리 알림 */}
-                  <div style={{ marginTop: 16 }}>
-                    <label style={{ display:'block', fontSize:12, fontWeight:700, marginBottom:6, color:'#666' }}>⏰ 미리 알림 (1~30분 전)</label>
-                    <div className="interval-row">
-                      <input type="range" min={1} max={30} step={1}
-                        value={draft.preAlertMinutes || 5}
-                        onChange={e => update({ preAlertMinutes: Number(e.target.value), lunchPreAlertMinutes: Number(e.target.value), leavePreAlertMinutes: Number(e.target.value) })}
-                        className="interval-slider" />
-                      <span className="interval-value">{draft.preAlertMinutes || 5}분 전</span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </Acc>
-
-            {/* 일반 알람 */}
-            <Acc icon="⏰" title="일반 알람"
-              badge={`${(draft.alarms || []).filter((a: {enabled: boolean}) => a.enabled).length}개 켜짐`}
-              open={openSection === 'alarms'} onToggle={() => toggleSection('alarms')}>
-              <p className="section-desc">원하는 시간에 화면 가득 알람이 울려요! 최대 5개</p>
-              {(draft.alarms || []).map((alarm: {id: string; time: string; enabled: boolean}, idx: number) => (
-                <div key={alarm.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                  <input type="checkbox" checked={alarm.enabled}
-                    onChange={e => {
-                      const newAlarms = [...(draft.alarms || [])];
-                      newAlarms[idx] = { ...alarm, enabled: e.target.checked };
-                      update({ alarms: newAlarms });
-                    }} />
-                  <input type="time" className="time-input"
-                    value={alarm.time}
-                    onChange={e => {
-                      const newAlarms = [...(draft.alarms || [])];
-                      newAlarms[idx] = { ...alarm, time: e.target.value };
-                      update({ alarms: newAlarms });
-                    }} />
-                  <button className="btn btn-secondary" style={{ padding:'4px 8px', fontSize:11 }}
-                    onClick={() => {
-                      const newAlarms = (draft.alarms || []).filter((_: unknown, i: number) => i !== idx);
-                      update({ alarms: newAlarms });
-                    }}>삭제</button>
-                </div>
-              ))}
-              {(draft.alarms || []).length < 5 && (
-                <button className="btn btn-accent" style={{ width:'100%', justifyContent:'center', marginTop:4 }}
-                  onClick={() => {
-                    const newAlarms = [...(draft.alarms || []), { id: Date.now().toString(), time: '09:00', enabled: true }];
-                    update({ alarms: newAlarms });
-                  }}>+ 알람 추가</button>
-              )}
-            </Acc>
-            </>
-          )}
-
-          {/* 커스텀 설정 - 아코디언 그룹 (하나만 열림) */}
-          {page === 'custom' && (
-            <>
-              <Acc icon="📐" title="버디 크기"
-                badge={`${draft.size || 100}%`}
-                open={openSection === 'sizeAdj'} onToggle={() => toggleSection('sizeAdj')}>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                  {([
-                    { val: 70, label: '🔹 소' },
-                    { val: 100, label: '▪️ 중' },
-                    { val: 150, label: '🔷 대' },
-                  ] as {val:number, label:string}[]).map(s => (
-                    <button key={s.val}
-                      className={`mode-tab ${(draft.size || 100) === s.val ? 'mode-tab--active' : ''}`}
-                      onClick={() => update({ size: s.val })}>
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </Acc>
-
-              <Acc icon="🏃" title="움직임 속도"
-                badge={draft.moveSpeed <= 2 ? '느긋' : draft.moveSpeed <= 5 ? '보통' : draft.moveSpeed <= 8 ? '빠름' : '광속'}
-                open={openSection === 'speed'} onToggle={() => toggleSection('speed')}>
-                <div className="interval-row">
-                  <span className="interval-label">🐢</span>
-                  <input type="range" min={1} max={10} step={1}
-                    value={draft.moveSpeed}
-                    onChange={e => update({ moveSpeed: Number(e.target.value) })}
-                    className="interval-slider" />
-                  <span className="interval-label">🐇</span>
-                  <span className="interval-value">
-                    {draft.moveSpeed <= 2 ? '느긋' : draft.moveSpeed <= 5 ? '보통' : draft.moveSpeed <= 8 ? '빠름' : '광속'}
-                  </span>
-                </div>
-              </Acc>
-
-              <Acc icon="🎭" title="졸림 방지 이모지"
-                badge={draft.distractEmoji ? `${draft.distractInterval}초마다` : '꺼짐'}
-                badgeOn={draft.distractEmoji}
-                open={openSection === 'distract'} onToggle={() => toggleSection('distract')}>
-                <div className="radio-group" style={{ marginBottom: draft.distractEmoji ? 10 : 0 }}>
-                  <label className={`radio-item ${draft.distractEmoji ? 'radio-selected' : ''}`}>
-                    <input type="radio" name="distract" checked={draft.distractEmoji}
-                      onChange={() => update({ distractEmoji: true })} />
-                    <span>켜기</span>
-                  </label>
-                  <label className={`radio-item ${!draft.distractEmoji ? 'radio-selected' : ''}`}>
-                    <input type="radio" name="distract" checked={!draft.distractEmoji}
-                      onChange={() => update({ distractEmoji: false })} />
-                    <span>끄기</span>
-                  </label>
-                </div>
-                {draft.distractEmoji && (
-                  <div className="interval-row">
-                    <span className="interval-label">⏱️ 주기</span>
-                    <input type="range" min={10} max={300} step={5}
-                      value={draft.distractInterval}
-                      onChange={e => update({ distractInterval: Number(e.target.value) })}
-                      className="interval-slider" />
-                    <span className="interval-value">
-                      {draft.distractInterval < 60 ? `${draft.distractInterval}초`
-                        : `${Math.floor(draft.distractInterval / 60)}분`}
-                    </span>
-                  </div>
-                )}
-              </Acc>
-
-              <Acc icon="📍" title="활동 구역"
-                badge={(() => {
-                  const mon = draft.monitor >= 0 ? monitors.find(m => m.displayId === draft.monitor) : undefined;
-                  const zoneName = draft.zone === 0 ? '' : ['','좌상단','우상단','좌하단','우하단'][draft.zone];
-                  if (!mon && !zoneName) return '전체';
-                  return [mon ? `모니터 ${mon.index + 1}` : '', zoneName].filter(Boolean).join(' ');
-                })()}
-                badgeOn={draft.zone !== 0 || (draft.monitor >= 0 && monitors.some(m => m.displayId === draft.monitor))}
-                open={openSection === 'zone'} onToggle={() => toggleSection('zone')}>
-                <p className="section-desc">버디가 돌아다닐 화면 구역을 선택해요.</p>
-                {monitors.length > 1 && (
-                  <>
-                    <div style={{ fontSize:12, fontWeight:700, color:'#666', marginBottom:6 }}>🖥️ 모니터 선택</div>
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-                      <button className={`mode-tab ${draft.monitor < 0 || !monitors.some(m => m.displayId === draft.monitor) ? 'mode-tab--active' : ''}`}
-                        style={{ gridColumn:'1 / -1' }}
-                        onClick={() => update({ monitor: -1 })}>
-                        전체 모니터
-                      </button>
-                      {monitors.map(m => (
-                        <button key={m.displayId}
-                          className={`mode-tab ${draft.monitor === m.displayId ? 'mode-tab--active' : ''}`}
-                          onClick={() => update({ monitor: m.displayId })}>
-                          {monitorName(m)}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ fontSize:12, fontWeight:700, color:'#666', marginBottom:6 }}>📍 구역 (선택한 모니터 기준)</div>
-                  </>
-                )}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
-                  {[
-                    { val:1, label:'↖️ 좌상단' },
-                    { val:2, label:'↗️ 우상단' },
-                    { val:3, label:'↙️ 좌하단' },
-                    { val:4, label:'↘️ 우하단' },
-                  ].map(z => (
-                    <button key={z.val}
-                      className={`mode-tab ${draft.zone === z.val ? 'mode-tab--active' : ''}`}
-                      onClick={() => update({ zone: z.val })}>
-                      {z.label}
-                    </button>
-                  ))}
-                </div>
-                <button className={`mode-tab ${draft.zone === 0 ? 'mode-tab--active' : ''}`}
-                  style={{ width:'100%' }}
-                  onClick={() => update({ zone: 0 })}>
-                  🖥️ 전체 화면 (기본)
-                </button>
-              </Acc>
-
-              <Acc icon="🕐" title="출퇴근 시간"
-                open={openSection === 'work'} onToggle={() => toggleSection('work')}>
-                <div className="time-row">
-                  <div className="time-field">
-                    <label className="time-label">🌅 출근</label>
-                    <input type="time" className="time-input" value={draft.workStart}
-                      onChange={e => update({ workStart: e.target.value })} />
-                  </div>
-                  <div className="time-divider">→</div>
-                  <div className="time-field">
-                    <label className="time-label">🌇 퇴근</label>
-                    <input type="time" className="time-input" value={draft.workEnd}
-                      onChange={e => update({ workEnd: e.target.value })} />
-                  </div>
-                </div>
-                <TimePreview workStart={draft.workStart} workEnd={draft.workEnd} />
-              </Acc>
-            </>
-          )}
-
-          {/* 사용 방법 */}
-          {page === 'help' && (
-            <>
-            <div className="dark-card">
-              <div className="dark-card-body">
-                <ul className="tips-list">
-                  <li>🖱️ 드래그해서 화면 어디든 이동 가능해요</li>
-                  <li>👆 클릭하면 반응해요 (2~3번 중 1번 파티클!)</li>
-                  <li>👆👆 더블클릭하면 무조건 파티클 팡팡!</li>
-                  <li>🏃 마우스를 2초간 올려두면 버디가 도망가요</li>
-                  <li>🖱️ 우클릭하면 설정창이 열려요</li>
-                  <li>📣 '버디 부르기' 버튼으로 버디를 불러올 수 있어요</li>
-                  <li>💸 25일엔 월급 문구, 금요일엔 불금 문구가 나와요!</li>
-                  <li>💤 마우스를 30초간 안 움직이면 버디가 낮잠 자요</li>
-                  <li>💨 가끔 화면 반대편으로 순간이동해요</li>
-                </ul>
-              </div>
-            </div>
-            <p style={{ fontSize: 12, color: '#777', margin: '12px 4px 0' }}>
-              버디 이미지: Twemoji © Twitter, Inc. and other contributors · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
-            </p>
-            </>
-          )}
-
-        </div>
-
-        <div className="main-footer">
-          {isDirty && (
-            <button className="btn btn-secondary" onClick={() => setDraft(saved)}>↩️ 취소</button>
-          )}
-          <button className={`btn ${isDirty ? 'btn-confirm' : 'btn-confirm-done'}`}
-            onClick={handleApply} disabled={!isDirty}>
-            {isDirty ? '✅ 확인' : '✔ 저장됨'}
-          </button>
-        </div>
       </div>
+
+      <main className="st-main">
+        <header className="st-head">
+          <div>
+            <p className="st-brand">최애를 풀어놨습니다 <small>v1.0.9</small></p>
+            <h1 className="st-title">{info.title}</h1>
+            <p className="st-desc">{info.desc}</p>
+          </div>
+          <button type="button" className="st-pillbtn" onClick={cycleTheme}
+            aria-label={`화면 테마: ${THEME_UI[themePref].name}. 누르면 ${nextName}${nextName === '시스템' ? '으로' : '로'} 바뀌어요`}>
+            <ThemeIcon className="ui-i" strokeWidth={1.5} aria-hidden />
+            <span>{THEME_UI[themePref].name}</span>
+          </button>
+          <span className="st-sr" role="status" aria-live="polite">{themeNote}</span>
+        </header>
+
+        {page === 'home' && (
+          <HomePane settings={settings} update={update} patch={patch} monitors={monitors} applyMode={applyMode}
+            onOpenAnimal={() => setAnimalOpen(true)} onUpload={upload} />
+        )}
+        {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
+        {page === 'help' && <HelpPane />}
+      </main>
     </div>
   );
 }

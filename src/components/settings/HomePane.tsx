@@ -1,0 +1,313 @@
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { ChevronDown, LogOut, Minus, Plus, Utensils } from 'lucide-react';
+import CatEmoji from '../CatEmoji';
+import { Segmented, Switch, RangeInput } from '../ui';
+import { getAnimal } from '../../data/animals';
+import { MODE_PRESETS, formatTime } from '../../utils/settings';
+import type { PetSettings } from '../../utils/settings';
+import { MODE_NAME } from './shared';
+import type { Monitor, PaneProps } from './shared';
+
+const ZONE_NAMES = ['', '좌상단', '우상단', '좌하단', '우하단'];
+const YAR_INTERVALS: [number, string][] = [[30, '30분'], [60, '1시간'], [90, '1시간 30분'], [120, '2시간'], [180, '3시간']];
+const MODE_COPY: Record<string, [string, string]> = {
+  chill: ['조용히 옆에', '거의 안 움직이고 조용히 있어요. 집중이 필요할 때!'],
+  buddy: ['기본 친구', '가끔 움직이고 말풍선도 띄워요. 기본 설정이에요.'],
+  chaos: ['신나게 난리', '광속으로 날아다니고 기습 이모지에 야르타임까지! 재미용!'],
+  custom: ['직접 조절', '커스텀 설정으로 직접 조절 중이에요.'],
+};
+
+const secs = (n: number) => (n < 60 ? `${n}초` : `${Math.floor(n / 60)}분`);
+const speedWord = (s: number) => (s <= 2 ? '느긋' : s <= 5 ? '보통' : s <= 8 ? '빠름' : '광속');
+const sizeShort = (s: number) => (s === 70 ? '소' : s === 100 ? '중' : s === 150 ? '대' : '');
+const yarLabel = (v: number) => (YAR_INTERVALS.find(x => x[0] === v) || [v, `${v}분`])[1];
+const monitorName = (m: Monitor) => `모니터 ${m.index + 1}${m.isPrimary ? ' (주)' : ''}`;
+
+// 활동 구역 4분할 그림 (선택 구역만 옅게 채움)
+const QUAD: Record<number, [number, number]> = { 1: [3, 3], 2: [12, 3], 3: [3, 12], 4: [12, 12] };
+function QuadIcon({ zone }: { zone: number }) {
+  return (
+    <svg className="ui-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M12 3v18M3 12h18" />
+      <rect x={QUAD[zone][0]} y={QUAD[zone][1]} width="9" height="9" fill="currentColor" fillOpacity=".3" stroke="none" />
+    </svg>
+  );
+}
+
+// 칩: 작은 라벨 + 굵은 현재 값. 누르면 칩 바로 아래 팝오버에서 바꾼다.
+function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
+  id: string; label: string; value: string; end: boolean;
+  open: boolean; onOpen: () => void; onClose: () => void; children: ReactNode;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: Event) => { if (!wrapRef.current?.contains(e.target as Node)) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); btnRef.current?.focus(); }
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('focusin', outside);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('focusin', outside);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div className="st-chip-wrap" ref={wrapRef}>
+      <button ref={btnRef} type="button" className="st-chip" aria-haspopup="dialog" aria-expanded={open}
+        aria-controls={`pop-${id}`}
+        onClick={(e) => {
+          if (open) { onClose(); return; }
+          onOpen();
+          // 키보드로 열면 팝오버 첫 컨트롤로 포커스 이동
+          if (e.detail === 0) requestAnimationFrame(() => popRef.current?.querySelector<HTMLElement>('button, input, select')?.focus());
+        }}>
+        <span className="st-chip-label">{label}</span>
+        <span className="st-chip-value">{value}</span>
+      </button>
+      <div ref={popRef} className="st-pop" id={`pop-${id}`} role="dialog" aria-label={`${label} 설정`}
+        data-open={open ? '' : undefined} data-end={end ? '' : undefined}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function NoticeCard({ icon, title, enabled, time, pre, onEnabled, onTime, onPre, onTest, testLabel }: {
+  icon: ReactNode; title: string; enabled: boolean; time: string; pre: number;
+  onEnabled: (v: boolean) => void; onTime: (v: string) => void; onPre: (v: number) => void;
+  onTest: () => void; testLabel: string;
+}) {
+  const preId = `${title}-pre`;
+  return (
+    <article className="st-card st-notice" data-state={enabled ? 'on' : 'off'}>
+      <div className="st-notice-head">
+        <h3 className="st-notice-title">{icon}<span>{title}</span></h3>
+        <button type="button" className="ui-btn ui-btn--sm" onClick={onTest}>{testLabel}</button>
+        <Switch checked={enabled} onChange={onEnabled} label={`${title} 켜기`} />
+      </div>
+      <div className="st-notice-body">
+        <label className="st-field"><span className="st-field-label">시간</span>
+          <input type="time" className="ui-time" value={time} disabled={!enabled} aria-label={`${title} 시간`}
+            onChange={e => { if (e.target.value) onTime(e.target.value); }} />
+        </label>
+        <div className="st-field"><span className="st-field-label" id={preId}>미리 알림</span>
+          <div className="st-stepper" role="group" aria-labelledby={preId}>
+            <button type="button" className="st-step" disabled={!enabled || pre <= 1} aria-label={`${title} 미리 알림 1분 줄이기`}
+              onClick={() => onPre(Math.max(1, pre - 1))}><Minus className="ui-i" strokeWidth={1.5} aria-hidden /></button>
+            <output className="st-step-val">{pre}분 전</output>
+            <button type="button" className="st-step" disabled={!enabled || pre >= 30} aria-label={`${title} 미리 알림 1분 늘리기`}
+              onClick={() => onPre(Math.min(30, pre + 1))}><Plus className="ui-i" strokeWidth={1.5} aria-hidden /></button>
+          </div>
+        </div>
+      </div>
+      <p className="ui-note st-notice-note">
+        {enabled ? `${formatTime(time)}에 알려요 · ${pre}분 전에 미리 알려요` : '꺼져 있어요'}
+      </p>
+    </article>
+  );
+}
+
+export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onUpload }: PaneProps & {
+  monitors: Monitor[];
+  applyMode: (mode: 'chill' | 'buddy' | 'chaos') => void;
+  onOpenAnimal: () => void;
+  onUpload: () => void;
+}) {
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const closePop = (key: string) => () => setOpenKey(cur => (cur === key ? null : cur));
+
+  const animal = getAnimal(s.animalId);
+  const images = s.customImages.filter(Boolean) as string[];
+  const custom = s.useCustomMode && images.length > 0;
+  const size = s.size || 100;
+  const sizeWord = size === 70 ? '작은' : size === 100 ? '중간' : size === 150 ? '큰' : `${size}%`;
+  const activeMonitor = s.monitor >= 0 ? monitors.find(m => m.displayId === s.monitor) : undefined;
+
+  const zoneValue = (() => {
+    const parts = [activeMonitor ? `모니터 ${activeMonitor.index + 1}` : '', ZONE_NAMES[s.zone] || ''].filter(Boolean);
+    return parts.length ? parts.join(' · ') : '전체 화면';
+  })();
+
+  const chips: { id: string; label: string; value: string; body: ReactNode }[] = [
+    {
+      id: 'mode', label: '모드', value: MODE_NAME[s.buddyMode] || 'Buddy',
+      body: (
+        <>
+          <Segmented label="모드" value={s.buddyMode} onChange={v => { if (v in MODE_PRESETS) applyMode(v as 'chill' | 'buddy' | 'chaos'); }}
+            options={[{ value: 'chill', label: 'Chill' }, { value: 'buddy', label: 'Buddy' }, { value: 'chaos', label: 'Chaos' }]} />
+          <p className="ui-note"><strong>{MODE_COPY[s.buddyMode]?.[0]}</strong> {MODE_COPY[s.buddyMode]?.[1]}</p>
+        </>
+      ),
+    },
+    {
+      id: 'size', label: '크기', value: sizeShort(size) ? `${sizeShort(size)} · ${size}%` : `${size}%`,
+      body: (
+        <>
+          <Segmented label="버디 크기" value={size} onChange={v => update({ size: v })}
+            options={[{ value: 70, label: '소' }, { value: 100, label: '중' }, { value: 150, label: '대' }]} />
+          <p className="ui-note">버디 크기 {size}%</p>
+        </>
+      ),
+    },
+    {
+      id: 'zone', label: '활동 구역', value: zoneValue,
+      body: (
+        <>
+          {monitors.length > 1 && (
+            <>
+              <p className="st-lab">모니터</p>
+              <Segmented label="모니터 선택"
+                value={activeMonitor ? activeMonitor.displayId : -1} onChange={v => update({ monitor: v })}
+                options={[{ value: -1, label: '전체' }, ...monitors.map(m => ({ value: m.displayId, label: monitorName(m) }))]} />
+              <p className="st-lab">구역 (선택한 모니터 기준)</p>
+            </>
+          )}
+          <div className="st-zones">
+            {[1, 2, 3, 4].map(z => (
+              <button key={z} type="button" className="st-zone" aria-pressed={s.zone === z} onClick={() => update({ zone: z })}>
+                <QuadIcon zone={z} /><span>{ZONE_NAMES[z]}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" className="st-zone st-zone--wide" aria-pressed={s.zone === 0} onClick={() => update({ zone: 0 })}>
+            <span>전체 화면 (기본)</span>
+          </button>
+        </>
+      ),
+    },
+    {
+      id: 'display', label: '표시', value: !s.petVisible ? '숨김' : s.alwaysOnTop ? '보임 · 항상 위' : '보임',
+      body: (
+        <>
+          <div className="st-row"><span>버디 표시</span><Switch checked={s.petVisible} onChange={v => patch({ petVisible: v })} label="버디 표시" /></div>
+          <div className="st-row"><span>항상 위</span><Switch checked={s.alwaysOnTop} onChange={v => update({ alwaysOnTop: v })} label="항상 위" /></div>
+          <button type="button" className="ui-btn" onClick={() => window.electronAPI?.callPet()}>버디 부르기</button>
+        </>
+      ),
+    },
+    {
+      id: 'speed', label: '움직임 속도', value: `${speedWord(s.moveSpeed)} · ${s.moveSpeed}단계`,
+      body: (
+        <>
+          <div className="ui-range-row">
+            <span className="ui-end">느긋</span>
+            <RangeInput min={1} max={10} step={1} value={s.moveSpeed} onChange={v => update({ moveSpeed: v })} label="움직임 속도" />
+            <span className="ui-end">광속</span>
+          </div>
+          <p className="ui-note">지금은 <strong>{speedWord(s.moveSpeed)}</strong></p>
+        </>
+      ),
+    },
+    {
+      id: 'yar', label: '야르 타임', value: s.yarEnabled ? `${yarLabel(s.yarInterval)}마다` : '꺼짐',
+      body: (
+        <>
+          <div className="st-row"><span>야르 타임 사용</span><Switch checked={s.yarEnabled} onChange={v => update({ yarEnabled: v })} label="야르 타임 사용" /></div>
+          <p className="ui-note">정해진 간격마다 이모지가 화면에 쏟아져요!</p>
+          {s.yarEnabled && (
+            <>
+              <div className="ui-select">
+                <select value={s.yarInterval} aria-label="야르 타임 간격" onChange={e => update({ yarInterval: Number(e.target.value) })}>
+                  {YAR_INTERVALS.map(([v, t]) => <option key={v} value={v}>{t}마다</option>)}
+                </select>
+                <ChevronDown className="ui-i" strokeWidth={1.5} aria-hidden />
+              </div>
+              <button type="button" className="ui-btn" onClick={() => window.electronAPI?.yarNow()}>지금 야르 타임</button>
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'distract', label: '졸림 방지', value: s.distractEmoji ? `${secs(s.distractInterval)}마다` : '꺼짐',
+      body: (
+        <>
+          <div className="st-row"><span>졸림 방지 이모지 사용</span><Switch checked={s.distractEmoji} onChange={v => update({ distractEmoji: v })} label="졸림 방지 이모지 사용" /></div>
+          {s.distractEmoji && (
+            <>
+              <div className="st-row"><span>주기</span><span className="ui-val">{secs(s.distractInterval)}마다</span></div>
+              <RangeInput min={10} max={300} step={5} value={s.distractInterval} onChange={v => update({ distractInterval: v })} label="졸림 방지 이모지 주기" />
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'shape', label: '모양', value: s.customShape === 'round' ? '원형' : '사각형',
+      body: (
+        <>
+          <Segmented label="버디 모양" value={s.customShape} onChange={v => patch({ customShape: v })}
+            options={[{ value: 'round', label: '원형' }, { value: 'rounded', label: '사각형' }]} />
+          <p className="ui-note">내 사진을 버디로 쓸 때 적용돼요.</p>
+        </>
+      ),
+    },
+  ];
+
+  const bobSeconds = (2.8 - s.moveSpeed * 0.22).toFixed(2);
+  const stat = (label: string, key: 'lunch' | 'leave') => ({
+    enabled: s[`${key}Enabled` as keyof PetSettings] as boolean,
+    time: s[`${key}Time` as keyof PetSettings] as string,
+    pre: (s[`${key}PreAlertMinutes` as keyof PetSettings] as number) || 5,
+    label,
+  });
+  const lunch = stat('점심 알림', 'lunch');
+  const leave = stat('퇴근 알림', 'leave');
+
+  return (
+    <section className="st-pane st-home">
+      <article className="st-card st-buddy">
+        <div className="st-info">
+          <div>
+            <h2 className="st-name">{custom ? '내 사진' : animal.name}</h2>
+            <p className="st-summary">{MODE_NAME[s.buddyMode]} 모드 · {sizeWord} 크기</p>
+          </div>
+          <div className="st-chips">
+            {chips.map((c, i) => (
+              <Chip key={c.id} id={c.id} label={c.label} value={c.value} end={i % 2 === 1}
+                open={openKey === c.id} onOpen={() => setOpenKey(c.id)} onClose={closePop(c.id)}>
+                {c.body}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        <div className="st-side">
+          <div className="st-stage" data-hidden={!s.petVisible}>
+            <span className="st-stage-cap">실시간 미리보기</span>
+            {!s.petVisible && <span className="st-stage-state">버디를 숨겨 둔 상태예요</span>}
+            <div className="st-pet" style={{ '--s': size / 100 } as CSSProperties}>
+              <div className="st-pet-bob" style={{ '--bob': `${bobSeconds}s` } as CSSProperties}>
+                <CatEmoji emoji={animal.emoji} size={156} forceImage customImage={custom ? images[0] : null} customShape={s.customShape} />
+              </div>
+            </div>
+          </div>
+          <div className="st-actions">
+            <button type="button" className="ui-btn ui-btn--primary" onClick={() => { setOpenKey(null); onOpenAnimal(); }}>동물 바꾸기</button>
+            <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onUpload(); }}>사진 올리기</button>
+          </div>
+        </div>
+      </article>
+
+      <div className="st-notices">
+        <NoticeCard icon={<Utensils className="ui-i" strokeWidth={1.5} aria-hidden />} title={lunch.label} enabled={lunch.enabled}
+          time={lunch.time} pre={lunch.pre} testLabel="점심 테스트"
+          onEnabled={v => update({ lunchEnabled: v })} onTime={v => update({ lunchTime: v })}
+          onPre={v => update({ lunchPreAlertMinutes: v })} onTest={() => window.electronAPI?.testBreakTime('lunch')} />
+        <NoticeCard icon={<LogOut className="ui-i" strokeWidth={1.5} aria-hidden />} title={leave.label} enabled={leave.enabled}
+          time={leave.time} pre={leave.pre} testLabel="퇴근 테스트"
+          onEnabled={v => update({ leaveEnabled: v })} onTime={v => update({ leaveTime: v })}
+          onPre={v => update({ leavePreAlertMinutes: v })} onTest={() => window.electronAPI?.testBreakTime('leave')} />
+      </div>
+    </section>
+  );
+}
