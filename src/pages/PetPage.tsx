@@ -138,6 +138,20 @@ function getMovementBounds(area: Rect, zone: number) {
   return { minX, maxX: Math.max(minX, maxX), minY, maxY: Math.max(minY, maxY) };
 }
 
+// ── 구역 밖 드롭 안내 ────────────────────────────────────────────
+const ZONE_OUT_MARGIN = 24;           // 경계에서 이 정도(px)는 벗어나도 무시
+const ZONE_OUT_LIMIT = 3;             // 최근 60초 안에 이 횟수 이상이면 안내
+const ZONE_OUT_WINDOW_MS = 60 * 1000;
+const ZONE_HINT_COOLDOWN_MS = 10 * 60 * 1000;
+const ZONE_HINT_TOAST_MS = 5000;
+const ZONE_NAMES = ['', '좌상단', '우상단', '좌하단', '우하단'];
+
+// 활동 구역 이름 (설정창 표기와 같게: "모니터 N · 우하단")
+function describeZone(d: DisplaysInfo | null, monitor: number, zone: number): string {
+  const m = monitor >= 0 ? d?.monitors.find(mm => mm.displayId === monitor) : undefined;
+  return [m ? `모니터 ${m.id + 1}` : '', ZONE_NAMES[zone] || ''].filter(Boolean).join(' · ');
+}
+
 // ── 물리 엔진 ─────────────────────────────────────────────────────
 interface PhysicsState {
   wx: number; wy: number; vx: number; vy: number;
@@ -302,6 +316,8 @@ export default function PetPage() {
   const monitorRef = useRef(-1);
   const displaysRef = useRef<DisplaysInfo | null>(null);
   const areaRef = useRef<Rect>(computeArea(null, -1));
+  const zoneDropsRef = useRef<number[]>([]);   // 구역 밖 드롭 시각
+  const zoneHintAtRef = useRef(0);             // 마지막 안내 시각 (메모리 기준)
   const [petSize, setPetSize] = useState(settings.size || 100);
   const sizeRef = useRef(100);
   useEffect(() => { speedRef.current = settings.moveSpeed || 5; }, [settings.moveSpeed]);
@@ -660,6 +676,31 @@ export default function PetPage() {
     window.electronAPI?.startDrag(0, 0);
   };
 
+  // 활동 구역(또는 모니터) 제한이 있는데 그 밖에 놓는 일이 반복되면 이유를 알려 준다
+  const noteZoneDrop = useCallback((pos: { x: number; y: number }) => {
+    const zone = zoneRef.current || 0;
+    const d = displaysRef.current;
+    const monitorFound = monitorRef.current >= 0 && !!d?.monitors.some(m => m.displayId === monitorRef.current);
+    if (zone === 0 && !monitorFound) return; // 실제로 제한이 없을 때는 세지 않는다
+    const b = getMovementBounds(areaRef.current, zone);
+    const out = pos.x < b.minX - ZONE_OUT_MARGIN || pos.x > b.maxX + ZONE_OUT_MARGIN
+      || pos.y < b.minY - ZONE_OUT_MARGIN || pos.y > b.maxY + ZONE_OUT_MARGIN;
+    if (!out) return;
+    const now = Date.now();
+    const drops = zoneDropsRef.current.filter(at => now - at < ZONE_OUT_WINDOW_MS);
+    drops.push(now);
+    zoneDropsRef.current = drops;
+    if (drops.length < ZONE_OUT_LIMIT) return;
+    if (zoneHintAtRef.current && now - zoneHintAtRef.current < ZONE_HINT_COOLDOWN_MS) return;
+    zoneDropsRef.current = [];
+    zoneHintAtRef.current = now;
+    const label = describeZone(d, monitorRef.current, zone);
+    // 조사: 구역 이름은 모두 받침 "단"으로 끝나 "으로", 모니터만이면 번호 끝소리(3·6)에 따라 정한다
+    const monitorNo = (d?.monitors.find(m => m.displayId === monitorRef.current)?.id ?? 0) + 1;
+    const particle = zone !== 0 || monitorNo === 3 || monitorNo === 6 ? '으로' : '로';
+    showToast(`활동 구역이 ${label}${particle} 정해져 있어요. 우클릭해서 바꿀 수 있어요`, ZONE_HINT_TOAST_MS);
+  }, [showToast]);
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
@@ -678,6 +719,7 @@ export default function PetPage() {
         getPos().then((pos) => {
           if (pos) {
             stateRef.current.wx = pos.x; stateRef.current.wy = pos.y;
+            noteZoneDrop(pos);
           }
         }).catch(() => {}).finally(release);
       }
@@ -689,7 +731,7 @@ export default function PetPage() {
       window.removeEventListener('mousemove', onMove, { capture: true });
       window.removeEventListener('mouseup', onUp, { capture: true });
     };
-  }, [draggingRef]);
+  }, [draggingRef, noteZoneDrop]);
 
   // ── 클릭 ──────────────────────────────────────────────────────────
   const handleCatClick = (e: React.MouseEvent) => {
