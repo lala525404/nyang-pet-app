@@ -51,6 +51,7 @@ export default function SettingsPage() {
     if (!saveSettings(next)) {
       if (!saveFailedRef.current) alert('저장 공간이 부족해요. 이미지 수를 줄여 주세요.');
       saveFailedRef.current = true;
+      dirtyRef.current = true; // 화면과 저장이 갈라지지 않게, 다음 변경이나 창 닫기 때 다시 저장을 시도한다
       return;
     }
     saveFailedRef.current = false;
@@ -78,8 +79,22 @@ export default function SettingsPage() {
   // 창을 닫거나 화면을 벗어날 때 기다리던 변경을 바로 적용
   useEffect(() => {
     window.addEventListener('pagehide', apply);
-    return () => { window.removeEventListener('pagehide', apply); apply(); };
+    window.addEventListener('beforeunload', apply);
+    return () => {
+      window.removeEventListener('pagehide', apply);
+      window.removeEventListener('beforeunload', apply);
+      apply();
+    };
   }, [apply]);
+
+  // 설정창을 열 때 한 번, 메인 프로세스의 실제 상태(표시·항상 위·야르)를 저장값에 맞춘다
+  useEffect(() => {
+    const s = appliedRef.current;
+    const api = window.electronAPI;
+    api?.setAlwaysOnTop(s.alwaysOnTop);
+    if (s.petVisible) api?.showPet(); else api?.hidePet();
+    api?.setYarTimer(s.yarEnabled ? s.yarInterval : 0);
+  }, []);
 
   // 예전 앱과 같은 규칙: update는 모드를 "커스텀"으로, patch는 모드를 건드리지 않는다
   const update = useCallback((p: Partial<PetSettings>) => change(prev => ({ ...prev, ...p, buddyMode: 'custom' })), [change]);
@@ -177,7 +192,7 @@ export default function SettingsPage() {
             );
           })}
           <button type="button" className="st-rbtn st-rail-gap" data-label="앱 종료" aria-label="앱 종료"
-            onClick={() => window.electronAPI?.quitApp()}>
+            onClick={() => { apply(); window.electronAPI?.quitApp(); }}>
             <Power className="ui-i" strokeWidth={1.5} aria-hidden />
           </button>
         </nav>

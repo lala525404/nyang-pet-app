@@ -8,6 +8,8 @@ function getPageURL(hash) {
   return `file://${path.join(__dirname, 'dist', 'index.html')}#${hash}`;
 }
 
+const CREDIT_URL = 'https://creativecommons.org/licenses/by/4.0/';
+
 let settingsWindow = null;
 let petWindow = null;
 let yarWindow = null;
@@ -15,6 +17,8 @@ let tray = null;
 let forceQuit = false;
 let alwaysOnTopInterval = null;
 let yarTimer = null;
+let yarMinutes = 0;          // 현재 돌고 있는 야르 타이머 간격(분). 0이면 꺼짐
+let alwaysOnTopFlag = true;  // 설정창에서 고른 '항상 위' 상태
 
 function startAlwaysOnTopKeepAlive() {
   if (alwaysOnTopInterval) clearInterval(alwaysOnTopInterval);
@@ -75,6 +79,8 @@ function createYarWindow() {
 // ★ 야르타임 스케줄러
 function startYarTimer(intervalMinutes) {
   if (yarTimer) clearInterval(yarTimer);
+  yarTimer = null;
+  yarMinutes = intervalMinutes || 0;
   if (!intervalMinutes) return;
   yarTimer = setInterval(() => {
     createYarWindow();
@@ -83,6 +89,26 @@ function startYarTimer(intervalMinutes) {
 
 function stopYarTimer() {
   if (yarTimer) { clearInterval(yarTimer); yarTimer = null; }
+  yarMinutes = 0;
+}
+
+// 간격이 바뀔 때만 타이머를 다시 시작한다 (같은 값으로 동기화돼도 야르 주기가 리셋되지 않게)
+function setYarMinutes(minutes) {
+  const next = minutes > 0 ? minutes : 0;
+  if (next === yarMinutes) return;
+  if (next) startYarTimer(next); else stopYarTimer();
+}
+
+function resumeAlwaysOnTopKeepAlive() {
+  if (alwaysOnTopFlag) startAlwaysOnTopKeepAlive();
+}
+
+function setPetAlwaysOnTop(flag) {
+  alwaysOnTopFlag = !!flag;
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.setAlwaysOnTop(alwaysOnTopFlag, 'screen-saver');
+    if (alwaysOnTopFlag) startAlwaysOnTopKeepAlive(); else stopAlwaysOnTopKeepAlive();
+  }
 }
 
 function createSettingsWindow() {
@@ -102,8 +128,12 @@ function createSettingsWindow() {
   });
   // 출처 링크(CC BY 4.0)는 새 앱 창이 아니라 기본 브라우저로 연다
   settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    if (url === CREDIT_URL) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  // 설정창이 앱 화면 밖으로 이동하지 못하게 한다
+  settingsWindow.webContents.on('will-navigate', (e, url) => {
+    if (url !== settingsWindow.webContents.getURL()) e.preventDefault();
   });
   settingsWindow.loadURL(getPageURL('/settings'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());
@@ -126,10 +156,10 @@ function createPetWindow() {
       contextIsolation: true, nodeIntegration: false, sandbox: false,
     },
   });
-  petWindow.setAlwaysOnTop(true, 'screen-saver');
+  petWindow.setAlwaysOnTop(alwaysOnTopFlag, 'screen-saver');
   petWindow.loadURL(getPageURL('/pet'));
   petWindow.on('closed', () => { petWindow = null; stopAlwaysOnTopKeepAlive(); });
-  startAlwaysOnTopKeepAlive();
+  resumeAlwaysOnTopKeepAlive();
 }
 
 // ★ 시스템 트레이 생성
@@ -179,7 +209,7 @@ function createTray() {
     {
       label: '🐱 버디 보이기',
       click: () => {
-        if (petWindow && !petWindow.isDestroyed()) { petWindow.show(); startAlwaysOnTopKeepAlive(); }
+        if (petWindow && !petWindow.isDestroyed()) { petWindow.show(); resumeAlwaysOnTopKeepAlive(); }
         else createPetWindow();
       },
     },
@@ -280,18 +310,13 @@ ipcMain.on('quit-app', () => {
 ipcMain.on('open-settings', () => createSettingsWindow());
 
 ipcMain.on('show-pet', () => {
-  if (petWindow && !petWindow.isDestroyed()) { petWindow.show(); startAlwaysOnTopKeepAlive(); }
+  if (petWindow && !petWindow.isDestroyed()) { petWindow.show(); resumeAlwaysOnTopKeepAlive(); }
   else createPetWindow();
 });
 ipcMain.on('hide-pet', () => {
   if (petWindow && !petWindow.isDestroyed()) { petWindow.hide(); stopAlwaysOnTopKeepAlive(); }
 });
-ipcMain.on('set-always-on-top', (_e, flag) => {
-  if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.setAlwaysOnTop(!!flag, 'screen-saver');
-    if (flag) startAlwaysOnTopKeepAlive(); else stopAlwaysOnTopKeepAlive();
-  }
-});
+ipcMain.on('set-always-on-top', (_e, flag) => setPetAlwaysOnTop(flag));
 ipcMain.on('resize-pet-window', (_e, { width, height }) => {
   if (petWindow && !petWindow.isDestroyed()) {
     const [x, y] = petWindow.getPosition();
@@ -379,17 +404,15 @@ ipcMain.handle('get-pet-position', () => {
   return { x, y };
 });
 ipcMain.on('set-yar-timer', (_e, intervalMinutes) => {
-  if (intervalMinutes > 0) startYarTimer(intervalMinutes);
-  else stopYarTimer();
+  setYarMinutes(intervalMinutes);
 });
 
 // ★ 앱 시작시 설정 동기화 - PetPage에서 설정 로드 후 호출
 ipcMain.on('sync-settings', (_e, settings) => {
   // 야르타임 설정 동기화
-  if (settings.yarEnabled && settings.yarInterval > 0) {
-    startYarTimer(settings.yarInterval);
-  } else {
-    stopYarTimer();
+  setYarMinutes(settings.yarEnabled && settings.yarInterval > 0 ? settings.yarInterval : 0);
+  if (typeof settings.alwaysOnTop === 'boolean' && settings.alwaysOnTop !== alwaysOnTopFlag) {
+    setPetAlwaysOnTop(settings.alwaysOnTop);
   }
   // 점심/퇴근 알림 동기화
   startBreakTimeChecker(settings);
