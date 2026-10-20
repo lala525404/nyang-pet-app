@@ -261,17 +261,18 @@ export default function PetPage() {
   const [toast, setToast] = useState<{ id: number; msg: string } | null>(null);
 
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((msg: string, ms = 3000) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ id: Date.now(), msg });
+    toastTimerRef.current = setTimeout(() => setToast(null), ms);
+  }, []);
   useEffect(() => {
-    const unsubscribe = window.electronAPI?.onShowToast?.((msg) => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      setToast({ id: Date.now(), msg });
-      toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-    });
+    const unsubscribe = window.electronAPI?.onShowToast?.((msg) => showToast(msg));
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
-  }, []);
+  }, [showToast]);
   const [bubbleKey, setBubbleKey] = useState(0);
   const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle | null>(null);
   const [mood, setMood] = useState('normal');
@@ -669,11 +670,16 @@ export default function PetPage() {
     const onUp = () => {
       if (isDragging.current) {
         isDragging.current = false;
-        draggingRef.current = false;
         window.electronAPI?.endDrag();
-        window.electronAPI?.getPetPosition?.().then((pos) => {
-         if (pos) { stateRef.current.wx = pos.x; stateRef.current.wy = pos.y; }
-       }).catch(() => {});
+        // 실제 창 위치를 stateRef에 넣은 뒤에 draggingRef를 풀어, 예전 위치로 한 프레임 튀지 않게 한다
+        const release = () => { draggingRef.current = false; };
+        const getPos = window.electronAPI?.getPetPosition;
+        if (!getPos) { release(); return; }
+        getPos().then((pos) => {
+          if (pos) {
+            stateRef.current.wx = pos.x; stateRef.current.wy = pos.y;
+          }
+        }).catch(() => {}).finally(release);
       }
     };
     // capture: true로 이벤트 먼저 캐치
