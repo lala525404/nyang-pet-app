@@ -1,0 +1,118 @@
+/* 공통 컨트롤 — 버튼·세그먼트·토글·슬라이더·입력·모달. 토큰은 tokens.css */
+
+.ui-i { width: 20px; height: 20px; flex: none; }
+
+.ui-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 0 20px; border: 0; border-radius: var(--ui-r-pill);
+  background: var(--ui-track); color: var(--ui-ink); font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out);
+}
+.ui-btn:active { transform: scale(0.97); }
+.ui-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.ui-btn--primary { background: var(--ui-primary); color: var(--ui-primary-ink); }
+.ui-btn--sm { min-height: 36px; padding: 0 14px; font-size: 13px; }
+@media (hover: hover) and (pointer: fine) {
+  .ui-btn:not(:disabled):hover { background: var(--ui-hover); }
+  .ui-btn--primary:not(:disabled):hover { background: var(--ui-primary-hover); }
+}
+
+.ui-iconbtn {
+  flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: transparent; color: var(--ui-sub); cursor: pointer;
+  transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out);
+}
+.ui-iconbtn:active { transform: scale(0.95); }
+@media (hover: hover) and (pointer: fine) { .ui-iconbtn:hover { background: var(--ui-item); color: var(--ui-ink); } }
+
+/* 세그먼트: 회색 트랙 안에 선택된 것만 흰 알약 */
+.ui-seg { display: flex; gap: 2px; padding: 3px; background: var(--ui-track); border-radius: var(--ui-r-pill); }
+.ui-seg button {
+  flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--ui-r-pill);
+  background: transparent; color: var(--ui-sub); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background-color 160ms var(--ui-ease-out), color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out);
+}
+.ui-seg button:active { transform: scale(0.97); }
+.ui-seg button[aria-pressed="true"] { background: var(--ui-seg-on); color: var(--ui-ink); }
+
+/* 토글 */
+.ui-switch { position: relative; flex: none; width: 52px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.ui-switch::before {
+  content: ''; position: absolute; left: 4px; top: 9px; width: 44px; height: 26px; border-radius: var(--ui-r-pill);
+  background: var(--ui-switch-off); transition: background-color 160ms var(--ui-ease-out);
+}
+.ui-switch::after {
+  content: ''; position: absolute; left: 7px; top: 12px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--ui-knob); transition: transform 200ms var(--ui-ease-out);
+}
+.ui-switch[aria-checked="true"]::before { background: var(--ui-accent); }
+.ui-switch[aria-checked="true"]::after { transform: translateX(18px); }
+.ui-switch:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* 슬라이더 */
+.ui-range-row { display: flex; align-items: center; gap: 12px; }
+.ui-end { flex: none; font-size: 12px; color: var(--ui-sub); }
+.ui-val { flex: none; min-width: 48px; text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+input[type="range"].ui-range { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 44px; margin: 0; background: transparent; cursor: pointer; }
+input[type="range"].ui-range::-webkit-slider-runnable-track {
+  height: 6px; border-radius: var(--ui-r-pill);
+  background: linear-gradient(var(--ui-accent), var(--ui-accent)) no-repeat 0 0 / var(--p, 50%) 100%, var(--ui-track); /* 같은 색 한 줄: 채움 표시용 */
+}
+input[type="range"].ui-range::-webkit-slider-thumb {
+  -webkit-appearance: none; box-sizing: border-box; width: 24px; height: 24px; margin-top: -9px; border-radius: 50%;
+  background: var(--ui-knob); border: 2px solid var(--ui-accent); box-shadow: none;
+  transition: transform 140ms var(--ui-ease-out);
+}
+input[type="range"].ui-range:active::-webkit-slider-thumb { transform: scale(1.08); }
+
+/* 입력 */
+.ui-time {
+  min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--ui-r-inner);
+  background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.ui-time:disabled { cursor: not-allowed; opacity: 0.5; }
+.ui-time::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
+html[data-theme="dark"] .ui-time::-webkit-calendar-picker-indicator { filter: invert(1); }
+.ui-select { position: relative; }
+.ui-select select {
+  -webkit-appearance: none; appearance: none; width: 100%; min-height: 44px; padding: 0 40px 0 14px;
+  border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.ui-select .ui-i { position: absolute; right: 12px; top: 50%; margin-top: -10px; color: var(--ui-sub); pointer-events: none; }
+@media (hover: hover) and (pointer: fine) {
+  .ui-time:not(:disabled):hover, .ui-select select:hover { background: var(--ui-track); }
+}
+
+:where(.ui-btn, .ui-iconbtn, .ui-seg button, .ui-switch, .ui-range, .ui-time, .ui-select select):focus-visible {
+  outline: 2px solid var(--ui-accent); outline-offset: 2px;
+}
+
+/* 모달: 창 위에 뜨는 한 겹 */
+.ui-overlay {
+  position: fixed; inset: 0; z-index: 40; padding: 0 16px; overflow-y: auto; background: var(--ui-scrim);
+  animation: ui-fade 160ms var(--ui-ease-out) both;
+}
+.ui-overlay--top { z-index: 50; }
+.ui-modal {
+  width: min(520px, 100%); margin: 32px auto; padding: 24px;
+  display: flex; flex-direction: column; gap: 16px;
+  background: var(--ui-panel); color: var(--ui-ink); border: 1px solid var(--ui-line); border-radius: var(--ui-r-panel); box-shadow: var(--ui-shadow-float);
+  animation: ui-modal-in 200ms var(--ui-ease-out) both;
+}
+.ui-modal:focus { outline: none; }
+.ui-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ui-modal-title { margin: 0; font-size: 16px; line-height: 1.4; font-weight: 700; }
+.ui-modal-head .ui-iconbtn { margin: -6px -8px 0 0; }
+.ui-modal-foot { display: flex; justify-content: flex-end; gap: 12px; }
+.ui-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ui-sub); }
+.ui-note strong { color: var(--ui-ink); font-weight: 600; }
+
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-modal-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay, .ui-modal { animation-name: ui-fade; animation-duration: 150ms; }
+  .ui-btn:active, .ui-iconbtn:active, .ui-seg button:active { transform: none; }
+  .ui-switch::after { transition: none; }
+}

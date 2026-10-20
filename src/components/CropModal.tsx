@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
+import { X } from 'lucide-react';
+import '../styles/ui.css';
 import '../styles/crop.css';
 import { getCroppedImage } from '../utils/cropImage';
 import type { CustomShape } from './CatEmoji';
+import { RangeInput, Segmented } from './ui';
 
 interface CropModalProps {
   src: string;
@@ -80,12 +83,17 @@ export default function CropModal({ src, onCancel, onApply, shape, onShapeChange
   };
 
   return (
-    <div className="crop-overlay">
-      <div className="crop-modal" role="dialog" aria-modal="true" aria-labelledby={`${zoomId}-title`}
+    <div className="ui-overlay ui-overlay--top">
+      <div className="ui-modal crop-modal" role="dialog" aria-modal="true" aria-labelledby={`${zoomId}-title`}
         ref={dialogRef} tabIndex={-1}>
-        <div className="crop-header">
-          <h3 className="crop-title" id={`${zoomId}-title`}>✂️ 사진 자르기</h3>
-          <p className="crop-subtitle">버디로 쓸 영역을 정사각형으로 골라주세요</p>
+        <div className="ui-modal-head">
+          <div className="crop-header">
+            <h3 className="ui-modal-title" id={`${zoomId}-title`}>사진 자르기</h3>
+            <p className="ui-note">버디로 쓸 영역을 정사각형으로 골라주세요</p>
+          </div>
+          <button type="button" className="ui-iconbtn" onClick={onCancel} disabled={busy} aria-label="닫기">
+            <X className="ui-i" strokeWidth={1.5} aria-hidden />
+          </button>
         </div>
 
         <div className={`crop-area ${shape === 'rounded' ? 'crop-area--rounded' : ''}`}>
@@ -106,25 +114,19 @@ export default function CropModal({ src, onCancel, onApply, shape, onShapeChange
         </div>
 
         <div className="crop-controls">
-          <div className="crop-zoom-row">
-            <label className="crop-zoom-label" htmlFor={zoomId}>확대</label>
-            <input id={zoomId} className="crop-zoom-slider" type="range"
-              min={1} max={4} step={0.05} value={zoom}
-              onChange={e => setZoom(Number(e.target.value))} />
-            <span className="crop-zoom-value">{zoom.toFixed(1)}x</span>
+          <div className="ui-range-row crop-zoom-row">
+            <label className="ui-end" htmlFor={zoomId}>확대</label>
+            <RangeInput id={zoomId} min={1} max={4} step={0.05} value={zoom} onChange={setZoom} />
+            <span className="ui-val">{zoom.toFixed(1)}x</span>
           </div>
-          <div className="crop-shape-toggle">
-            <button type="button" className={`crop-shape-btn ${shape === 'round' ? 'crop-shape-btn--active' : ''}`}
-              aria-pressed={shape === 'round'} onClick={() => onShapeChange('round')}>⚪ 원형</button>
-            <button type="button" className={`crop-shape-btn ${shape === 'rounded' ? 'crop-shape-btn--active' : ''}`}
-              aria-pressed={shape === 'rounded'} onClick={() => onShapeChange('rounded')}>▢ 사각형</button>
-          </div>
+          <Segmented<CustomShape> label="버디 모양" value={shape} onChange={onShapeChange}
+            options={[{ value: 'round', label: '원형' }, { value: 'rounded', label: '사각형' }]} />
           <p className="crop-hint">드래그로 이동 · 휠로 확대/축소 · 버디는 가이드와 같은 모양으로 보여요</p>
         </div>
 
         <div className="crop-footer">
-          <button type="button" className="crop-btn crop-btn--cancel" onClick={onCancel} disabled={busy}>취소</button>
-          <button type="button" className="crop-btn crop-btn--apply" onClick={handleApply} disabled={busy || !pixels}>
+          <button type="button" className="ui-btn" onClick={onCancel} disabled={busy}>취소</button>
+          <button type="button" className="ui-btn ui-btn--primary" onClick={handleApply} disabled={busy || !pixels}>
             {busy ? '처리 중...' : '적용'}
           </button>
         </div>
