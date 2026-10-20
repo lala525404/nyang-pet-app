@@ -456,37 +456,36 @@ function startBreakTimeChecker(settings) {
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const today = now.toDateString();
 
-    // 점심/퇴근 알림
-    if (settings && settings.breakTimeEnabled) {
-      if (settings.lunchTime && currentTime === settings.lunchTime && lastBreakTrigger.lunch !== today) {
+    // 점심/퇴근 알림 (점심·퇴근 켜짐/미리 알림 분은 따로 관리. 마이그레이션 전 설정은 예전 키로 대체)
+    const lunchOn = settings && (settings.lunchEnabled ?? settings.breakTimeEnabled);
+    const leaveOn = settings && (settings.leaveEnabled ?? settings.breakTimeEnabled);
+    const lunchPre = (settings && (settings.lunchPreAlertMinutes || settings.preAlertMinutes)) || 5;
+    const leavePre = (settings && (settings.leavePreAlertMinutes || settings.preAlertMinutes)) || 5;
+
+    if (lunchOn && settings.lunchTime) {
+      if (currentTime === settings.lunchTime && lastBreakTrigger.lunch !== today) {
         lastBreakTrigger.lunch = today;
         createBreakTimeWindow('lunch');
       }
-      if (settings.leaveTime && currentTime === settings.leaveTime && lastBreakTrigger.leave !== today) {
+      // 미리 알림
+      const key = `pre_lunch_${today}`;
+      if (currentTime === getPreAlertTime(settings.lunchTime, lunchPre) && !lastBreakTrigger[key]) {
+        lastBreakTrigger[key] = today;
+        if (petWindow && !petWindow.isDestroyed()) {
+          petWindow.webContents.send('show-toast', `점심시간 ${lunchPre}분 전이에요! 🍱`);
+        }
+      }
+    }
+    if (leaveOn && settings.leaveTime) {
+      if (currentTime === settings.leaveTime && lastBreakTrigger.leave !== today) {
         lastBreakTrigger.leave = today;
         createBreakTimeWindow('leave');
       }
-
-      // 미리 알림
-      const preMin = settings.preAlertMinutes || 5;
-      if (settings.lunchTime) {
-        const lunchPreTime = getPreAlertTime(settings.lunchTime, preMin);
-        const key = `pre_lunch_${today}`;
-        if (currentTime === lunchPreTime && !lastBreakTrigger[key]) {
-          lastBreakTrigger[key] = today;
-          if (petWindow && !petWindow.isDestroyed()) {
-            petWindow.webContents.send('show-toast', `점심시간 ${preMin}분 전이에요! 🍱`);
-          }
-        }
-      }
-      if (settings.leaveTime) {
-        const leavePreTime = getPreAlertTime(settings.leaveTime, preMin);
-        const key = `pre_leave_${today}`;
-        if (currentTime === leavePreTime && !lastBreakTrigger[key]) {
-          lastBreakTrigger[key] = today;
-          if (petWindow && !petWindow.isDestroyed()) {
-            petWindow.webContents.send('show-toast', `퇴근 ${preMin}분 전이에요! 🏃`);
-          }
+      const key = `pre_leave_${today}`;
+      if (currentTime === getPreAlertTime(settings.leaveTime, leavePre) && !lastBreakTrigger[key]) {
+        lastBreakTrigger[key] = today;
+        if (petWindow && !petWindow.isDestroyed()) {
+          petWindow.webContents.send('show-toast', `퇴근 ${leavePre}분 전이에요! 🏃`);
         }
       }
     }

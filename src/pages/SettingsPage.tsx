@@ -5,6 +5,7 @@ import CropModal from '../components/CropModal';
 import { customShapeRadius } from '../components/CatEmoji';
 import type { CustomShape } from '../components/CatEmoji';
 import '../styles/crop.css';
+import { readStoredSettings } from '../utils/settings';
 
 interface PetSettings {
   alwaysOnTop: boolean;
@@ -26,6 +27,10 @@ interface PetSettings {
   buddyMode: 'chill' | 'buddy' | 'chaos' | 'custom';
   size: number; // 50~200
   breakTimeEnabled: boolean;
+  lunchEnabled: boolean;
+  leaveEnabled: boolean;
+  lunchPreAlertMinutes: number;
+  leavePreAlertMinutes: number;
   lunchTime: string;
   leaveTime: string;
   preAlertMinutes: number;
@@ -38,7 +43,7 @@ const DEFAULT: PetSettings = {
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
-  breakTimeEnabled: false, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5, alarms: [],
+  breakTimeEnabled: false, lunchEnabled: false, leaveEnabled: false, lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchTime: '12:00', leaveTime: '18:00', preAlertMinutes: 5, alarms: [],
 };
 
 const MODE_PRESETS: Record<string, Partial<PetSettings>> = {
@@ -51,8 +56,8 @@ type NavPage = 'buddy' | 'mode' | 'display' | 'yar' | 'breaktime' | 'custom' | '
 
 function loadSettings(): PetSettings {
   try {
-    const s = localStorage.getItem('petSettings');
-    return s ? { ...DEFAULT, ...JSON.parse(s) } : DEFAULT;
+    const s = readStoredSettings();
+    return s ? { ...DEFAULT, ...s } as PetSettings : DEFAULT;
   } catch { return DEFAULT; }
 }
 function saveSettings(s: PetSettings): boolean {
@@ -449,12 +454,12 @@ export default function SettingsPage() {
               <div className="radio-group" style={{ marginBottom: 12 }}>
                 <label className={`radio-item ${draft.breakTimeEnabled ? 'radio-selected' : ''}`}>
                   <input type="radio" name="breaktime" checked={draft.breakTimeEnabled}
-                    onChange={() => update({ breakTimeEnabled: true })} />
+                    onChange={() => update({ breakTimeEnabled: true, lunchEnabled: true, leaveEnabled: true })} />
                   <span>켜기</span>
                 </label>
                 <label className={`radio-item ${!draft.breakTimeEnabled ? 'radio-selected' : ''}`}>
                   <input type="radio" name="breaktime" checked={!draft.breakTimeEnabled}
-                    onChange={() => update({ breakTimeEnabled: false })} />
+                    onChange={() => update({ breakTimeEnabled: false, lunchEnabled: false, leaveEnabled: false })} />
                   <span>끄기</span>
                 </label>
               </div>
@@ -493,7 +498,7 @@ export default function SettingsPage() {
                     <div className="interval-row">
                       <input type="range" min={1} max={30} step={1}
                         value={draft.preAlertMinutes || 5}
-                        onChange={e => update({ preAlertMinutes: Number(e.target.value) })}
+                        onChange={e => update({ preAlertMinutes: Number(e.target.value), lunchPreAlertMinutes: Number(e.target.value), leavePreAlertMinutes: Number(e.target.value) })}
                         className="interval-slider" />
                       <span className="interval-value">{draft.preAlertMinutes || 5}분 전</span>
                     </div>

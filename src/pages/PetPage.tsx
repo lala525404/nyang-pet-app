@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import '../styles/pet.css';
 import CatEmoji from '../components/CatEmoji';
+import { readStoredSettings } from '../utils/settings';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
 
@@ -347,8 +348,8 @@ export default function PetPage() {
         initialSyncedRef.current = true;
         let merged: Record<string, unknown> = { ...DEFAULT_SETTINGS };
         try {
-          const raw2 = localStorage.getItem('petSettings');
-          if (raw2) merged = { ...DEFAULT_SETTINGS, ...JSON.parse(raw2) };
+          const stored = readStoredSettings();
+          if (stored) merged = { ...DEFAULT_SETTINGS, ...stored };
         } catch {}
         window.electronAPI?.syncSettings(merged);
       }
