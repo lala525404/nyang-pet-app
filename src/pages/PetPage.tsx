@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import '../styles/pet.css';
+import { Bell } from 'lucide-react';
 import CatEmoji from '../components/CatEmoji';
 import { readStoredSettings } from '../utils/settings';
 import type { CustomShape } from '../components/CatEmoji';
@@ -257,13 +258,13 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
 // ── 메인 컴포넌트 ──────────────────────────────────────────────────
 export default function PetPage() {
   const [bubble, setBubble] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: number; msg: string } | null>(null);
 
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onShowToast?.((msg) => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      setToast(msg);
+      setToast({ id: Date.now(), msg });
       toastTimerRef.current = setTimeout(() => setToast(null), 3000);
     });
     return () => {
@@ -714,15 +715,10 @@ export default function PetPage() {
   return (
     <div className="pet-root">
       {toast && (
-        <div style={{
-          position: "fixed", top: 10, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(30,30,30,0.85)", color: "white", padding: "8px 12px",
-          borderRadius: 14, fontSize: 12, fontWeight: 700, zIndex: 9999,
-          backdropFilter: "blur(8px)", whiteSpace: "normal", wordBreak: "keep-all",
-          width: "max-content", maxWidth: 170, textAlign: "center", lineHeight: 1.4,
-          pointerEvents: "none",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
-        }}>{toast}</div>
+        <div className="pet-toast" role="status" key={toast.id}>
+          <Bell className="pet-toast-icon" strokeWidth={1.5} aria-hidden />
+          <span>{toast.msg}</span>
+        </div>
       )}
       <div className="pet-container">
         <div className="bubble-slot" style={{ marginBottom: `${-8 + (petSize - 100) * 0.3}px` }}>

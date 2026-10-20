@@ -477,7 +477,7 @@ function startBreakTimeChecker(settings) {
       if (currentTime === getPreAlertTime(settings.lunchTime, lunchPre) && !lastBreakTrigger[key]) {
         lastBreakTrigger[key] = today;
         if (petWindow && !petWindow.isDestroyed()) {
-          petWindow.webContents.send('show-toast', `점심시간 ${lunchPre}분 전이에요! 🍱`);
+          petWindow.webContents.send('show-toast', `점심 ${lunchPre}분 전이에요!`);
         }
       }
     }
@@ -490,7 +490,7 @@ function startBreakTimeChecker(settings) {
       if (currentTime === getPreAlertTime(settings.leaveTime, leavePre) && !lastBreakTrigger[key]) {
         lastBreakTrigger[key] = today;
         if (petWindow && !petWindow.isDestroyed()) {
-          petWindow.webContents.send('show-toast', `퇴근 ${leavePre}분 전이에요! 🏃`);
+          petWindow.webContents.send('show-toast', `퇴근 ${leavePre}분 전이에요!`);
         }
       }
     }
