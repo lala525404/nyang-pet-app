@@ -9,6 +9,8 @@ import AlarmPane from '../components/settings/AlarmPane';
 import HelpPane from '../components/settings/HelpPane';
 import HeartMark from '../components/HeartMark';
 import BubbleModal from '../components/settings/BubbleModal';
+import Intro from '../components/Intro';
+import { createPortal } from 'react-dom';
 import type { Monitor } from '../components/settings/shared';
 import { MODE_PRESETS, loadSettings, saveSettings } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
@@ -36,6 +38,23 @@ export default function SettingsPage() {
   const [page, setPage] = useState<NavPage>('home');
   const [animalOpen, setAnimalOpen] = useState(false);
   const [bubbleOpen, setBubbleOpen] = useState(false);
+
+  // ── 시작 인트로: 메인이 새 버전 첫 설정창에만 해시에 intro=1을 붙여 준다. 설정의 "시작 인트로 보기"가 꺼져 있으면 건너뛴다.
+  // 움직임 줄이기면 인트로 없이 150ms 페이드만 한다.
+  const introRequested = useRef(window.location.hash.includes('intro=1')).current;
+  const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const introWanted = introRequested && loadSettings().introEnabled !== false;
+  const [introPlaying, setIntroPlaying] = useState(() => introWanted && !reduceMotion());
+  const [fadeKey, setFadeKey] = useState(() => (introWanted && reduceMotion() ? 1 : 0));
+  useEffect(() => { if (introWanted) window.electronAPI?.introSeen?.(); }, []);   // 한 번 보여 줬다고 알린다(보는 중에 닫아도 다시 나오지 않게)
+  const replayIntro = useCallback(() => { if (reduceMotion()) setFadeKey(k => k + 1); else setIntroPlaying(true); }, []);
+  const endIntro = useCallback(() => setIntroPlaying(false), []);
+  // 인트로가 떠 있는 동안 뒤의 설정창은 키보드·마우스 대상이 아니다
+  useEffect(() => {
+    const root = document.querySelector('.settings-root');
+    if (introPlaying) root?.setAttribute('inert', '');
+    return () => root?.removeAttribute('inert');
+  }, [introPlaying]);
   const [themePref, setPref] = useState<ThemePref>(getThemePref);
   const [themeNote, setThemeNote] = useState('');
 
@@ -162,7 +181,7 @@ export default function SettingsPage() {
   const nextName = THEME_UI[nextThemePref(themePref)].name;
 
   return (
-    <div className="settings-root">
+    <div className="settings-root" data-fade={fadeKey ? (fadeKey % 2 ? 'a' : 'b') : undefined}>
       <input ref={fileInputRef} type="file" accept=".png,.svg,.jpg,.jpeg,.webp" hidden onChange={onFileChosen} />
 
       {cropState && (
@@ -231,8 +250,9 @@ export default function SettingsPage() {
             onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onUpload={upload} />
         )}
         {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
-        {page === 'help' && <HelpPane />}
+        {page === 'help' && <HelpPane settings={settings} patch={patch} onReplayIntro={replayIntro} />}
       </main>
+      {introPlaying && createPortal(<Intro onDone={endIntro} />, document.body)}
     </div>
   );
 }

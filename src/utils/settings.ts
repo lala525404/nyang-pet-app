@@ -25,6 +25,7 @@ export interface PetSettings {
   bubbleShowSec: number;      // 한 번 보여주는 시간(초)
   bubbleGapSec: number;       // 메시지가 나오는 주기(초, 한 메시지가 나오고 다음 메시지가 나올 때까지)
   bubbleClock: boolean;       // 메시지가 없는 동안 현재 시간 표시
+  introEnabled: boolean;      // 설정창 시작 인트로 보기(새 버전 첫 설정창에서만 한 번). 예전 설정에는 없으므로 기본값(켬)이 쓰인다
   moveSpeed: number;
   zone: number;
   monitor: number; // -1 = 전체 모니터
@@ -51,7 +52,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, introEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
   lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, alarms: [],

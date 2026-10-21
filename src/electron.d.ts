@@ -18,6 +18,7 @@ interface ElectronAPI {
   syncSettings: (settings: Record<string, unknown>) => void;
   onFlushSettings: (cb: () => void) => () => void;
   settingsFlushed: () => void;
+  introSeen: () => void;
   getAlertState: () => Promise<boolean>;
   onAlertState: (cb: (active: boolean) => void) => () => void;
   onSettingsChanged: (cb: () => void) => () => void;

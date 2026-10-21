@@ -199,6 +199,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   onUpload: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [bubbleAdv, setBubbleAdv] = useState(false);   // 말풍선 팝오버의 "고급" 펼침
   const closePop = (key: string) => () => setOpenKey(cur => (cur === key ? null : cur));
 
   const animal = getAnimal(s.animalId);
@@ -341,17 +342,25 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
           <div className="st-row"><span>말풍선 사용</span><Switch checked={bubbleOn} onChange={v => patch({ bubbleEnabled: v })} label="말풍선 사용" /></div>
           <div className="st-row"><span>시계 표시</span><Switch checked={bubbleClock} onChange={v => patch({ bubbleClock: v })} label="시계 표시" disabled={!bubbleOn} /></div>
           <p className="ui-note">{!bubbleOn ? '켜면 내 메시지와 시계가 말풍선으로 떠요.' : bubbleClock ? '메시지가 없는 동안에는 현재 시간을 보여줘요.' : '메시지가 없는 동안에는 말풍선이 숨겨져요.'}</p>
-          {bubbleOn && (
-            <>
-              <div className="st-row"><span>표시 시간</span><span className="ui-val">{bubbleShow}초</span></div>
-              <RangeInput min={BUBBLE_SHOW_RANGE[0]} max={BUBBLE_SHOW_RANGE[1]} step={1} value={bubbleShow} onChange={v => patch({ bubbleShowSec: v })} label="말풍선 표시 시간" />
-              <div className="st-row"><span>간격</span><span className="ui-val">{formatInterval(bubbleGap)}마다</span></div>
-              <RangeInput min={BUBBLE_GAP_RANGE[0]} max={BUBBLE_GAP_RANGE[1]} step={5} value={bubbleGap} onChange={v => patch({ bubbleGapSec: v })} label="말풍선 간격" />
-            </>
-          )}
           <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
             메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
           </button>
+          {/* 자주 쓰는 항목만 먼저 보이고, 표시 시간·간격은 "고급"을 눌러야 펼쳐진다. 높이는 부드럽게 바뀐다. */}
+          {bubbleOn && (
+            <div className="st-adv" data-open={bubbleAdv ? '' : undefined}>
+              <button type="button" className="st-adv-toggle" aria-expanded={bubbleAdv} aria-controls="bubble-adv" onClick={() => setBubbleAdv(v => !v)}>
+                <span>고급</span><ChevronDown className="ui-i" strokeWidth={1.5} aria-hidden />
+              </button>
+              <div className="st-adv-body" id="bubble-adv" {...(bubbleAdv ? {} : { inert: '' })}>
+                <div className="st-adv-inner">
+                  <div className="st-row"><span>표시 시간</span><span className="ui-val">{bubbleShow}초</span></div>
+                  <RangeInput min={BUBBLE_SHOW_RANGE[0]} max={BUBBLE_SHOW_RANGE[1]} step={1} value={bubbleShow} onChange={v => patch({ bubbleShowSec: v })} label="말풍선 표시 시간" />
+                  <div className="st-row"><span>간격</span><span className="ui-val">{formatInterval(bubbleGap)}마다</span></div>
+                  <RangeInput min={BUBBLE_GAP_RANGE[0]} max={BUBBLE_GAP_RANGE[1]} step={5} value={bubbleGap} onChange={v => patch({ bubbleGapSec: v })} label="말풍선 간격" />
+                </div>
+              </div>
+            </div>
+          )}
         </>
       ),
     },
