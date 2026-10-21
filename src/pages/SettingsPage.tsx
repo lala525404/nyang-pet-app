@@ -87,6 +87,12 @@ export default function SettingsPage() {
     };
   }, [apply]);
 
+  // 앱이 종료되기 직전에 메인이 저장을 요청하면 바로 적용하고 끝났다고 알린다
+  useEffect(() => {
+    const api = window.electronAPI;
+    return api?.onFlushSettings?.(() => { apply(); api.settingsFlushed(); });
+  }, [apply]);
+
   // 설정창을 열 때 한 번, 메인 프로세스의 실제 상태(표시·항상 위·야르)를 저장값에 맞춘다
   useEffect(() => {
     const s = appliedRef.current;

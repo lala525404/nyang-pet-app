@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
 
 const isDev = !app.isPackaged;
@@ -14,7 +14,11 @@ let settingsWindow = null;
 let petWindow = null;
 let yarWindow = null;
 let tray = null;
-let forceQuit = false;
+let isQuitting = false;     // 종료 요청이 들어온 뒤로는 true (창 닫힘·재생성 로직이 종료를 거스르지 않게)
+let quitReady = false;      // 저장과 정리가 끝나 실제로 app.quit을 해도 되는 상태
+let quitTimer = null;
+const SAVE_WAIT_MS = 1000;  // 설정창이 저장을 마칠 때까지 기다리는 최대 시간
+const QUIT_TIMEOUT_MS = 2000; // 종료 요청 후 무슨 일이 있어도 프로세스를 끝내는 시간
 let alwaysOnTopInterval = null;
 let yarTimer = null;
 let yarMinutes = 0;          // 현재 돌고 있는 야르 타이머 간격(분). 0이면 꺼짐
@@ -222,14 +226,7 @@ function createTray() {
     { type: 'separator' },
     {
       label: '⏻ 앱 종료',
-      click: () => {
-        forceQuit = true;
-        stopAlwaysOnTopKeepAlive();
-        if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.destroy();
-        if (petWindow && !petWindow.isDestroyed()) petWindow.destroy();
-        if (tray) { tray.destroy(); tray = null; }
-        app.quit();
-      },
+      click: () => requestQuit(),
     },
   ]);
 
@@ -240,72 +237,85 @@ function createTray() {
   tray.on('click', () => createSettingsWindow());
 }
 
-// ★ 최대 인스턴스 수 제한 (2개까지)
-const INSTANCE_KEY = 'choeae-instance-count';
-const MAX_INSTANCES = 2;
-
-const gotLock = app.requestSingleInstanceLock({ instanceCount: Date.now() });
-
-// 인스턴스 카운트를 파일로 관리
-const instanceFile = path.join(app.getPath('userData'), '.instances');
-const fs = require('fs');
-
-function getInstanceCount() {
-  try {
-    const data = JSON.parse(fs.readFileSync(instanceFile, 'utf8'));
-    // 5초 이상 된 인스턴스는 죽은 것으로 간주
-    const alive = data.filter((t) => Date.now() - t < 5000);
-    return alive.length;
-  } catch { return 0; }
+// ★ 종료 요청은 전부 requestQuit()으로 모은다
+// isQuitting → 설정창 저장 → 모든 창·트레이 정리 → app.quit. 어디선가 막혀도 2초 뒤에는 app.exit으로 끝낸다.
+function stopAllTimers() {
+  stopAlwaysOnTopKeepAlive();
+  stopYarTimer();
+  stopBreakTimeChecker();
 }
 
-function registerInstance() {
-  try {
-    let data = [];
-    try { data = JSON.parse(fs.readFileSync(instanceFile, 'utf8')); } catch {}
-    data.push(Date.now());
-    fs.writeFileSync(instanceFile, JSON.stringify(data));
-  } catch {}
-}
-
-function unregisterInstance() {
-  try { fs.unlinkSync(instanceFile); } catch {}
-}
-
-app.whenReady().then(() => {
-  app.on('activate', () => {
-    if (!settingsWindow || settingsWindow.isDestroyed()) createSettingsWindow();
-    else { settingsWindow.show(); settingsWindow.focus(); }
+// 설정창에 저장을 요청하고, 끝났다는 답이 오거나 SAVE_WAIT_MS가 지나면 넘어간다
+function flushSettings() {
+  return new Promise((resolve) => {
+    if (!settingsWindow || settingsWindow.isDestroyed()) { resolve(); return; }
+    let timer = null;
+    const done = () => {
+      clearTimeout(timer);
+      ipcMain.removeListener('settings-flushed', done);
+      resolve();
+    };
+    timer = setTimeout(done, SAVE_WAIT_MS);
+    ipcMain.on('settings-flushed', done);
+    try { settingsWindow.webContents.send('flush-settings'); } catch { done(); }
   });
-  createSettingsWindow();
-  createPetWindow();
-  createTray();
-});
+}
+
+function finishQuit() {
+  quitReady = true;
+  try { session.defaultSession.flushStorageData(); } catch {}
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { if (!w.isDestroyed()) w.destroy(); } catch {}
+  }
+  settingsWindow = null; petWindow = null; yarWindow = null; breakTimeWindow = null;
+  if (tray) { try { tray.destroy(); } catch {} tray = null; }
+  app.quit();
+}
+
+function requestQuit() {
+  if (isQuitting) return;
+  isQuitting = true;
+  quitTimer = setTimeout(() => app.exit(0), QUIT_TIMEOUT_MS);
+  try { stopAllTimers(); } catch {}
+  flushSettings().catch(() => {}).then(finishQuit, finishQuit);
+}
+
+// ★ 하나만 실행: 이미 실행 중이면 새로 뜬 쪽은 바로 끝내고, 실행 중인 앱은 설정창을 앞으로 보낸다
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (isQuitting) return;
+    if (settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.isMinimized()) settingsWindow.restore();
+    createSettingsWindow();
+  });
+
+  app.whenReady().then(() => {
+    app.on('activate', () => {
+      if (!settingsWindow || settingsWindow.isDestroyed()) createSettingsWindow();
+      else { settingsWindow.show(); settingsWindow.focus(); }
+    });
+    createSettingsWindow();
+    createPetWindow();
+    createTray();
+  });
+}
 
 app.on('window-all-closed', () => {
-  if (forceQuit) { app.quit(); return; }
+  if (isQuitting) return;
   if (!petWindow || petWindow.isDestroyed()) createPetWindow();
 });
 
+// 앱이 만든 종료 경로가 아닌 종료 요청(OS 종료, 로그오프, macOS ⌘Q 등)도 막지 않고 같은 순서로 저장 후 끝낸다
 app.on('before-quit', (e) => {
-  unregisterInstance();
-  if (!forceQuit) e.preventDefault();
-  else {
-    stopYarTimer();
-    if (yarWindow && !yarWindow.isDestroyed()) yarWindow.destroy();
-  }
+  if (quitReady) return;
+  e.preventDefault();
+  requestQuit();
 });
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
-ipcMain.on('quit-app', () => {
-  forceQuit = true;
-  stopAlwaysOnTopKeepAlive();
-  stopYarTimer();
-  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.destroy();
-  if (petWindow && !petWindow.isDestroyed()) petWindow.destroy();
-  if (tray) { tray.destroy(); tray = null; }
-  app.quit();
-});
+ipcMain.on('quit-app', () => requestQuit());
 
 ipcMain.on('open-settings', () => createSettingsWindow());
 

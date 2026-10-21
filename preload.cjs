@@ -21,6 +21,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncSettings:     (settings) => ipcRenderer.send('sync-settings', settings),
   getAllDisplays:   () => ipcRenderer.invoke('get-all-displays'),
   getPetPosition:     () => ipcRenderer.invoke('get-pet-position'),
+  // ★ 종료 직전 저장: 메인이 요청하면 설정창이 저장하고 끝났다고 답한다
+  onFlushSettings:  (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('flush-settings', handler);
+    return () => ipcRenderer.removeListener('flush-settings', handler);
+  },
+  settingsFlushed:  () => ipcRenderer.send('settings-flushed'),
   onShowToast:      (cb) => {
     ipcRenderer.removeAllListeners('show-toast');
     const handler = (_e, msg) => cb(msg);
