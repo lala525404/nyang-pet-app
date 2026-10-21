@@ -38,7 +38,8 @@ html, body, #root {
   background: white;
   border-radius: 14px;
   padding: 8px 13px;
-  max-width: 200px;
+  width: max-content;
+  max-width: 216px;   /* 창 폭 240px에서 양쪽 12px 여백 */
   box-shadow: 0 4px 20px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.1);
   border: 1.5px solid rgba(0,0,0,0.06);
   pointer-events: none;
@@ -51,8 +52,15 @@ html, body, #root {
 }
 .bubble-text {
   font-size: 13px; font-weight: 600; color: #2c2c2c;
-  line-height: 1.4; white-space: nowrap;
+  line-height: 1.4;
+  /* 긴 메시지(20자)도 말풍선 안에서 두 줄로 줄바꿈된다 */
+  white-space: normal; overflow-wrap: anywhere; word-break: keep-all; text-align: center;
   font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+}
+.bubble-clock { font-variant-numeric: tabular-nums; }   /* 분이 바뀌어도 말풍선 폭이 흔들리지 않게 */
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: bubbleFade 150ms linear forwards; }
+  @keyframes bubbleFade { from { opacity: 0; } to { opacity: 1; } }
 }
 .bubble-tail {
   position: absolute; bottom: -9px; left: 50%;

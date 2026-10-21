@@ -8,6 +8,7 @@ import HomePane from '../components/settings/HomePane';
 import AlarmPane from '../components/settings/AlarmPane';
 import HelpPane from '../components/settings/HelpPane';
 import HeartMark from '../components/HeartMark';
+import BubbleModal from '../components/settings/BubbleModal';
 import type { Monitor } from '../components/settings/shared';
 import { MODE_PRESETS, loadSettings, saveSettings } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
@@ -34,6 +35,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<PetSettings>(loadSettings);
   const [page, setPage] = useState<NavPage>('home');
   const [animalOpen, setAnimalOpen] = useState(false);
+  const [bubbleOpen, setBubbleOpen] = useState(false);
   const [themePref, setPref] = useState<ThemePref>(getThemePref);
   const [themeNote, setThemeNote] = useState('');
 
@@ -182,6 +184,10 @@ export default function SettingsPage() {
         />
       )}
 
+      {bubbleOpen && (
+        <BubbleModal settings={settings} patch={patch} onClose={() => setBubbleOpen(false)} suspended={cropState !== null} />
+      )}
+
       {animalOpen && (
         <AnimalModal settings={settings} update={update} patch={patch}
           onClose={() => setAnimalOpen(false)} onPickPhoto={pickPhoto} suspended={cropState !== null} />
@@ -208,7 +214,7 @@ export default function SettingsPage() {
       <main className="st-main">
         <header className="st-head">
           <div>
-            <p className="st-brand heart-mark-host"><HeartMark motion="thump" className="st-brand-heart" />최애를 풀어놨습니다 <small>v1.1.1</small></p>
+            <p className="st-brand heart-mark-host"><HeartMark motion="thump" className="st-brand-heart" />최애를 풀어놨습니다 <small>v1.2.0</small></p>
             <h1 className="st-title">{info.title}</h1>
             <p className="st-desc">{info.desc}</p>
           </div>
@@ -222,7 +228,7 @@ export default function SettingsPage() {
 
         {page === 'home' && (
           <HomePane settings={settings} update={update} patch={patch} monitors={monitors} applyMode={applyMode}
-            onOpenAnimal={() => setAnimalOpen(true)} onUpload={upload} />
+            onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onUpload={upload} />
         )}
         {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
         {page === 'help' && <HelpPane />}

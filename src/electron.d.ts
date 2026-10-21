@@ -18,6 +18,9 @@ interface ElectronAPI {
   syncSettings: (settings: Record<string, unknown>) => void;
   onFlushSettings: (cb: () => void) => () => void;
   settingsFlushed: () => void;
+  getAlertState: () => Promise<boolean>;
+  onAlertState: (cb: (active: boolean) => void) => () => void;
+  onSettingsChanged: (cb: () => void) => () => void;
   getPhotoState: () => Promise<{ index: number; count: number; intervalSec: number }>;
   onPhotoState: (cb: (state: { index: number; count: number; intervalSec: number }) => void) => () => void;
   onShowToast: (cb: (msg: string, ms?: number) => void) => () => void;

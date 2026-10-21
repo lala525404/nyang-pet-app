@@ -4,7 +4,7 @@ import { ChevronDown, LogOut, Minus, Plus, Utensils } from 'lucide-react';
 import CatEmoji from '../CatEmoji';
 import { Segmented, Switch, RangeInput } from '../ui';
 import { getAnimal } from '../../data/animals';
-import { MODE_PRESETS, activePhotos, formatInterval, formatTime } from '../../utils/settings';
+import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, cleanBubbleMessages, clampTo, formatInterval, formatTime } from '../../utils/settings';
 import { usePhotoState } from '../../hooks/usePhotoState';
 import type { PetSettings } from '../../utils/settings';
 import { MODE_NAME } from './shared';
@@ -121,10 +121,11 @@ function NoticeCard({ id, icon, title, enabled, time, pre, onEnabled, onTime, on
   );
 }
 
-export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onUpload }: PaneProps & {
+export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onOpenBubble, onUpload }: PaneProps & {
   monitors: Monitor[];
   applyMode: (mode: 'chill' | 'buddy' | 'chaos') => void;
   onOpenAnimal: () => void;
+  onOpenBubble: () => void;
   onUpload: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -151,6 +152,14 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   })();
 
   const rotateEnabled = s.imageRotateEnabled !== false;
+  // 말풍선: 내 메시지(최대 5개)를 순서대로, 빈 간격에는 시계. 둘 다 없으면 말풍선이 뜨지 않는다.
+  const bubbleOn = s.bubbleEnabled !== false;
+  const bubbleClock = s.bubbleClock !== false;
+  const bubbleCount = cleanBubbleMessages(s.bubbleMessages).length;
+  const bubbleShow = clampTo(s.bubbleShowSec, BUBBLE_SHOW_RANGE, 5);
+  const bubbleGap = clampTo(s.bubbleGapSec, BUBBLE_GAP_RANGE, 30);
+  const bubbleValue = !bubbleOn ? '끔'
+    : [bubbleCount ? `메시지 ${bubbleCount}개` : '', bubbleClock ? '시계' : ''].filter(Boolean).join(' · ') || '없음';
   const chips: { id: string; label: string; value: string; body: ReactNode }[] = [
     {
       id: 'mode', label: '모드', value: MODE_NAME[s.buddyMode] || 'Buddy',
@@ -252,6 +261,27 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
               <RangeInput min={10} max={300} step={5} value={s.distractInterval} onChange={v => update({ distractInterval: v })} label="졸림 방지 이모지 주기" />
             </>
           )}
+        </>
+      ),
+    },
+    {
+      id: 'bubble', label: '말풍선', value: bubbleValue,
+      body: (
+        <>
+          <div className="st-row"><span>말풍선 사용</span><Switch checked={bubbleOn} onChange={v => patch({ bubbleEnabled: v })} label="말풍선 사용" /></div>
+          <div className="st-row"><span>시계 표시</span><Switch checked={bubbleClock} onChange={v => patch({ bubbleClock: v })} label="시계 표시" disabled={!bubbleOn} /></div>
+          <p className="ui-note">{!bubbleOn ? '켜면 내 메시지와 시계가 말풍선으로 떠요.' : bubbleClock ? '메시지가 없는 동안에는 현재 시간을 보여줘요.' : '메시지가 없는 동안에는 말풍선이 숨겨져요.'}</p>
+          {bubbleOn && (
+            <>
+              <div className="st-row"><span>표시 시간</span><span className="ui-val">{bubbleShow}초</span></div>
+              <RangeInput min={BUBBLE_SHOW_RANGE[0]} max={BUBBLE_SHOW_RANGE[1]} step={1} value={bubbleShow} onChange={v => patch({ bubbleShowSec: v })} label="말풍선 표시 시간" />
+              <div className="st-row"><span>간격</span><span className="ui-val">{formatInterval(bubbleGap)}마다</span></div>
+              <RangeInput min={BUBBLE_GAP_RANGE[0]} max={BUBBLE_GAP_RANGE[1]} step={5} value={bubbleGap} onChange={v => patch({ bubbleGapSec: v })} label="말풍선 간격" />
+            </>
+          )}
+          <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
+            메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
+          </button>
         </>
       ),
     },

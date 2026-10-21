@@ -3,7 +3,7 @@ import '../styles/pet.css';
 import { Bell } from 'lucide-react';
 import CatEmoji from '../components/CatEmoji';
 import { usePhotoState } from '../hooks/usePhotoState';
-import { readStoredSettings } from '../utils/settings';
+import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, cleanBubbleMessages, clampTo, clockText, readStoredSettings } from '../utils/settings';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
 
@@ -79,6 +79,11 @@ interface Settings {
   distractInterval: number;
   imageRotateInterval: number;
   imageRotateEnabled: boolean;
+  bubbleEnabled: boolean;
+  bubbleMessages: string[];
+  bubbleShowSec: number;
+  bubbleGapSec: number;
+  bubbleClock: boolean;
   useCustomMode: boolean;
   customShape: CustomShape;
   moveSpeed: number;
@@ -93,7 +98,9 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
-  distractInterval: 30, imageRotateInterval: 60, imageRotateEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  distractInterval: 30, imageRotateInterval: 60, imageRotateEnabled: true,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true,
+  useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
 };
 
@@ -119,7 +126,9 @@ function getTimeCategory(workStart: string, workEnd: string): string {
 interface Rect { x: number; y: number; w: number; h: number; }
 type DisplaysInfo = Awaited<ReturnType<NonNullable<typeof window.electronAPI>['getAllDisplays']>>;
 
-const PET_WINDOW_SIZE = 190;
+// 버디 창은 크기를 바꾸지 않고 고정한다(main.cjs의 PET_WIN_W/H와 같은 값). 말풍선이 뜨고 질 때 창이 커지고 작아지면 버디가 25·40px씩 튀었다.
+const PET_WINDOW_W = 240;
+const PET_WINDOW_H = 230;
 
 // monitor = -1 이면 전체 모니터, 아니면 해당 모니터 (없으면 전체로 폴백)
 function computeArea(d: DisplaysInfo | null, monitor: number): Rect {
@@ -134,9 +143,9 @@ function getMovementBounds(area: Rect, zone: number) {
   const halfW = Math.floor(area.w / 2);
   const halfH = Math.floor(area.h / 2);
   const minX = area.x + ((zone === 2 || zone === 4) ? halfW : 0);
-  const maxX = area.x + ((zone === 1 || zone === 3) ? halfW : area.w) - PET_WINDOW_SIZE;
+  const maxX = area.x + ((zone === 1 || zone === 3) ? halfW : area.w) - PET_WINDOW_W;
   const minY = area.y + ((zone === 3 || zone === 4) ? halfH : 0);
-  const maxY = area.y + ((zone === 1 || zone === 2) ? halfH : area.h) - PET_WINDOW_SIZE;
+  const maxY = area.y + ((zone === 1 || zone === 2) ? halfH : area.h) - PET_WINDOW_H;
   return { minX, maxX: Math.max(minX, maxX), minY, maxY: Math.max(minY, maxY) };
 }
 
@@ -177,7 +186,7 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
   const reset = useCallback(() => {
     const s = stateRef.current;
     s.wx = window.screen.width / 2;
-    s.wy = window.screen.height - 230;
+    s.wy = window.screen.height - PET_WINDOW_H;
     s.vx = 0; s.vy = 0; s.vr = 0; s.rotate = 0; s.escaping = false;
   }, []);
 
@@ -193,8 +202,8 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
   useEffect(() => {
     const r = (a: number, b: number) => Math.random() * (b - a) + a;
     const initArea = areaRef.current;
-    stateRef.current.wx = initArea.x + initArea.w - 230;
-    stateRef.current.wy = initArea.y + initArea.h - 230;
+    stateRef.current.wx = initArea.x + initArea.w - PET_WINDOW_W - 40;
+    stateRef.current.wy = initArea.y + initArea.h - PET_WINDOW_H - 40;
 
     const triggerEvent = () => {
       const s = stateRef.current;
@@ -291,6 +300,12 @@ export default function PetPage() {
   }, [showToast]);
   const [bubbleKey, setBubbleKey] = useState(0);
   const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle | null>(null);
+  // 말풍선 우선순위: 알림 카드·미리 알림 토스트·야르 > 반응·졸림 방지(위의 bubble) > 내 메시지 > 시계(idleBubble)
+  const [alertActive, setAlertActive] = useState(false);
+  const [idleBubble, setIdleBubble] = useState<{ kind: 'message' | 'clock'; text: string; key: number } | null>(null);
+  const alertRef = useRef(false);
+  const toastActiveRef = useRef(false);
+  const reloadSettingsRef = useRef<() => void>(() => {});
   const [mood, setMood] = useState('normal');
   const [particles, setParticles] = useState<Particle[]>([]);
   const [ambushEmoji, setAmbushEmoji] = useState<string | null>(null);
@@ -331,11 +346,7 @@ export default function PetPage() {
   useEffect(() => {
     const s = settings.size || 100;
     sizeRef.current = s;
-    setPetSize(s);
-    // 창 크기도 버디 크기에 맞게 조정
-    const base = 190;
-    const newSize = Math.round(base * s / 100);
-    window.electronAPI?.resizePetWindow(newSize, newSize);
+    setPetSize(s);   // 창 크기는 고정이라 버디 크기만 바꾼다
   }, [settings.size]);
 
   const { displayTransform, reset, triggerEscape, stateRef, draggingRef, setOnWallHit } = useScreenMovement(speedRef, zoneRef, areaRef);
@@ -397,9 +408,12 @@ export default function PetPage() {
       } catch {}
     };
     const loadAll = () => { refreshDisplays(); load(); };
+    reloadSettingsRef.current = load;
     loadAll();
     const t = setInterval(loadAll, 2000);
-    return () => clearInterval(t);
+    // 설정창에서 값을 바꾸면 2초 폴링을 기다리지 않고 바로 다시 읽는다
+    const off = window.electronAPI?.onSettingsChanged?.(() => reloadSettingsRef.current());
+    return () => { clearInterval(t); if (typeof off === 'function') off(); };
   }, []);
 
   // ── 말풍선 ────────────────────────────────────────────────────────
@@ -409,12 +423,10 @@ export default function PetPage() {
     setBubbleKey(k => k + 1);
     setMood(newMood);
     setBubbleStyle(colorize ? rand(BUBBLE_COLORS) : null);
-    window.electronAPI?.resizePetWindow(240, 230);
     bubbleTimerRef.current = setTimeout(() => {
       setBubble(null);
       setBubbleStyle(null);
       setMood('normal');
-      window.electronAPI?.resizePetWindow(190, 190);
     }, 4000);
   }, []);
 
@@ -567,24 +579,16 @@ export default function PetPage() {
     }
   }, []);
 
-  // ── 잔소리 (6초마다) ─────────────────────────────────────────────
+  // ── 부르기 ("여기 있어요!") ──────────────────────────────────────
+  // 예전에는 6초마다 잔소리 말풍선이 떴다. 이제 주기적으로 뜨는 말풍선은 아래 말풍선 엔진(내 메시지·시계)이 맡는다.
   useEffect(() => {
-    const getNag = () => {
-      const special = getSpecialMessages();
-      if (isCustomMode) return rand([...CUSTOM_NAGS, ...special]);
-      const timeMsgs = TIME_MESSAGES[getTimeCategory(settings.workStart, settings.workEnd)] || TIME_MESSAGES.work;
-      return rand([...animal.nags, ...timeMsgs, ...special]);
-    };
-    const t1 = setTimeout(() => showBubble(getNag(), 'normal'), 2000);
-    const t2 = setInterval(() => showBubble(getNag(), 'normal'), 6000);
     const handleCallPet = () => { reset(); showBubble('여기 있어요! 🐾', 'happy'); };
     window.addEventListener('call-pet', handleCallPet);
     return () => {
-      clearTimeout(t1); clearInterval(t2);
       window.removeEventListener('call-pet', handleCallPet);
       if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
     };
-  }, [showBubble, reset, isCustomMode, settings.workStart, settings.workEnd, animal]);
+  }, [showBubble, reset]);
 
   // ★ 설정값을 ref에 동기화 → 클로저 문제 해결
   const settingsRef = useRef(settings);
@@ -598,6 +602,68 @@ export default function PetPage() {
 
   const animalRef = useRef(animal);
   useEffect(() => { animalRef.current = animal; }, [animal]);
+
+  // ★ 기존 문구(동물 말투 + 시간대 문구 + 월급날·불금 같은 특별 문구). 내 메시지가 없을 때 졸림 방지 말풍선이 쓴다.
+  const getLegacyNag = useCallback((): string => {
+    const cur = settingsRef.current;
+    const special = getSpecialMessages();
+    if (isCustomModeRef.current) return rand([...CUSTOM_NAGS, ...special]);
+    const timeMsgs = TIME_MESSAGES[getTimeCategory(cur.workStart, cur.workEnd)] || TIME_MESSAGES.work;
+    return rand([...animalRef.current.nags, ...timeMsgs, ...special]);
+  }, []);
+  // 졸림 방지 말풍선: 내 메시지가 있으면 그걸 순서대로, 없으면 기존 문구
+  const ownMessageIdxRef = useRef(0);
+  const pickOwnMessage = useCallback((): string | null => {
+    const cur = settingsRef.current;
+    if (cur.bubbleEnabled === false) return null;
+    const msgs = cleanBubbleMessages(cur.bubbleMessages);
+    if (!msgs.length) return null;
+    return msgs[ownMessageIdxRef.current++ % msgs.length];
+  }, []);
+
+  // ★ 알림 상태: 전체화면 알림(점심·퇴근·알람 카드, 야르)과 미리 알림 토스트가 떠 있는 동안 말풍선을 숨긴다
+  useEffect(() => { alertRef.current = alertActive; }, [alertActive]);
+  useEffect(() => { toastActiveRef.current = !!toast; }, [toast]);
+  useEffect(() => {
+    const api = window.electronAPI;
+    api?.getAlertState?.().then(active => setAlertActive(!!active)).catch(() => {});
+    const off = api?.onAlertState?.(active => setAlertActive(active));
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
+
+  // ★ 말풍선 엔진: 내 메시지를 순서대로 하나씩(표시 시간·주기 설정), 빈 간격에는 시계. 알림 중에는 시간이 멈췄다가 이어서 진행한다.
+  useEffect(() => {
+    let elapsed = 0, last = Date.now(), sig = '';
+    let curKind: 'message' | 'clock' | null = null, curIdx = -1, curText = '', key = 0;
+    const tick = () => {
+      const now = Date.now();
+      const dt = Math.min(now - last, 1500);   // 절전 복귀처럼 큰 간격은 잘라서 메시지를 한꺼번에 건너뛰지 않는다
+      last = now;
+      const cur = settingsRef.current;
+      const msgs = cleanBubbleMessages(cur.bubbleMessages);
+      const show = clampTo(cur.bubbleShowSec, BUBBLE_SHOW_RANGE, 5) * 1000;
+      const gap = clampTo(cur.bubbleGapSec, BUBBLE_GAP_RANGE, 30) * 1000;
+      const nextSig = `${show}/${gap}/${msgs.length}`;
+      if (nextSig !== sig) { sig = nextSig; elapsed = 0; }   // 표시 시간·주기·메시지 수가 바뀌면 처음부터 다시 돈다
+      const paused = alertRef.current || toastActiveRef.current;
+      if (!paused) elapsed += dt;
+      let kind: 'message' | 'clock' | null = null, idx = -1, text = '';
+      if (!paused && cur.bubbleEnabled !== false) {
+        if (msgs.length && (show >= gap || elapsed % gap < show)) {
+          kind = 'message'; idx = Math.floor(elapsed / gap) % msgs.length; text = msgs[idx];
+        } else if (cur.bubbleClock !== false) {
+          kind = 'clock'; text = clockText();
+        }
+      }
+      if (kind === curKind && idx === curIdx && text === curText) return;
+      if (kind !== curKind || idx !== curIdx) key++;   // 종류나 메시지가 바뀔 때만 새로 등장한다. 분이 바뀔 때는 같은 말풍선 안에서 글자만 바뀐다(깜빡임 없음)
+      curKind = kind; curIdx = idx; curText = text;
+      setIdleBubble(kind ? { kind, text, key } : null);
+    };
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, []);
 
   // ★ 졸림방지 - 항상 실행, 내부에서 최신 ref 참조
   useEffect(() => {
@@ -620,8 +686,8 @@ export default function PetPage() {
       const anim = animalRef.current;
 
       if (custom && imgs.length > 0) {
-        // 커스텀 모드: MZ 말풍선 (사진 교체는 교체 주기 설정을 따라 메인이 따로 처리한다)
-        showBubble(rand(CUSTOM_NAGS), 'happy', true);
+        // 커스텀 모드: 말풍선 (사진 교체는 교체 주기 설정을 따라 메인이 따로 처리한다)
+        if (s.bubbleEnabled !== false) showBubble(pickOwnMessage() ?? getLegacyNag(), 'happy', true);
         // 1.5초 뒤 기습 이모지
         setTimeout(() => {
           if (!stateRef.current.escaping) {
@@ -633,20 +699,20 @@ export default function PetPage() {
         // 일반 모드
         if (Math.random() < 0.3) {
           setAmbushEmoji(rand(AMBUSH_EMOJIS));
-          showBubble(rand(custom ? CUSTOM_NAGS : anim.nags), 'surprised', true);
+          if (s.bubbleEnabled !== false) showBubble(pickOwnMessage() ?? getLegacyNag(), 'surprised', true);
           setTimeout(() => setAmbushEmoji(null), 1800);
         } else {
           const moods = ['happy','sleepy','party','love','cool','angry'];
           const newMood = rand(moods);
           setMood(newMood);
-          showBubble(rand(custom ? CUSTOM_NAGS : anim.nags), newMood, true);
+          if (s.bubbleEnabled !== false) showBubble(pickOwnMessage() ?? getLegacyNag(), newMood, true);
           setTimeout(() => setMood('normal'), 2000);
         }
       }
     }, CHECK_INTERVAL);
 
     return () => clearInterval(timer);
-  }, [showBubble, stateRef]); // 마운트 시 1번만 등록, 내부에서 ref로 최신값 읽음
+  }, [showBubble, stateRef, pickOwnMessage, getLegacyNag]); // 마운트 시 1번만 등록, 내부에서 ref로 최신값 읽음
 
   // ── 드래그 ────────────────────────────────────────────────────────
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -743,6 +809,11 @@ export default function PetPage() {
     ? activeImages[customImgIndex % activeImages.length]
     : null;
   const currentEmoji = animal.moods[mood] || animal.emoji;
+  // 알림·토스트 > 반응·졸림 방지 말풍선 > 내 메시지 > 시계
+  const shownBubble = (alertActive || toast) ? null
+    : bubble ? { key: `t${bubbleKey}`, text: bubble, kind: 'say' as const, style: bubbleStyle }
+    : idleBubble ? { key: `i${idleBubble.key}`, text: idleBubble.text, kind: idleBubble.kind, style: null }
+    : null;
 
   return (
     <div className="pet-root">
@@ -754,12 +825,12 @@ export default function PetPage() {
       )}
       <div className="pet-container">
         <div className="bubble-slot" style={{ marginBottom: `${-8 + (petSize - 100) * 0.3}px` }}>
-            {bubble && (
-              <div className="bubble" key={bubbleKey}
-                style={bubbleStyle ? { background: bubbleStyle.bg, color: bubbleStyle.text, borderColor: 'transparent' } : {}}>
-                <span className="bubble-text">{bubble}</span>
+            {shownBubble && (
+              <div className="bubble" key={shownBubble.key}
+                style={shownBubble.style ? { background: shownBubble.style.bg, color: shownBubble.style.text, borderColor: 'transparent' } : {}}>
+                <span className={`bubble-text${shownBubble.kind === 'clock' ? ' bubble-clock' : ''}`}>{shownBubble.text}</span>
                 <div className="bubble-tail"
-                  style={bubbleStyle ? { borderTopColor: bubbleStyle.bg } : {}} />
+                  style={shownBubble.style ? { borderTopColor: shownBubble.style.bg } : {}} />
               </div>
             )}
           </div>
