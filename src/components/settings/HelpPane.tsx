@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, Eye, Megaphone, Move, MousePointerClick, Moon, SlidersHorizontal, Zap } from 'lucide-react';
+import { ArrowLeftRight, Calendar, Eye, Megaphone, Move, MousePointerClick, Moon, Power, SlidersHorizontal, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 const TIPS: [LucideIcon, string][] = [
@@ -11,6 +11,7 @@ const TIPS: [LucideIcon, string][] = [
   [Calendar, '25일엔 월급 문구, 금요일엔 불금 문구가 나와요!'],
   [Moon, '마우스를 30초간 안 움직이면 버디가 낮잠 자요'],
   [ArrowLeftRight, '가끔 화면 반대편으로 순간이동해요'],
+  [Power, '설정창을 닫아도 버디는 계속 실행돼요. 완전히 끄려면 트레이 아이콘 → 앱 종료'],
 ];
 
 export default function HelpPane() {

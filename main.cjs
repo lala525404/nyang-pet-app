@@ -1,5 +1,6 @@
 ﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 const isDev = !app.isPackaged;
 
@@ -115,6 +116,25 @@ function setPetAlwaysOnTop(flag) {
   }
 }
 
+// 한 번만 보여 주는 안내를 봤는지는 userData의 flags.json에 남긴다
+const flagsFile = () => path.join(app.getPath('userData'), 'flags.json');
+function readFlags() {
+  try { return JSON.parse(fs.readFileSync(flagsFile(), 'utf8')) || {}; } catch { return {}; }
+}
+function markFlag(name) {
+  try { fs.writeFileSync(flagsFile(), JSON.stringify({ ...readFlags(), [name]: true })); } catch {}
+}
+
+const CLOSE_NOTICE = '버디는 계속 놀고 있어요. 완전히 끄려면 트레이 아이콘 → 앱 종료';
+
+// 설정창을 처음 X로 닫을 때 버디 위에 한 번만 알려 준다. 버디가 숨겨져 있으면 안 보이므로 다음 기회로 미룬다.
+function maybeShowCloseNotice() {
+  if (isQuitting || readFlags().closeNoticeShown) return;
+  if (!petWindow || petWindow.isDestroyed() || !petWindow.isVisible()) return;
+  petWindow.webContents.send('show-toast', CLOSE_NOTICE, 6000);
+  markFlag('closeNoticeShown');
+}
+
 function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show(); settingsWindow.focus(); return;
@@ -141,7 +161,7 @@ function createSettingsWindow() {
   });
   settingsWindow.loadURL(getPageURL('/settings'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());
-  settingsWindow.on('close', () => { settingsWindow = null; });
+  settingsWindow.on('close', () => { settingsWindow = null; maybeShowCloseNotice(); });
 }
 
 function createPetWindow() {

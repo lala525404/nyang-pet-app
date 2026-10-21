@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsFlushed:  () => ipcRenderer.send('settings-flushed'),
   onShowToast:      (cb) => {
     ipcRenderer.removeAllListeners('show-toast');
-    const handler = (_e, msg) => cb(msg);
+    const handler = (_e, msg, ms) => cb(msg, ms);
     ipcRenderer.on('show-toast', handler);
     return () => ipcRenderer.removeListener('show-toast', handler);
   },

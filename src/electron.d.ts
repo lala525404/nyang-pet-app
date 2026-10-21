@@ -18,7 +18,7 @@ interface ElectronAPI {
   syncSettings: (settings: Record<string, unknown>) => void;
   onFlushSettings: (cb: () => void) => () => void;
   settingsFlushed: () => void;
-  onShowToast: (cb: (msg: string) => void) => () => void;
+  onShowToast: (cb: (msg: string, ms?: number) => void) => () => void;
   getAllDisplays: () => Promise<{ all: { minX: number; minY: number; width: number; height: number }; monitors: { id: number; displayId: number; isPrimary: boolean; label: string; bounds: { x: number; y: number; width: number; height: number } }[] }>;
   getPetPosition: () => Promise<{x:number,y:number}|null>;
 }

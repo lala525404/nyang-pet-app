@@ -281,7 +281,7 @@ export default function PetPage() {
     toastTimerRef.current = setTimeout(() => setToast(null), ms);
   }, []);
   useEffect(() => {
-    const unsubscribe = window.electronAPI?.onShowToast?.((msg) => showToast(msg));
+    const unsubscribe = window.electronAPI?.onShowToast?.((msg, ms) => showToast(msg, ms));
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
