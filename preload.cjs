@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   settingsFlushed:  () => ipcRenderer.send('settings-flushed'),
   // ★ 사진 교체: 메인이 하나뿐인 교체 시계를 돌리고, 설정창 미리보기와 버디가 같은 값을 받는다
+  introSeen:        () => ipcRenderer.send('intro-seen'),
   getAlertState:    () => ipcRenderer.invoke('get-alert-state'),
   onAlertState:     (cb) => {
     const handler = (_e, active) => cb(!!active);

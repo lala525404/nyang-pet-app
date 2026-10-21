@@ -249,3 +249,9 @@ button.st-slot:active { transform: scale(0.97); }
   .st-pop { transform: none !important; }
   .st-rbtn:active, .st-chip:active, .st-zone:active, .st-tile:active, .st-step:active, .st-pillbtn:active { transform: none; }
 }
+
+/* 움직임 줄이기: 인트로 없이 150ms 페이드만 (data-fade a/b를 번갈아 바꿔 다시 재생) */
+.settings-root[data-fade="a"] { animation: st-intro-fade-a 150ms linear both; }
+.settings-root[data-fade="b"] { animation: st-intro-fade-b 150ms linear both; }
+@keyframes st-intro-fade-a { from { opacity: 0; } to { opacity: 1; } }
+@keyframes st-intro-fade-b { from { opacity: 0; } to { opacity: 1; } }

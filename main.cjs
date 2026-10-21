@@ -140,9 +140,14 @@ const flagsFile = () => path.join(app.getPath('userData'), 'flags.json');
 function readFlags() {
   try { return JSON.parse(fs.readFileSync(flagsFile(), 'utf8')) || {}; } catch { return {}; }
 }
-function markFlag(name) {
-  try { fs.writeFileSync(flagsFile(), JSON.stringify({ ...readFlags(), [name]: true })); } catch {}
+function markFlag(name, value = true) {
+  try { fs.writeFileSync(flagsFile(), JSON.stringify({ ...readFlags(), [name]: value })); } catch {}
 }
+
+// 설정창 시작 인트로: 이 버전에서 아직 보여 준 적이 없으면 첫 설정창에만 intro=1을 붙인다(새로 설치했거나 새 버전으로 올린 뒤 처음).
+// 보여 줬다는 표시는 설정창이 인트로를 시작할 때 알려 온다. 설정의 "시작 인트로 보기"가 꺼져 있으면 설정창이 알아서 건너뛴다.
+ipcMain.on('intro-seen', () => markFlag('introSeenVersion', app.getVersion()));
+const needsIntro = () => readFlags().introSeenVersion !== app.getVersion();
 
 const CLOSE_NOTICE = '버디는 계속 놀고 있어요. 완전히 끄려면 트레이 아이콘 → 앱 종료';
 
@@ -212,7 +217,7 @@ function createSettingsWindow() {
   settingsWindow.webContents.on('will-navigate', (e, url) => {
     if (url !== settingsWindow.webContents.getURL()) e.preventDefault();
   });
-  settingsWindow.loadURL(getPageURL('/settings'));
+  settingsWindow.loadURL(getPageURL(needsIntro() ? '/settings?intro=1' : '/settings'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());
   // 사용자가 직접 조절한 경우(will-resize)에만 저장한다. 기본 크기를 그대로 쓰는 동안은 저장하지 않아야 나중에 기본 크기가 바뀌어도 반영된다.
   let sizeTimer = null, userResized = false;

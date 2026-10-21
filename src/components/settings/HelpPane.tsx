@@ -1,5 +1,7 @@
 import { ArrowLeftRight, Calendar, Eye, Megaphone, Move, MousePointerClick, Moon, Power, SlidersHorizontal, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { Switch } from '../ui';
+import type { PaneProps } from './shared';
 
 const TIPS: [LucideIcon, string][] = [
   [Move, '드래그해서 화면 어디든 이동 가능해요'],
@@ -14,7 +16,7 @@ const TIPS: [LucideIcon, string][] = [
   [Power, '설정창을 닫아도 버디는 계속 실행돼요. 완전히 끄려면 트레이 아이콘 → 앱 종료'],
 ];
 
-export default function HelpPane() {
+export default function HelpPane({ settings, patch, onReplayIntro }: Pick<PaneProps, 'settings' | 'patch'> & { onReplayIntro: () => void }) {
   return (
     <section className="st-pane">
       <article className="st-card st-help">
@@ -24,6 +26,11 @@ export default function HelpPane() {
             <span>{text}</span>
           </div>
         ))}
+      </article>
+      <article className="st-card st-intro-card">
+        <div className="st-row"><span>시작 인트로 보기</span><Switch checked={settings.introEnabled !== false} onChange={v => patch({ introEnabled: v })} label="시작 인트로 보기" /></div>
+        <p className="ui-note">새 버전을 처음 열 때 하트가 인사해요. 한 번 보면 다음 새 버전까지는 나오지 않아요.</p>
+        <button type="button" className="ui-btn" onClick={onReplayIntro}>인트로 다시 보기</button>
       </article>
       <p className="ui-note st-credit">
         버디 이미지: Twemoji © Twitter, Inc. and other contributors · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
