@@ -28,6 +28,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('flush-settings', handler);
   },
   settingsFlushed:  () => ipcRenderer.send('settings-flushed'),
+  // ★ 사진 교체: 메인이 하나뿐인 교체 시계를 돌리고, 설정창 미리보기와 버디가 같은 값을 받는다
+  getPhotoState:    () => ipcRenderer.invoke('get-photo-state'),
+  onPhotoState:     (cb) => {
+    const handler = (_e, state) => cb(state);
+    ipcRenderer.on('photo-state', handler);
+    return () => ipcRenderer.removeListener('photo-state', handler);
+  },
   onShowToast:      (cb) => {
     ipcRenderer.removeAllListeners('show-toast');
     const handler = (_e, msg, ms) => cb(msg, ms);

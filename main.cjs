@@ -328,6 +328,7 @@ function stopAllTimers() {
   stopAlwaysOnTopKeepAlive();
   stopYarTimer();
   stopBreakTimeChecker();
+  stopPhotoRotation();
 }
 
 // 설정창에 저장을 요청하고, 끝났다는 답이 오거나 SAVE_WAIT_MS가 지나면 넘어간다
@@ -503,8 +504,59 @@ ipcMain.on('set-yar-timer', (_e, intervalMinutes) => {
   setYarMinutes(intervalMinutes);
 });
 
+// ─── 사진 교체 ────────────────────────────────────────────────────────────────
+// 교체 시계는 메인에서 하나만 돌린다. 설정창 미리보기와 실제 버디가 같은 순서·같은 주기로 같은 사진을 보여주려면
+// 두 창이 각자 세지 않고 이 값을 같이 받아야 한다. (예전에는 버디 창이 교체 주기 타이머와 졸림 방지 타이머로 따로 셌다)
+let photoIndex = 0;          // 지금 보이는 사진 (내 사진 목록에서 빈 칸을 뺀 순서 기준)
+let photoCount = 0;
+let photoIntervalSec = 0;    // 0이면 교체 꺼짐 (사진 2장 미만, 동물 모드, 교체 끔)
+let photoFirst = null;       // 대표(첫 번째) 사진. 바뀌면 처음부터 다시 보여준다
+let photoTimer = null;
+
+const photoState = () => ({ index: photoIndex, count: photoCount, intervalSec: photoIntervalSec });
+
+function broadcastPhotoState() {
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { if (!w.isDestroyed()) w.webContents.send('photo-state', photoState()); } catch {}
+  }
+}
+
+function stopPhotoRotation() {
+  if (photoTimer) { clearInterval(photoTimer); photoTimer = null; }
+}
+
+function startPhotoRotation() {
+  stopPhotoRotation();
+  if (!photoIntervalSec || photoCount < 2) return;
+  photoTimer = setInterval(() => {
+    photoIndex = (photoIndex + 1) % photoCount;
+    broadcastPhotoState();
+  }, photoIntervalSec * 1000);
+}
+
+function configurePhotoRotation(settings) {
+  const images = Array.isArray(settings.customImages) ? settings.customImages.filter(Boolean) : [];
+  const count = images.length;
+  const on = settings.useCustomMode !== false && count >= 2 && settings.imageRotateEnabled !== false;
+  const interval = on ? Math.max(30, Number(settings.imageRotateInterval) || 60) : 0;
+  const first = images[0] || null;
+
+  const firstChanged = first !== photoFirst;      // 대표가 바뀌었거나 사진을 올리고 지운 경우
+  const intervalChanged = interval !== photoIntervalSec;
+  const countChanged = count !== photoCount;
+
+  photoFirst = first; photoCount = count; photoIntervalSec = interval;
+  if (firstChanged || !on || photoIndex >= count) photoIndex = 0;   // 끄면 대표 사진으로 돌아간다
+  if (firstChanged || intervalChanged || countChanged || (on && !photoTimer)) startPhotoRotation();
+  if (!on) stopPhotoRotation();
+  broadcastPhotoState();
+}
+
+ipcMain.handle('get-photo-state', () => photoState());
+
 // ★ 앱 시작시 설정 동기화 - PetPage에서 설정 로드 후 호출
 ipcMain.on('sync-settings', (_e, settings) => {
+  configurePhotoRotation(settings);
   // 야르타임 설정 동기화
   setYarMinutes(settings.yarEnabled && settings.yarInterval > 0 ? settings.yarInterval : 0);
   if (typeof settings.alwaysOnTop === 'boolean' && settings.alwaysOnTop !== alwaysOnTopFlag) {

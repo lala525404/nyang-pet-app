@@ -208,7 +208,7 @@ export default function SettingsPage() {
       <main className="st-main">
         <header className="st-head">
           <div>
-            <p className="st-brand heart-mark-host"><HeartMark motion="thump" className="st-brand-heart" />최애를 풀어놨습니다 <small>v1.1.0</small></p>
+            <p className="st-brand heart-mark-host"><HeartMark motion="thump" className="st-brand-heart" />최애를 풀어놨습니다 <small>v1.1.1</small></p>
             <h1 className="st-title">{info.title}</h1>
             <p className="st-desc">{info.desc}</p>
           </div>

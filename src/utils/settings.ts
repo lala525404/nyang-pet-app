@@ -18,6 +18,7 @@ export interface PetSettings {
   customImages: (string | null)[];
   distractInterval: number;
   imageRotateInterval: number;
+  imageRotateEnabled: boolean; // 사진 교체 켬/끔. 예전 설정에는 없으므로 기본값(켬)이 그대로 이어진다
   moveSpeed: number;
   zone: number;
   monitor: number; // -1 = 전체 모니터
@@ -43,7 +44,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   alwaysOnTop: true, petVisible: true, distractEmoji: true,
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
-  imageRotateInterval: 60, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  imageRotateInterval: 60, imageRotateEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
   lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, alarms: [],
@@ -100,6 +101,27 @@ export function saveSettings(s: PetSettings): boolean {
   } catch {
     return false;
   }
+}
+
+// 내 사진 목록에서 빈 칸을 뺀 순서. 첫 번째가 대표(점심·퇴근·알람 알림 카드에 나오는 사진)다.
+export const activePhotos = (images: (string | null)[]): string[] => images.filter(Boolean) as string[];
+
+// 지정한 칸의 사진을 대표(맨 앞)로 옮긴다. 나머지 사진의 순서와 빈 칸 위치는 그대로 둔다.
+export function makeRepresentative(images: (string | null)[], slot: number): (string | null)[] {
+  if (!images[slot]) return images;
+  const filled = images.map((img, i) => (img ? i : -1)).filter(i => i >= 0);
+  if (filled[0] === slot) return images;
+  const order = [slot, ...filled.filter(i => i !== slot)];
+  const next = [...images];
+  filled.forEach((pos, k) => { next[pos] = images[order[k]]; });
+  return next;
+}
+
+// 교체 주기 표기: 30초, 1분, 1분 30초
+export function formatInterval(sec: number): string {
+  if (sec < 60) return `${sec}초`;
+  const m = Math.floor(sec / 60), r = sec % 60;
+  return r ? `${m}분 ${r}초` : `${m}분`;
 }
 
 // 시각 표기 통일: "18:00" → "오후 6:00" (앞자리 0 없음)

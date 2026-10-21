@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import '../styles/pet.css';
 import { Bell } from 'lucide-react';
 import CatEmoji from '../components/CatEmoji';
+import { usePhotoState } from '../hooks/usePhotoState';
 import { readStoredSettings } from '../utils/settings';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
@@ -77,6 +78,7 @@ interface Settings {
   customImages: (string | null)[];
   distractInterval: number;
   imageRotateInterval: number;
+  imageRotateEnabled: boolean;
   useCustomMode: boolean;
   customShape: CustomShape;
   moveSpeed: number;
@@ -91,7 +93,7 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
-  distractInterval: 30, imageRotateInterval: 60, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  distractInterval: 30, imageRotateInterval: 60, imageRotateEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
 };
 
@@ -292,7 +294,7 @@ export default function PetPage() {
   const [mood, setMood] = useState('normal');
   const [particles, setParticles] = useState<Particle[]>([]);
   const [ambushEmoji, setAmbushEmoji] = useState<string | null>(null);
-  const [customImgIndex, setCustomImgIndex] = useState(0);
+  const { index: customImgIndex } = usePhotoState(); // 몇 번째 사진인지는 메인의 교체 시계가 정한다
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   // ★ 모션 상태
   const [motionClass, setMotionClass] = useState(''); // 벽쿵, 낮잠 등
@@ -618,8 +620,7 @@ export default function PetPage() {
       const anim = animalRef.current;
 
       if (custom && imgs.length > 0) {
-        // 커스텀 모드: 이미지 로테이션 + MZ 말풍선
-        setCustomImgIndex(prev => (prev + 1) % imgs.length);
+        // 커스텀 모드: MZ 말풍선 (사진 교체는 교체 주기 설정을 따라 메인이 따로 처리한다)
         showBubble(rand(CUSTOM_NAGS), 'happy', true);
         // 1.5초 뒤 기습 이모지
         setTimeout(() => {
@@ -646,23 +647,6 @@ export default function PetPage() {
 
     return () => clearInterval(timer);
   }, [showBubble, stateRef]); // 마운트 시 1번만 등록, 내부에서 ref로 최신값 읽음
-
-  // ★ 이미지 로테이션 (imageRotateInterval 기준, 졸림방지와 별도)
-  useEffect(() => {
-    let imgElapsed = 0;
-    const timer = setInterval(() => {
-      const s = settingsRef.current;
-      const imgs = activeImagesRef.current;
-      const custom = isCustomModeRef.current;
-      if (!custom || imgs.length < 2) { imgElapsed = 0; return; }
-      imgElapsed += 1000;
-      const target = Math.max(30, s.imageRotateInterval) * 1000;
-      if (imgElapsed < target) return;
-      imgElapsed = 0;
-      setCustomImgIndex(prev => (prev + 1) % imgs.length);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []); // 마운트 시 1번만
 
   // ── 드래그 ────────────────────────────────────────────────────────
   const handleMouseDown = (e: React.MouseEvent) => {

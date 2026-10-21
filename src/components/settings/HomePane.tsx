@@ -4,7 +4,8 @@ import { ChevronDown, LogOut, Minus, Plus, Utensils } from 'lucide-react';
 import CatEmoji from '../CatEmoji';
 import { Segmented, Switch, RangeInput } from '../ui';
 import { getAnimal } from '../../data/animals';
-import { MODE_PRESETS, formatTime } from '../../utils/settings';
+import { MODE_PRESETS, activePhotos, formatInterval, formatTime } from '../../utils/settings';
+import { usePhotoState } from '../../hooks/usePhotoState';
 import type { PetSettings } from '../../utils/settings';
 import { MODE_NAME } from './shared';
 import type { Monitor, PaneProps } from './shared';
@@ -130,8 +131,16 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   const closePop = (key: string) => () => setOpenKey(cur => (cur === key ? null : cur));
 
   const animal = getAnimal(s.animalId);
-  const images = s.customImages.filter(Boolean) as string[];
+  const images = activePhotos(s.customImages);
   const custom = s.useCustomMode && images.length > 0;
+
+  // 사진 교체: 켜져 있으면 버디와 같은 교체 시계(메인)를 따라 같은 순서·주기로 보여준다. 꺼져 있으면 대표 사진.
+  const rotateOn = s.useCustomMode && images.length >= 2 && s.imageRotateEnabled !== false;
+  const photo = usePhotoState();
+  const liveIndex = rotateOn ? photo.index % images.length : 0;
+  const [pinned, setPinned] = useState<number | null>(null);   // 점을 눌러 잠깐 다른 사진을 볼 때
+  useEffect(() => { setPinned(null); }, [liveIndex, images.length]);   // 다음 교체나 사진 수 변경이면 다시 버디를 따라간다
+  const shown = pinned !== null && pinned < images.length ? pinned : liveIndex;
   const size = s.size || 100;
   const sizeWord = size === 70 ? '작은' : size === 100 ? '중간' : size === 150 ? '큰' : `${size}%`;
   const activeMonitor = s.monitor >= 0 ? monitors.find(m => m.displayId === s.monitor) : undefined;
@@ -141,6 +150,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
     return parts.length ? parts.join(' · ') : '전체 화면';
   })();
 
+  const rotateEnabled = s.imageRotateEnabled !== false;
   const chips: { id: string; label: string; value: string; body: ReactNode }[] = [
     {
       id: 'mode', label: '모드', value: MODE_NAME[s.buddyMode] || 'Buddy',
@@ -255,6 +265,23 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
         </>
       ),
     },
+    // 사진이 2장 이상일 때만 보인다. 켜기/끄기와 주기, 기존 imageRotateInterval 키를 그대로 쓴다.
+    ...(s.useCustomMode && images.length >= 2 ? [{
+      id: 'rotate', label: '사진 교체',
+      value: rotateEnabled ? `${formatInterval(s.imageRotateInterval)}마다 · ${images.length}장` : '끔',
+      body: (
+        <>
+          <div className="st-row"><span>사진 교체 사용</span><Switch checked={rotateEnabled} onChange={v => patch({ imageRotateEnabled: v })} label="사진 교체 사용" /></div>
+          {rotateEnabled && (
+            <>
+              <div className="st-row"><span>주기</span><span className="ui-val">{formatInterval(s.imageRotateInterval)}마다</span></div>
+              <RangeInput min={30} max={1800} step={30} value={s.imageRotateInterval} onChange={v => patch({ imageRotateInterval: v })} label="사진 교체 주기" />
+            </>
+          )}
+          <p className="ui-note">{rotateEnabled ? '버디와 미리보기가 같은 순서로 사진을 번갈아 보여줘요.' : '꺼 두면 대표 사진만 보여줘요.'}</p>
+        </>
+      ),
+    }] : []),
   ];
 
   const bobSeconds = (2.8 - s.moveSpeed * 0.22).toFixed(2);
@@ -290,10 +317,19 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
             {!s.petVisible && <span className="st-stage-state">버디를 숨겨 둔 상태예요</span>}
             <div className="st-pet" style={{ '--s': size / 100 } as CSSProperties}>
               <div className="st-pet-bob" style={{ '--bob': `${bobSeconds}s` } as CSSProperties}>
-                <CatEmoji emoji={animal.emoji} size={156} forceImage customImage={custom ? images[0] : null} customShape={s.customShape} />
+                <CatEmoji emoji={animal.emoji} size={156} forceImage customImage={custom ? images[shown] : null} customShape={s.customShape} />
               </div>
             </div>
           </div>
+          {custom && images.length >= 2 && (
+            <div className="st-dots" role="group" aria-label="내 사진 보기">
+              {images.map((_, i) => (
+                <button key={i} type="button" className="st-dotbtn" aria-pressed={shown === i}
+                  aria-label={`사진 ${i + 1}${i === 0 ? '(대표)' : ''} 보기`} onClick={() => setPinned(i)} />
+              ))}
+              <span className="st-dots-note">{rotateOn ? `${formatInterval(s.imageRotateInterval)}마다 번갈아` : '교체 꺼짐'}</span>
+            </div>
+          )}
           <div className="st-actions">
             <button type="button" className="ui-btn ui-btn--primary" onClick={() => { setOpenKey(null); onOpenAnimal(); }}>동물 바꾸기</button>
             <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onUpload(); }}>사진 올리기</button>
