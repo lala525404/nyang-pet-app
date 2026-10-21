@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties, ReactNode } from 'react';
 import { ChevronDown, LogOut, Minus, Plus, Utensils } from 'lucide-react';
 import CatEmoji from '../CatEmoji';
@@ -37,7 +38,13 @@ function QuadIcon({ zone }: { zone: number }) {
   );
 }
 
-// 칩: 작은 라벨 + 굵은 현재 값. 누르면 칩 바로 아래 팝오버에서 바꾼다.
+// 칩: 작은 라벨 + 굵은 현재 값. 누르면 팝오버에서 바꾼다.
+// 팝오버는 창 기준 fixed 위치로 body에 그린다(포털). 스크롤하는 홈 영역이나 overflow 조상에 갇혀 잘리지 않는다.
+// 기본은 칩 아래, 아래 공간이 모자라면 위로 열고, 둘 다 모자라면 더 넓은 쪽에서 높이를 제한해 팝오버 안에서 스크롤한다.
+// 좌우는 창 안으로 민다. 창 크기·스크롤이 바뀌거나 팝오버 내용 높이가 바뀌면 다시 계산한다.
+type PopPlace = { left: number; top: number | null; bottom: number | null; maxH: number | null; side: 'bottom' | 'top' };
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
 function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   id: string; label: string; value: string; end: boolean;
   open: boolean; onOpen: () => void; onClose: () => void; children: ReactNode;
@@ -48,10 +55,57 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<PopPlace>({ left: 0, top: 0, bottom: null, maxH: null, side: 'bottom' });
+  const [fade, setFade] = useState(false);
+
+  // 스크롤할 내용이 더 남아 있을 때만 아래 가장자리에 페이드를 보인다
+  const updateFade = useCallback(() => {
+    const pop = popRef.current;
+    if (!pop) return;
+    setFade(pop.scrollHeight > pop.clientHeight + 2 && pop.scrollTop + pop.clientHeight < pop.scrollHeight - 2);
+  }, []);
+
+  const reposition = useCallback(() => {
+    const pop = popRef.current, btn = btnRef.current;
+    if (!pop || !btn) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const chip = btn.getBoundingClientRect();
+    const GAP = 8, MARGIN = 12;
+    const natural = pop.scrollHeight + (pop.offsetHeight - pop.clientHeight);   // 테두리 포함한 원래 높이
+    const below = vh - chip.bottom - GAP - MARGIN;
+    const above = chip.top - GAP - MARGIN;
+    let side: 'bottom' | 'top' = 'bottom';
+    let maxH: number | null = null;
+    if (natural <= below) side = 'bottom';
+    else if (natural <= above) side = 'top';
+    else { side = below >= above ? 'bottom' : 'top'; maxH = Math.max(140, Math.floor(side === 'bottom' ? below : above)); }
+    const width = pop.offsetWidth;
+    let left = end ? chip.right - width : chip.left;
+    left = Math.round(Math.min(Math.max(left, MARGIN), Math.max(MARGIN, vw - MARGIN - width)));
+    const next: PopPlace = side === 'bottom'
+      ? { left, top: Math.round(chip.bottom + GAP), bottom: null, maxH, side }
+      : { left, top: null, bottom: Math.round(vh - chip.top + GAP), maxH, side };
+    setPlace(prev => (prev.left === next.left && prev.top === next.top && prev.bottom === next.bottom && prev.maxH === next.maxH && prev.side === next.side ? prev : next));
+  }, [end]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    const pop = popRef.current;
+    const ro = typeof ResizeObserver !== 'undefined' && pop ? new ResizeObserver(() => { reposition(); updateFade(); }) : null;
+    if (ro && pop) ro.observe(pop);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);   // 홈 영역을 스크롤하면 칩이 움직이므로 따라간다
+    return () => { ro?.disconnect(); window.removeEventListener('resize', reposition); window.removeEventListener('scroll', reposition, true); };
+  }, [open, reposition, updateFade]);
+  useEffect(() => { if (open) updateFade(); }, [open, place, updateFade]);
 
   useEffect(() => {
     if (!open) return;
-    const outside = (e: Event) => { if (!wrapRef.current?.contains(e.target as Node)) onCloseRef.current(); };
+    const outside = (e: Event) => {
+      const t = e.target as Node;
+      if (!wrapRef.current?.contains(t) && !popRef.current?.contains(t)) onCloseRef.current();
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); onCloseRef.current(); btnRef.current?.focus(); }
     };
@@ -64,6 +118,25 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  // 팝오버가 body에 있어 Tab 순서가 칩에서 떨어져 있으므로, 열려 있는 동안은 팝오버 안에서 Tab이 순환하게 한다
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const items = Array.from(popRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+
+  const pop = (
+    <div ref={popRef} className="st-pop" id={`pop-${id}`} role="dialog" aria-label={`${label} 설정`}
+      data-open={open ? '' : undefined} data-end={end ? '' : undefined} data-side={place.side} data-fade={fade ? '' : undefined}
+      onScroll={updateFade} onKeyDown={trapTab}
+      style={{ left: place.left, top: place.top ?? undefined, bottom: place.bottom ?? undefined, maxHeight: place.maxH ?? undefined }}>
+      {children}
+    </div>
+  );
 
   return (
     <div className="st-chip-wrap" ref={wrapRef}>
@@ -78,10 +151,7 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
         <span className="st-chip-label">{label}</span>
         <span className="st-chip-value">{value}</span>
       </button>
-      <div ref={popRef} className="st-pop" id={`pop-${id}`} role="dialog" aria-label={`${label} 설정`}
-        data-open={open ? '' : undefined} data-end={end ? '' : undefined}>
-        {children}
-      </div>
+      {createPortal(pop, document.body)}
     </div>
   );
 }

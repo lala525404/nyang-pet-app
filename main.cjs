@@ -154,13 +154,47 @@ function maybeShowCloseNotice() {
   markFlag('closeNoticeShown');
 }
 
+// ─── 설정창 크기 ──────────────────────────────────────────────────────────────
+// 기본 크기는 홈 화면(칩, 점심·퇴근 카드)이 스크롤 없이 보이는 크기(내용 약 704px + 제목 표시줄). 작업 영역의 90%를 넘지 않고,
+// 화면이 작으면 줄인다. 최소 크기는 700x580(화면이 그보다 작으면 화면에 맞춘다). 사용자가 마지막으로 조절한 크기가 있으면 그걸 쓴다.
+const SETTINGS_MIN = { width: 700, height: 580 };
+const SETTINGS_DEFAULT = { width: 960, height: 770 };
+const windowSizeFile = () => path.join(app.getPath('userData'), 'window.json');
+
+function readSavedWindowSize() {
+  try {
+    const j = JSON.parse(fs.readFileSync(windowSizeFile(), 'utf8'));
+    if (Number.isFinite(j.width) && Number.isFinite(j.height)) return { width: Math.round(j.width), height: Math.round(j.height) };
+  } catch {}
+  return null;
+}
+
+function saveWindowSize(win) {
+  try {
+    if (win.isDestroyed() || win.isMaximized() || win.isMinimized() || win.isFullScreen()) return;
+    const [width, height] = win.getSize();
+    fs.writeFileSync(windowSizeFile(), JSON.stringify({ width, height }));
+  } catch {}
+}
+
+function initialSettingsSize() {
+  const wa = screen.getPrimaryDisplay().workAreaSize;
+  const min = { width: Math.min(SETTINGS_MIN.width, wa.width), height: Math.min(SETTINGS_MIN.height, wa.height) };
+  const saved = readSavedWindowSize();
+  const limit = saved ? wa : { width: Math.floor(wa.width * 0.9), height: Math.floor(wa.height * 0.9) };   // 직접 조절한 크기는 작업 영역까지
+  const base = saved || SETTINGS_DEFAULT;
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+  return { min, width: clamp(base.width, min.width, limit.width), height: clamp(base.height, min.height, limit.height) };
+}
+
 function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show(); settingsWindow.focus(); return;
   }
+  const size = initialSettingsSize();
   settingsWindow = new BrowserWindow({
-    width: 900, height: 700,
-    minWidth: 700, minHeight: 580,
+    width: size.width, height: size.height,
+    minWidth: size.min.width, minHeight: size.min.height,
     frame: true, resizable: true, show: false,
     title: '최애를 풀어놨습니다',
     backgroundColor: '#F4F4F4',
@@ -180,7 +214,12 @@ function createSettingsWindow() {
   });
   settingsWindow.loadURL(getPageURL('/settings'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());
-  settingsWindow.on('close', () => { settingsWindow = null; maybeShowCloseNotice(); });
+  // 사용자가 직접 조절한 경우(will-resize)에만 저장한다. 기본 크기를 그대로 쓰는 동안은 저장하지 않아야 나중에 기본 크기가 바뀌어도 반영된다.
+  let sizeTimer = null, userResized = false;
+  const win = settingsWindow;
+  win.on('will-resize', () => { userResized = true; });
+  win.on('resize', () => { if (!userResized) return; clearTimeout(sizeTimer); sizeTimer = setTimeout(() => saveWindowSize(win), 500); });
+  settingsWindow.on('close', () => { clearTimeout(sizeTimer); if (userResized) saveWindowSize(win); settingsWindow = null; maybeShowCloseNotice(); });
 }
 
 function createPetWindow() {

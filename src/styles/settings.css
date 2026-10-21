@@ -112,18 +112,33 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 .st-actions { display: flex; gap: 12px; }
 .st-actions .ui-btn { flex: 1 1 0; padding: 0 12px; }
 
-/* ── 칩 팝오버: 칩 바로 아래 ── */
+/* ── 칩 팝오버: 창 기준 fixed(포털로 body에 그려짐). 위치·위/아래·높이는 HomePane의 Chip이 계산한다 ── */
 .st-pop {
-  position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; width: min(296px, calc(100vw - 48px)); padding: 16px;
+  position: fixed; z-index: 50; width: min(296px, calc(100vw - 48px)); padding: 16px;
   display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
   background: var(--ui-panel); border: 1px solid var(--ui-line); border-radius: var(--ui-r-panel); box-shadow: var(--ui-shadow-float);
+  /* 설정창 밖(body)에 그려지므로 글꼴·색·포커스 링을 직접 지정한다 */
+  color: var(--ui-ink); color-scheme: light;
+  font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
   opacity: 0; visibility: hidden; transform: scale(0.96); transform-origin: top left;
   transition: opacity 120ms var(--ui-ease-out), transform 120ms var(--ui-ease-out), visibility 0s linear 120ms;
 }
-.st-pop[data-end] { left: auto; right: 0; transform-origin: top right; }
+html[data-theme="dark"] .st-pop { color-scheme: dark; }
+.st-pop :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.st-pop > * { flex-shrink: 0; }
+.st-pop[data-end] { transform-origin: top right; }
+.st-pop[data-side="top"] { transform-origin: bottom left; }
+.st-pop[data-side="top"][data-end] { transform-origin: bottom right; }
 .st-pop[data-open] {
   opacity: 1; visibility: visible; transform: none;
   transition: opacity 160ms var(--ui-ease-out), transform 160ms var(--ui-ease-out), visibility 0s;
+}
+/* 스크롤할 내용이 더 있을 때만 아래 가장자리에 옅은 페이드 */
+.st-pop[data-fade]::after {
+  content: ''; position: sticky; bottom: -16px; flex: none; height: 32px; margin: -32px -16px -16px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--ui-panel) 88%); border-radius: 0 0 var(--ui-r-panel) var(--ui-r-panel);
 }
 .st-zones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .st-zone {
