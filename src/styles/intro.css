@@ -41,3 +41,10 @@
 .intro-ebtn[data-main]:hover { opacity: .9; background: var(--ui-ink); }
 .intro-ebtn:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .intro-ebtn:active { transform: none; } }
+
+/* 스파클: 4점 별 모양, 단색 플랫. 라이트(A)에서는 진한 색, 다크(B)에서는 흰색 */
+.intro-sparks { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.intro-spark { position: absolute; left: 0; top: 0; width: 10px; height: 10px; opacity: 0; will-change: transform, opacity;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+.intro[data-v="A"] .intro-spark { background: #000; }
+.intro[data-v="B"] .intro-spark { background: #fff; }

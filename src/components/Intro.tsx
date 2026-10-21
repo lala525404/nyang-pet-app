@@ -26,6 +26,9 @@ const SPEC_SHIFT = [4, 3];   // 반사광이 반대쪽으로 움직이는 거리
 const LOOK_START_MS = 1100;  // 착지 뒤부터 눈이 마우스를 따라간다
 const LOOK_IDLE_MS = 3000;   // 마우스가 이만큼 멈추면 가운데로 돌아온다
 
+// 입구 버튼 호버 연출(인트로 화면 안에서만 쓰는 예외: 글로우·반짝임·스파클). 4점 별 모양의 단색 플랫 조각을 풀에서 꺼내 쓰고, 동시 상한은 풀 크기뿐이다.
+const SPARK = { pool: 64, count: { new: 12, old: 10 } as Record<EntranceKind, number>, click: 10, dist: 120, durMs: 1100, sizeMin: 4, sizeMax: 10, minGapMs: 400 };
+
 // 잔여동작: 착지·두근 뒤에 감쇠하는 탄성 진동. 몸은 크기·기울기, 눈은 몸보다 늦게 따라오고, 그림자는 몸을 따라간다. [값, 오프셋, 기울기]
 const LAND = {
   dur: 640,
@@ -62,6 +65,7 @@ export default function Intro({ onDone, entrance, onChoose }: { onDone: () => vo
   const bandRef = useRef<HTMLElement>(null);
   const entryRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Record<EntranceKind, HTMLButtonElement | null>>({ new: null, old: null });
+  const sparkEls = useRef<(HTMLElement | null)[]>([]);
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
   const chooseRef = useRef(onChoose);
@@ -118,6 +122,54 @@ export default function Intro({ onDone, entrance, onChoose }: { onDone: () => vo
       }
     }
 
+    // ── 스파클·빛 쓸기·두근(입구 버튼 호버/포커스/터치/클릭). 움직임 줄이기에서는 쓰지 않는다 ──
+    const pool = Array.from({ length: SPARK.pool }, () => ({ live: false, t0: 0, dur: 0, x: 0, y: 0, dx: 0, dy: 0, rot: 0 }));
+    const burst = (n: number, from: HTMLElement) => {
+      if (rm) return;
+      const now = performance.now();
+      const cr = cover.getBoundingClientRect(), br = from.getBoundingClientRect();
+      const hx = geo.cx - cr.left, hy = geo.cy - cr.top + geo.hs * 0.02;
+      for (let i = 0; i < n; i++) {
+        const idx = pool.findIndex(p => !p.live);
+        const el = idx < 0 ? null : sparkEls.current[idx];
+        if (idx < 0 || !el) break;
+        const p = pool[idx];
+        let ox: number, oy: number;
+        if (i % 2 === 0) { const a = Math.random() * Math.PI * 2; ox = hx + Math.cos(a) * geo.hs * 0.46; oy = hy + Math.sin(a) * geo.hs * 0.42; }   // 절반은 하트 둘레
+        else { ox = br.left - cr.left + Math.random() * br.width; oy = br.top - cr.top + br.height * 0.2; }                                         // 절반은 버튼 쪽
+        const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.9, far = SPARK.dist * (0.55 + Math.random() * 0.6);
+        const sz = SPARK.sizeMin + Math.random() * (SPARK.sizeMax - SPARK.sizeMin);
+        Object.assign(p, { live: true, t0: now + Math.random() * 160, dur: SPARK.durMs * (0.8 + Math.random() * 0.35), x: ox, y: oy, dx: Math.cos(ang) * far, dy: Math.sin(ang) * far, rot: (Math.random() - 0.5) * 140 });
+        el.style.width = el.style.height = sz + 'px';
+        el.style.margin = `${-sz / 2}px 0 0 ${-sz / 2}px`;
+        el.style.left = ox + 'px'; el.style.top = oy + 'px';
+      }
+    };
+    const sparkFrame = (now: number) => {
+      for (let i = 0; i < pool.length; i++) {
+        const p = pool[i]; if (!p.live) continue;
+        const el = sparkEls.current[i]; if (!el) continue;
+        const t = (now - p.t0) / p.dur;
+        if (t < 0) { el.style.opacity = '0'; continue; }
+        if (t >= 1) { p.live = false; el.style.opacity = '0'; continue; }
+        const e = 1 - Math.pow(1 - t, 3);
+        el.style.transform = `translate3d(${(p.dx * e).toFixed(1)}px,${(p.dy * e).toFixed(1)}px,0) rotate(${(p.rot * e).toFixed(1)}deg) scale(${(1 - 0.55 * t).toFixed(3)})`;
+        el.style.opacity = String((t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85) * 0.9);
+      }
+    };
+    const lastFx = new Map<HTMLElement, number>();
+    const fx = (kind: EntranceKind) => {
+      const b = btnRefs.current[kind];
+      if (!b || chosen || rm) return;
+      const now = performance.now();
+      if (now - (lastFx.get(b) ?? -1e9) < SPARK.minGapMs) return;   // 0.4초 안에 다시 들어오면 무시
+      lastFx.set(b, now);
+      const dd = 120 * u;
+      band.animate([{ transform: `translateX(${-dd}px) rotate(${SHINE_ANGLE}deg)`, opacity: 0 }, { opacity: 0.85, offset: 0.2 }, { opacity: 0.85, offset: 0.8 }, { transform: `translateX(${dd}px) rotate(${SHINE_ANGLE}deg)`, opacity: 0 }], { duration: 500, easing: SMOOTH });
+      heart.animate([{ scale: '1' }, { scale: '1.06', offset: 0.4 }, { scale: '1' }], { duration: 360, easing: OUT });   // scale 속성이라 다른 transform 애니메이션과 겹치지 않는다
+      burst(SPARK.count[kind], b);
+    };
+
     // ── 눈 추적 + 하트 기울임(requestAnimationFrame 하나, transform만) ──
     const st = { x: 0, y: 0, t: 0, has: false, inside: true, hover: null as HTMLElement | null, focus: null as HTMLElement | null };
     let lookX = 0, lookY = 0, tiltX = 0, tiltY = 0, amp = 0, last = performance.now(), raf = 0;
@@ -157,6 +209,7 @@ export default function Intro({ onDone, entrance, onChoose }: { onDone: () => vo
       tiltX += (nx - tiltX) * kt; tiltY += (ny - tiltY) * kt;
       tilt.style.transform = `perspective(520px) rotateX(${(-tiltY * TILT_MAX).toFixed(2)}deg) rotateY(${(tiltX * TILT_MAX).toFixed(2)}deg)`;
       spec.setAttribute('transform', `translate(${(-tiltX * SPEC_SHIFT[0]).toFixed(2)} ${(-tiltY * SPEC_SHIFT[1]).toFixed(2)})`);
+      sparkFrame(now);
     };
     // 움직임 줄이기면 눈·기울임·연출을 모두 끈다(입구 모드는 버튼 화면만 보인다)
     if (!rm) {
@@ -171,10 +224,12 @@ export default function Intro({ onDone, entrance, onChoose }: { onDone: () => vo
     const hoverOff: (() => void)[] = [];
     if (entrance) for (const k of ['new', 'old'] as const) {
       const b = btnRefs.current[k]; if (!b) continue;
-      const enter = (e: PointerEvent) => { if (e.pointerType !== 'touch') st.hover = b; };
+      const enter = (e: PointerEvent) => { if (e.pointerType !== 'touch') { st.hover = b; fx(k); } };
       const leave = () => { if (st.hover === b) st.hover = null; };
-      b.addEventListener('pointerenter', enter); b.addEventListener('pointerleave', leave);
-      hoverOff.push(() => { b.removeEventListener('pointerenter', enter); b.removeEventListener('pointerleave', leave); });
+      const focus = () => { if (b.matches(':focus-visible')) fx(k); };           // 키보드 포커스도 같은 연출
+      const down = (e: PointerEvent) => { if (e.pointerType === 'touch') fx(k); }; // 터치는 누르는 순간 한 번
+      b.addEventListener('pointerenter', enter); b.addEventListener('pointerleave', leave); b.addEventListener('focus', focus); b.addEventListener('pointerdown', down);
+      hoverOff.push(() => { b.removeEventListener('pointerenter', enter); b.removeEventListener('pointerleave', leave); b.removeEventListener('focus', focus); b.removeEventListener('pointerdown', down); });
     }
 
     // ── 선택 / 건너뛰기 ──
@@ -182,9 +237,16 @@ export default function Intro({ onDone, entrance, onChoose }: { onDone: () => vo
       if (chosen || finished) return;
       chosen = true; st.hover = null; st.focus = null;
       anims.forEach(a => a.cancel());   // 남은 연출은 건너뛴다
-      const fade = cover.animate([{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 150 : 300, easing: IO, fill: 'forwards' });
+      const b = btnRefs.current[kind];
+      if (!rm && b) {                    // 한 번 더 10개가 터지고 두근한 뒤 전환
+        heart.animate([{ scale: '1' }, { scale: '1.06', offset: 0.4 }, { scale: '1' }], { duration: 360, easing: OUT });
+        burst(SPARK.click, b);
+      }
       const go = () => { finish(); chooseRef.current?.(kind); };
-      fade.finished.then(go).catch(go);
+      timers.push(setTimeout(() => {
+        const fade = cover.animate([{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 150 : 300, easing: IO, fill: 'forwards' });
+        fade.finished.then(go).catch(go);
+      }, rm ? 0 : 420));
     };
     // 클릭·키 입력(리플레이): 즉시 건너뛰고 120ms 안에 설정창으로 전환한다
     const skip = () => {
@@ -264,6 +326,7 @@ export default function Intro({ onDone, entrance, onChoose }: { onDone: () => vo
           </div>
         </div>
       </div>
+      {entrance && <div className="intro-sparks" aria-hidden="true">{Array.from({ length: SPARK.pool }, (_, i) => <i key={i} className="intro-spark" ref={el => { sparkEls.current[i] = el; }} />)}</div>}
       {entrance && (
         <div className="intro-entry" ref={entryRef} role="group" aria-label="시작하기">
           <button type="button" className="intro-ebtn" data-main={entrance === 'new' ? '' : undefined} ref={el => { btnRefs.current.new = el; }}>처음 왔어요</button>
