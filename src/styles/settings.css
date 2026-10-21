@@ -135,6 +135,22 @@ html[data-theme="dark"] .st-pop { color-scheme: dark; }
   opacity: 1; visibility: visible; transform: none;
   transition: opacity 160ms var(--ui-ease-out), transform 160ms var(--ui-ease-out), visibility 0s;
 }
+/* 접히는 "고급" 영역: grid 행 높이 0fr → 1fr로 부드럽게 열고 닫는다 (내용 높이를 몰라도 되는 방식) */
+.st-adv { display: flex; flex-direction: column; }
+.st-adv-toggle {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 8px; margin-left: -8px;
+  border: 0; border-radius: var(--ui-r-inner); background: transparent; color: var(--ui-sub); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background-color 160ms var(--ui-ease-out), color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out);
+}
+.st-adv-toggle:hover { background: var(--ui-item); color: var(--ui-ink); }
+.st-adv-toggle:active { transform: scale(0.97); }
+.st-adv-toggle .ui-i { transition: transform 200ms var(--ui-ease-out); }
+.st-adv[data-open] .st-adv-toggle .ui-i { transform: rotate(180deg); }
+.st-adv-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 220ms var(--ui-ease-out), opacity 180ms var(--ui-ease-out); }
+.st-adv[data-open] .st-adv-body { grid-template-rows: 1fr; opacity: 1; }
+.st-adv-inner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
+.st-adv-inner > :first-child { margin-top: 4px; }
+.st-adv-inner > * { flex-shrink: 0; }
 /* 스크롤할 내용이 더 있을 때만 아래 가장자리에 옅은 페이드 */
 .st-pop[data-fade]::after {
   content: ''; position: sticky; bottom: -16px; flex: none; height: 32px; margin: -32px -16px -16px; pointer-events: none;
@@ -247,6 +263,7 @@ button.st-slot:active { transform: scale(0.97); }
   .st-pet-bob { animation: none; }
   .st-pet, .st-rbtn::after { transition: none; }
   .st-pop { transform: none !important; }
+  .st-adv-body, .st-adv-toggle .ui-i { transition: none; }
   .st-rbtn:active, .st-chip:active, .st-zone:active, .st-tile:active, .st-step:active, .st-pillbtn:active { transform: none; }
 }
 

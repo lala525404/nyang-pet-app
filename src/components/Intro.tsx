@@ -27,7 +27,9 @@ const BEAT = {
   eyes: [[0, 0], [-2.2, .1625], [1.5, .4], [-.6, .6], [.2, .8], [0, 1]] as const,
   shadow: [['1,1', 0], ['1.07,1.07', .1625], ['.98,.98', .4], ['1.012,1.012', .6], ['.997,.997', .8], ['1,1', 1]] as const,
 };
-export const INTRO_TOTAL_MS = 2960;
+// 구간(ms): 등장 0–400 · 착지+잔여 400–1100 · 눈 깜빡 760/1900/3050 · 빛줄기① 1000–2000 · 빛줄기② 2300–3300(세기 55%) · 두근+잔여 3400–4200 · 전환 4500–4680
+const T = { drop: 400, land: 400, shine1: 1000, shine2: 2300, shineDur: 1000, beat: 3400, exit: 4500, exitDur: 180 };
+export const INTRO_TOTAL_MS = T.exit + T.exitDur + 20;
 
 export default function Intro({ onDone }: { onDone: () => void }) {
   const gid = useId().replace(/:/g, '');
@@ -54,18 +56,19 @@ export default function Intro({ onDone }: { onDone: () => void }) {
     const shadowFollow = (T: typeof LAND | typeof BEAT): Keyframe[] => T.shadow.map(([sc, offset]) => ({ transform: `scale(${sc})`, offset, easing: OUT }));
     const blink = (at: number) => A(eyes, [{ transform: 'scaleY(1)' }, { transform: 'scaleY(.1)', offset: 0.5 }, { transform: 'scaleY(1)' }], { duration: 160, delay: at, easing: IO });
 
-    A(heart, [{ transform: `translateY(${-46 * u}px)`, opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 360, easing: OUT, fill: 'backwards' });
-    A(shadow, [{ transform: 'scale(.42)', opacity: 0.22, filter: 'blur(11px)' }, { transform: 'scale(1)', opacity: 1, filter: 'blur(5px)' }], { duration: 360, easing: OUT, fill: 'backwards' });
-    A(heart, body(LAND, OUT), { duration: LAND.dur, delay: 360 }); A(eyes, eyeFollow(LAND), { duration: LAND.dur, delay: 360 }); A(shadow, shadowFollow(LAND), { duration: LAND.dur, delay: 360 });
-    blink(640);
+    A(heart, [{ transform: `translateY(${-46 * u}px)`, opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: T.drop, easing: OUT, fill: 'backwards' });
+    A(shadow, [{ transform: 'scale(.42)', opacity: 0.22, filter: 'blur(11px)' }, { transform: 'scale(1)', opacity: 1, filter: 'blur(5px)' }], { duration: T.drop, easing: OUT, fill: 'backwards' });
+    A(heart, body(LAND, OUT), { duration: LAND.dur, delay: T.land }); A(eyes, eyeFollow(LAND), { duration: LAND.dur, delay: T.land }); A(shadow, shadowFollow(LAND), { duration: LAND.dur, delay: T.land });
+    blink(760);
     // 35° 빛줄기: 넓고 은은하게, 속도 포물선. 하트 모양 안에서만 보인다.
     const d = 190 * u;
-    A(band, [{ transform: `translateX(${-d}px) rotate(${SHINE_ANGLE}deg)`, opacity: 0 }, { opacity: 1, offset: 0.15 }, { opacity: 1, offset: 0.85 }, { transform: `translateX(${d}px) rotate(${SHINE_ANGLE}deg)`, opacity: 0 }], { duration: 900, delay: 900, easing: SMOOTH });
-    blink(1560); blink(2420);                         // 눈은 그 자리에서 계속 깜빡인다
-    A(heart, body(BEAT, OUT), { duration: BEAT.dur, delay: 1900 }); A(eyes, eyeFollow(BEAT), { duration: BEAT.dur, delay: 1900 }); A(shadow, shadowFollow(BEAT), { duration: BEAT.dur, delay: 1900 });
-    A(heart, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.62)', opacity: 0 }], { duration: 180, delay: 2780, easing: IO, fill: 'forwards' });
-    A(shadow, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, delay: 2780, easing: 'linear', fill: 'forwards' });
-    const exit = A(cover, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, delay: 2780, easing: IO, fill: 'forwards' });
+    const shine = (at: number, peak: number) => A(band, [{ transform: `translateX(${-d}px) rotate(${SHINE_ANGLE}deg)`, opacity: 0 }, { opacity: peak, offset: 0.15 }, { opacity: peak, offset: 0.85 }, { transform: `translateX(${d}px) rotate(${SHINE_ANGLE}deg)`, opacity: 0 }], { duration: T.shineDur, delay: at, easing: SMOOTH });
+    shine(T.shine1, 1); shine(T.shine2, 0.55);       // 두 번째는 첫 번째보다 살짝 약하게
+    blink(1900); blink(3050);                         // 눈은 그 자리에서 계속 깜빡인다
+    A(heart, body(BEAT, OUT), { duration: BEAT.dur, delay: T.beat }); A(eyes, eyeFollow(BEAT), { duration: BEAT.dur, delay: T.beat }); A(shadow, shadowFollow(BEAT), { duration: BEAT.dur, delay: T.beat });
+    A(heart, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.62)', opacity: 0 }], { duration: T.exitDur, delay: T.exit, easing: IO, fill: 'forwards' });
+    A(shadow, [{ opacity: 1 }, { opacity: 0 }], { duration: T.exitDur, delay: T.exit, easing: 'linear', fill: 'forwards' });
+    const exit = A(cover, [{ opacity: 1 }, { opacity: 0 }], { duration: T.exitDur, delay: T.exit, easing: IO, fill: 'forwards' });
 
     let finished = false;
     const finish = () => { if (!finished) { finished = true; doneRef.current(); } };
