@@ -56,6 +56,7 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 /* ── 머리말 ── */
 .st-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .st-brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-family: 'OngleipParkDahyeon', 'Pretendard Variable', Pretendard, sans-serif; font-size: 17px; line-height: 1.2; color: var(--ui-sub); }
+.st-brand-heart { align-self: center; width: 18px; height: 17px; color: var(--ui-ink); }
 .st-brand small { font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 12px; }
 .st-title { font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
 .st-desc { margin-top: 4px; font-size: 14px; color: var(--ui-sub); }

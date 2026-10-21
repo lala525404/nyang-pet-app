@@ -1,0 +1,31 @@
+/* 앱 하트 마크 — 색은 currentColor라서 라이트/다크 테마를 자동으로 따른다 */
+.heart-mark { display: inline-block; flex: none; width: 1em; height: 1em; overflow: visible; fill: currentColor; transform-origin: 50% 58%; }
+
+/* 설정창을 열 때 한 번 두근: 올라갈 때는 빠른 ease-out, 돌아올 때는 부드러운 ease-in-out, 총 500ms */
+@keyframes heart-thump {
+  0%   { transform: scale(1);    animation-timing-function: var(--ui-ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+  26%  { transform: scale(1.12); animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+  100% { transform: scale(1); }
+}
+.heart-mark--thump { animation: heart-thump 500ms; }
+
+/* 알림 카드에서 카드가 자리 잡을 즈음 두근하며 등장 (scale 0.9에서 시작, 0에서 시작하지 않음) */
+@keyframes heart-arrive {
+  0%   { opacity: 0; transform: scale(0.9);  animation-timing-function: var(--ui-ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+  24%  { opacity: 1; transform: scale(1.14); animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.heart-mark--arrive { animation: heart-arrive 520ms 120ms backwards; }
+
+/* 마우스를 올리면 살짝 커졌다 돌아오기 (터치 기기에서는 제외) */
+@media (hover: hover) and (pointer: fine) {
+  .heart-mark--hover { transition: transform 160ms var(--ui-ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+  .heart-mark-host:hover .heart-mark--hover { transform: scale(1.08); }
+}
+
+/* 움직임 줄이기: 크기 변화 없이 정지 */
+@media (prefers-reduced-motion: reduce) {
+  .heart-mark--thump, .heart-mark--arrive { animation: none; }
+  .heart-mark--hover { transition: none; }
+  .heart-mark-host:hover .heart-mark--hover { transform: none; }
+}

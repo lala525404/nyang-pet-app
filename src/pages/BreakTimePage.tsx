@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlarmClock, LogOut, Utensils } from 'lucide-react';
 import '../styles/breaktime.css';
 import CatEmoji from '../components/CatEmoji';
+import HeartMark from '../components/HeartMark';
 import { getAnimal } from '../data/animals';
 import { formatTime, loadSettings } from '../utils/settings';
 
@@ -166,8 +167,11 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
         <div className="bt-center">
           <div className="bt-card" role="status">
             <div className="bt-top">
-              <Icon strokeWidth={1.5} aria-hidden />
-              <span className="bt-meta">{meta}</span>
+              <HeartMark motion="arrive" className="bt-heart" />
+              <div className="bt-tag">
+                <Icon strokeWidth={1.5} aria-hidden />
+                <span className="bt-meta">{meta}</span>
+              </div>
             </div>
             <div className="bt-buddy">
               <CatEmoji emoji={animal.emoji} size={144} forceImage customImage={photo} customShape={settings.customShape} />

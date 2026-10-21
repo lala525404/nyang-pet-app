@@ -1,4 +1,5 @@
-﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, shell } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, nativeTheme, systemPreferences, shell } = require('electron');
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -186,31 +187,95 @@ function createPetWindow() {
   resumeAlwaysOnTopKeepAlive();
 }
 
+// ─── 트레이 아이콘 ────────────────────────────────────────────────────────────
+// 흰/검정 PNG(16·32px) 세트. Windows는 작업 표시줄 테마에 맞춰 고르고, 맥은 검정 Template 이미지로 OS가 자동 반전한다.
+// 평소에는 정지, 미리 알림이 뜰 때만 프레임을 바꿔 한 번 두근한 뒤 정지 상태로 돌아온다.
+const TRAY_BEAT_FRAMES = [[1, 0], [2, 55], [3, 120]]; // [프레임 번호, 시작 시각(ms)]: 15px → 16px → 15px
+const TRAY_BEAT_END_MS = 200;                          // 이 시각에 평소 이미지(14px)로 돌아와 정지
+let trayDark = true;        // 작업 표시줄이 어두우면 흰 아이콘
+let trayBeating = false;
+let trayBeatTimers = [];
+let trayRefreshToken = 0;
+const trayImageCache = {};
+
+function trayAssetPath(name) {
+  const dirs = app.isPackaged
+    ? [path.join(process.resourcesPath, 'public', 'tray'), path.join(__dirname, 'public', 'tray')]
+    : [path.join(__dirname, 'public', 'tray')];
+  for (const dir of dirs) {
+    const file = path.join(dir, name);
+    if (fs.existsSync(file)) return file;
+  }
+  return null;
+}
+
+// frame 0은 평소, 1~3은 두근 프레임. 16px(배율 1)과 32px(배율 2)를 함께 담아 화면 배율에 맞게 쓰이게 한다.
+function loadTrayImage(variant, frame) {
+  const key = variant + frame;
+  if (trayImageCache[key]) return trayImageCache[key];
+  const image = nativeImage.createEmpty();
+  const suffix = frame ? `-f${frame}` : '';
+  for (const [px, scaleFactor] of [[16, 1], [32, 2]]) {
+    const file = trayAssetPath(`tray-${variant}-${px}${suffix}.png`);
+    if (file) image.addRepresentation({ scaleFactor, buffer: fs.readFileSync(file) });
+  }
+  if (process.platform === 'darwin') image.setTemplateImage(true);
+  return (trayImageCache[key] = image);
+}
+
+function trayImage(frame) {
+  if (process.platform === 'darwin') {
+    if (frame === 0) {
+      const file = trayAssetPath('trayTemplate.png'); // 이름이 Template으로 끝나면 OS가 템플릿으로 다룬다
+      if (file) { const img = nativeImage.createFromPath(file); if (!img.isEmpty()) return img; }
+    }
+    return loadTrayImage('black', frame);
+  }
+  return loadTrayImage(trayDark ? 'white' : 'black', frame);
+}
+
+// Windows 작업 표시줄 테마(SystemUsesLightTheme)를 읽는다. 앱 테마(nativeTheme)와 다를 수 있어 이쪽을 우선한다.
+function readTaskbarIsLight() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') { resolve(null); return; }
+    execFile('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'SystemUsesLightTheme'],
+      { windowsHide: true, timeout: 1500 }, (err, stdout) => {
+        if (err) { resolve(null); return; }
+        const m = /SystemUsesLightTheme\s+REG_DWORD\s+0x([0-9a-fA-F]+)/.exec(String(stdout));
+        resolve(m ? parseInt(m[1], 16) !== 0 : null);
+      });
+  });
+}
+
+async function refreshTrayIcon() {
+  if (!tray || isQuitting) return;
+  const token = ++trayRefreshToken;
+  const light = await readTaskbarIsLight();
+  if (token !== trayRefreshToken || !tray || isQuitting) return;
+  trayDark = light === null ? nativeTheme.shouldUseDarkColors : !light;   // 레지스트리를 못 읽으면 nativeTheme으로
+  if (!trayBeating) tray.setImage(trayImage(0));
+}
+
+// 미리 알림이 뜰 때 한 번만 두근. 움직임 줄이기가 켜져 있으면 바꾸지 않는다.
+function playTrayBeat() {
+  if (!tray || trayBeating || isQuitting) return;
+  try { if (systemPreferences.getAnimationSettings().prefersReducedMotion) return; } catch {}
+  trayBeating = true;
+  trayBeatTimers = TRAY_BEAT_FRAMES.map(([frame, at]) => setTimeout(() => {
+    if (tray && !isQuitting) tray.setImage(trayImage(frame));
+  }, at));
+  trayBeatTimers.push(setTimeout(() => {
+    trayBeating = false;
+    trayBeatTimers = [];
+    if (tray && !isQuitting) tray.setImage(trayImage(0));   // 정지 상태로 복귀 (반복하지 않는다)
+  }, TRAY_BEAT_END_MS));
+}
+
 // ★ 시스템 트레이 생성
 function createTray() {
-  // 아이콘 경로 — 패키징 후에는 extraResources에서 로드
-  const iconPaths = app.isPackaged
-    ? [
-        path.join(process.resourcesPath, 'public', 'icon.png'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'public', 'icon.png'),
-        path.join(__dirname, 'public', 'icon.png'),
-      ]
-    : [path.join(__dirname, 'public', 'icon.png')];
-
-  let icon = nativeImage.createEmpty();
-  for (const p of iconPaths) {
-    try {
-      const candidate = nativeImage.createFromPath(p);
-      if (!candidate.isEmpty()) { icon = candidate; break; }
-    } catch {}
-  }
-
-  // 16x16으로 리사이즈 (트레이 아이콘 크기)
-  if (!icon.isEmpty()) {
-    icon = icon.resize({ width: 16, height: 16 });
-  }
-
-  tray = new Tray(icon);
+  tray = new Tray(trayImage(0));
+  refreshTrayIcon();
+  nativeTheme.on('updated', refreshTrayIcon);
   tray.setToolTip('최애를 풀어놨습니다');
 
   const contextMenu = Menu.buildFromTemplate([
@@ -288,6 +353,7 @@ function finishQuit() {
     try { if (!w.isDestroyed()) w.destroy(); } catch {}
   }
   settingsWindow = null; petWindow = null; yarWindow = null; breakTimeWindow = null;
+  trayBeatTimers.forEach(clearTimeout);
   if (tray) { try { tray.destroy(); } catch {} tray = null; }
   app.quit();
 }
@@ -532,6 +598,7 @@ function startBreakTimeChecker(settings) {
         if (petWindow && !petWindow.isDestroyed()) {
           petWindow.webContents.send('show-toast', `점심 ${lunchPre}분 전이에요!`);
         }
+        playTrayBeat();
       }
     }
     if (leaveOn && settings.leaveTime) {
@@ -545,6 +612,7 @@ function startBreakTimeChecker(settings) {
         if (petWindow && !petWindow.isDestroyed()) {
           petWindow.webContents.send('show-toast', `퇴근 ${leavePre}분 전이에요!`);
         }
+        playTrayBeat();
       }
     }
 

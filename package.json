@@ -29,7 +29,7 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "public/icon.png",
+      "icon": "public/icon.icns",
       "category": "public.app-category.entertainment"
     },
     "portable": {

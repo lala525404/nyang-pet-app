@@ -122,7 +122,9 @@
   color: var(--ui-sub);
 }
 
-.bt-top svg { width: 28px; height: 28px; color: var(--ui-ink); }
+.bt-tag { display: flex; align-items: center; gap: 8px; }
+.bt-tag svg { width: 28px; height: 28px; color: var(--ui-ink); }
+.bt-heart { width: 28px; height: 26px; color: var(--ui-ink); }
 .bt-meta { font-size: 14px; font-variant-numeric: tabular-nums; }
 
 .bt-buddy {
