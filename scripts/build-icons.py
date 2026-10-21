@@ -81,13 +81,23 @@ EYE_W, EYE_H, EYE_TOP = 7.0, 14.8, 35.6          # 경로 단위(인트로 CSS�
 EYE_L, EYE_R = 35.5, 57.5
 
 
-def grad_color(t):
+# 다크 탭용(파비콘 전용): 밝은 하트 + 어두운 눈. 후보 A는 위 흰색 → 아래 연회색, 후보 B는 거의 단색 흰색
+GRADIENT_DARK = {
+    'A': [(0.0, (255, 255, 255)), (0.5, (244, 244, 247)), (0.74, (200, 200, 208)), (1.0, (150, 150, 160))],
+    'B': [(0.0, (255, 255, 255)), (0.6, (250, 250, 252)), (1.0, (221, 221, 229))],
+}
+EYE_DARK = (14, 14, 16)
+DARK_PICK = 'A'
+
+
+def grad_color(t, grad=None):
+    grad = grad or GRADIENT
     t = min(max(t, 0.0), 1.0)
-    for (t0, c0), (t1, c1) in zip(GRADIENT, GRADIENT[1:]):
+    for (t0, c0), (t1, c1) in zip(grad, grad[1:]):
         if t <= t1:
             k = (t - t0) / (t1 - t0) if t1 > t0 else 0
             return tuple(round(a + (b - a) * k) for a, b in zip(c0, c1))
-    return GRADIENT[-1][1]
+    return grad[-1][1]
 
 
 def eye_boxes(scale, cx, cy, grow=1.0):
@@ -101,7 +111,7 @@ def eye_boxes(scale, cx, cy, grow=1.0):
     return boxes
 
 
-def render_icon(n, heart_w, outline=0.0, mode='color', eye_grow=1.0, glow=False):
+def render_icon(n, heart_w, outline=0.0, mode='color', eye_grow=1.0, glow=False, grad=None, eye=(255, 255, 255)):
     """눈 달린 하트. mode='color'는 검정→흰 그라데이션 + 흰 눈, 'knockout'은 눈을 투명으로 뚫은 단색(mono)."""
     ss = supersample(n)
     big = n * ss
@@ -114,8 +124,8 @@ def render_icon(n, heart_w, outline=0.0, mode='color', eye_grow=1.0, glow=False)
     if mode == 'color':
         col = Image.new('RGB', (1, 256))
         for i in range(256):
-            col.putpixel((0, i), grad_color(i / 255))
-        fillimg = Image.new('RGB', (big, big), GRADIENT[-1][1])
+            col.putpixel((0, i), grad_color(i / 255, grad))
+        fillimg = Image.new('RGB', (big, big), (grad or GRADIENT)[-1][1])
         strip = col.resize((big, max(1, round(y_bot - y_top))), Image.BILINEAR)
         fillimg.paste(strip, (0, round(y_top)))
         base = (255, 255, 255)
@@ -134,7 +144,7 @@ def render_icon(n, heart_w, outline=0.0, mode='color', eye_grow=1.0, glow=False)
         if glow:
             halo = eyes.filter(ImageFilter.GaussianBlur(max(1, 1.6 * scale * 0.06))).point(lambda v: int(v * 0.45))
             out.paste(Image.new('RGBA', (big, big), (255, 255, 255, 255)), (0, 0), ImageChops.multiply(halo, heart))
-        out.paste(Image.new('RGBA', (big, big), (255, 255, 255, 255)), (0, 0), eyes)
+        out.paste(Image.new('RGBA', (big, big), eye + (255,)), (0, 0), eyes)
         return out.resize((n, n), Image.LANCZOS)
     raise ValueError(mode)
 
@@ -235,13 +245,22 @@ def svg_app_icon():
             f'  </g>\n</svg>\n')
 
 
-def svg_favicon():
+def svg_favicon(pick=None):
+    """라이트: 검정→흰 그라데이션 + 흰 눈 + 얇은 흰 윤곽선. 다크 브라우저(prefers-color-scheme: dark): 밝은 하트 + 어두운 눈, 윤곽선 없음."""
+    pick = pick or DARK_PICK
+    hexc = lambda c: '#%02x%02x%02x' % tuple(c)
+    light = ''.join(f'.s{i}{{stop-color:{hexc(c)}}}' for i, (_, c) in enumerate(GRADIENT))
+    dg = GRADIENT_DARK[pick]
+    dark = ''.join(f'.s{i}{{stop-color:{hexc(grad_color(t, dg))}}}' for i, (t, _) in enumerate(GRADIENT))
+    stops = ''.join(f'<stop class="s{i}" offset="{t:g}"/>' for i, (t, _) in enumerate(GRADIENT))
     t = f'translate(50 50) scale(.94) translate(-{CX:g} -{CY:g})'
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n'
-            f'  <defs>{_grad_svg("g")}</defs>\n'
+            f'  <style>{light}.h{{stroke:#fff}}.e{{fill:#fff}}'
+            f'@media (prefers-color-scheme:dark){{{dark}.h{{stroke:none}}.e{{fill:{hexc(EYE_DARK)}}}}}</style>\n'
+            f'  <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="{BBOX[1]:g}" x2="0" y2="{BBOX[3]:g}">{stops}</linearGradient></defs>\n'
             f'  <g transform="{t}">\n'
-            f'    <path d="{HEART_PATH}" fill="url(#g)" stroke="#fff" stroke-width="4" stroke-linejoin="round" paint-order="stroke"/>\n'
-            + _eyes_svg('    ') +
+            f'    <path class="h" d="{HEART_PATH}" fill="url(#g)" stroke-width="4" stroke-linejoin="round" paint-order="stroke"/>\n'
+            + _eyes_svg('    ').replace('fill="#fff"', 'class="e"') +
             '  </g>\n</svg>\n')
 
 
