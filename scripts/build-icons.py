@@ -160,13 +160,13 @@ def render_mono(n, heart_w, color):
 
 def win_icon(n):
     m = 0.02                                    # 캔버스 여백 2%
-    o = max(n * 0.03, 1.0)                      # 얇은 흰 윤곽선 (작은 크기는 최소 1px)
+    o = max(n * 0.012, 1.0)                     # 얇은 흰 윤곽선 (작은 크기는 1px, 큰 크기는 비율로)
     return render_icon(n, n * (1 - 2 * m) - 2 * o, outline=o, eye_grow=1.6 if n <= 24 else 1.3 if n <= 48 else 1.0, glow=n >= 128)
 
 
 def mac_icon(n):
     m = 0.015                                   # 독에서 작아 보이지 않게 여백을 더 줄임
-    o = n * 0.025
+    o = max(n * 0.012, 1.0)
     return render_icon(n, n * (1 - 2 * m) - 2 * o, outline=o, eye_grow=1.6 if n <= 32 else 1.0, glow=n >= 128)
 
 
@@ -223,7 +223,7 @@ def _grad_svg(gid):
 
 
 def svg_app_icon():
-    n, m, o = 1024, 0.015, 1024 * 0.025
+    n, m, o = 1024, 0.015, 1024 * 0.012
     w = n * (1 - 2 * m) - 2 * o
     s = w / BBOX_W
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">\n'
@@ -240,7 +240,7 @@ def svg_favicon():
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n'
             f'  <defs>{_grad_svg("g")}</defs>\n'
             f'  <g transform="{t}">\n'
-            f'    <path d="{HEART_PATH}" fill="url(#g)" stroke="#fff" stroke-width="3" stroke-linejoin="round" paint-order="stroke"/>\n'
+            f'    <path d="{HEART_PATH}" fill="url(#g)" stroke="#fff" stroke-width="4" stroke-linejoin="round" paint-order="stroke"/>\n'
             + _eyes_svg('    ') +
             '  </g>\n</svg>\n')
 
