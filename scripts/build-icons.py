@@ -4,7 +4,7 @@
 
 만드는 것
 - assets/icon/*.svg            SVG 원본 (앱 안 currentColor, 흑/백, 앱 아이콘, 랜딩 파비콘)
-- public/icon.ico              Windows exe·탐색기 (16~256, 검은 하트 + 얇은 흰 윤곽선, 투명 배경)
+- public/icon.ico              Windows exe·탐색기 (16~256, 검은 하트 + 눈 + 아래쪽 흰 그라데이션 + 얇은 흰 윤곽선, 투명 배경)
 - public/icon.icns, icon.png   맥 앱 아이콘 (같은 모양, 캔버스 안 하트 비율을 키움)
 - public/tray/*.png            트레이 (흰/검정 16·32 + 두근 프레임, 맥 Template)
 """
@@ -14,7 +14,7 @@ import re
 import struct
 import sys
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(ROOT, 'assets', 'icon')
@@ -75,22 +75,105 @@ def render(n, heart_w, outline=0.0, fill=(0, 0, 0), stroke=(255, 255, 255)):
     return img.resize((n, n), Image.LANCZOS)
 
 
+# 인트로 하트와 같은 모양: 위는 검정, 아래로 갈수록 은은한 흰색. 눈은 위쪽 검은 영역의 흰 세로 알약 두 개.
+GRADIENT = [(0.0, (11, 11, 12)), (0.5, (19, 19, 20)), (0.74, (72, 72, 78)), (1.0, (214, 214, 222))]
+EYE_W, EYE_H, EYE_TOP = 7.0, 14.8, 35.6          # 경로 단위(인트로 CSS와 같은 비율)
+EYE_L, EYE_R = 35.5, 57.5
+
+
+def grad_color(t):
+    t = min(max(t, 0.0), 1.0)
+    for (t0, c0), (t1, c1) in zip(GRADIENT, GRADIENT[1:]):
+        if t <= t1:
+            k = (t - t0) / (t1 - t0) if t1 > t0 else 0
+            return tuple(round(a + (b - a) * k) for a, b in zip(c0, c1))
+    return GRADIENT[-1][1]
+
+
+def eye_boxes(scale, cx, cy, grow=1.0):
+    """눈 두 개의 (x0, y0, x1, y1) 픽셀 상자. 작은 크기에서는 grow로 키워 뭉개지지 않게 한다."""
+    boxes = []
+    for left in (EYE_L, EYE_R):
+        x0, y0 = (left - CX) * scale + cx, (EYE_TOP - CY) * scale + cy
+        w, h = EYE_W * scale, EYE_H * scale
+        mx, my = (w * grow - w) / 2, (h * grow - h) / 2
+        boxes.append((x0 - mx, y0 - my, x0 + w + mx, y0 + h + my))
+    return boxes
+
+
+def render_icon(n, heart_w, outline=0.0, mode='color', eye_grow=1.0, glow=False):
+    """눈 달린 하트. mode='color'는 검정→흰 그라데이션 + 흰 눈, 'knockout'은 눈을 투명으로 뚫은 단색(mono)."""
+    ss = supersample(n)
+    big = n * ss
+    scale = heart_w * ss / BBOX_W
+    pts = flatten(scale, big / 2, big / 2)
+    heart = Image.new('L', (big, big), 0)
+    ImageDraw.Draw(heart).polygon(pts, fill=255)
+    ys = [y for _, y in pts]
+    y_top, y_bot = min(ys), max(ys)
+    if mode == 'color':
+        col = Image.new('RGB', (1, 256))
+        for i in range(256):
+            col.putpixel((0, i), grad_color(i / 255))
+        fillimg = Image.new('RGB', (big, big), GRADIENT[-1][1])
+        strip = col.resize((big, max(1, round(y_bot - y_top))), Image.BILINEAR)
+        fillimg.paste(strip, (0, round(y_top)))
+        base = (255, 255, 255)
+        out = Image.new('RGBA', (big, big), base + (0,))
+        if outline > 0:
+            ring = Image.new('L', (big, big), 0)
+            d = ImageDraw.Draw(ring)
+            d.polygon(pts, fill=255)
+            d.line(pts + [pts[0]], fill=255, width=max(1, round(2 * outline * ss)), joint='curve')
+            out.paste(Image.new('RGBA', (big, big), (255, 255, 255, 255)), (0, 0), ring)
+        out.paste(fillimg.convert('RGBA'), (0, 0), heart)
+        eyes = Image.new('L', (big, big), 0)
+        ed = ImageDraw.Draw(eyes)
+        for b in eye_boxes(scale, big / 2, big / 2, eye_grow):
+            ed.rounded_rectangle(b, radius=(b[2] - b[0]) / 2, fill=255)
+        if glow:
+            halo = eyes.filter(ImageFilter.GaussianBlur(max(1, 1.6 * scale * 0.06))).point(lambda v: int(v * 0.45))
+            out.paste(Image.new('RGBA', (big, big), (255, 255, 255, 255)), (0, 0), ImageChops.multiply(halo, heart))
+        out.paste(Image.new('RGBA', (big, big), (255, 255, 255, 255)), (0, 0), eyes)
+        return out.resize((n, n), Image.LANCZOS)
+    raise ValueError(mode)
+
+
+def render_mono(n, heart_w, color):
+    """트레이·맥 템플릿: 한 색 하트에서 눈을 투명으로 뚫는다(어느 배경에서나 눈이 배경색으로 보임)."""
+    ss = supersample(n)
+    big = n * ss
+    scale = heart_w * ss / BBOX_W
+    pts = flatten(scale, big / 2, big / 2)
+    heart = Image.new('L', (big, big), 0)
+    ImageDraw.Draw(heart).polygon(pts, fill=255)
+    eyes = Image.new('L', (big, big), 0)
+    ed = ImageDraw.Draw(eyes)
+    grow = 1.7 if n <= 16 else 1.35 if n <= 32 else 1.0
+    for b in eye_boxes(scale, big / 2, big / 2, grow):
+        ed.rounded_rectangle(b, radius=(b[2] - b[0]) / 2, fill=255)
+    alpha = ImageChops.subtract(heart, eyes)
+    img = Image.new('RGBA', (big, big), color + (0,))
+    img.putalpha(alpha)
+    return img.resize((n, n), Image.LANCZOS)
+
+
 def win_icon(n):
     m = 0.02                                    # 캔버스 여백 2%
     o = max(n * 0.03, 1.0)                      # 얇은 흰 윤곽선 (작은 크기는 최소 1px)
-    return render(n, n * (1 - 2 * m) - 2 * o, outline=o)
+    return render_icon(n, n * (1 - 2 * m) - 2 * o, outline=o, eye_grow=1.6 if n <= 24 else 1.3 if n <= 48 else 1.0, glow=n >= 128)
 
 
 def mac_icon(n):
     m = 0.015                                   # 독에서 작아 보이지 않게 여백을 더 줄임
     o = n * 0.025
-    return render(n, n * (1 - 2 * m) - 2 * o, outline=o)
+    return render_icon(n, n * (1 - 2 * m) - 2 * o, outline=o, eye_grow=1.6 if n <= 32 else 1.0, glow=n >= 128)
 
 
 def tray(px, color, beat=None):
     """트레이 평소는 캔버스의 87.5%, 두근 프레임은 그보다 커진다 (정수 크기라 흔들리지 않음)."""
     w = beat if beat else px * 14 // 16
-    return render(px, w, fill=color)
+    return render_mono(px, w, color)
 
 
 def png_bytes(img):
@@ -127,14 +210,39 @@ def build_icns(by_size):
     return b'icns' + struct.pack('>I', len(body) + 8) + body
 
 
+def _eyes_svg(indent='  '):
+    out = ''
+    for left in (EYE_L, EYE_R):
+        out += f'{indent}<rect x="{left:g}" y="{EYE_TOP:g}" width="{EYE_W:g}" height="{EYE_H:g}" rx="{EYE_W / 2:g}" fill="#fff"/>\n'
+    return out
+
+
+def _grad_svg(gid):
+    stops = ''.join(f'<stop offset="{t:g}" stop-color="#{c[0]:02x}{c[1]:02x}{c[2]:02x}"/>' for t, c in GRADIENT)
+    return f'<linearGradient id="{gid}" gradientUnits="userSpaceOnUse" x1="0" y1="{BBOX[1]:g}" x2="0" y2="{BBOX[3]:g}">{stops}</linearGradient>'
+
+
 def svg_app_icon():
     n, m, o = 1024, 0.015, 1024 * 0.025
     w = n * (1 - 2 * m) - 2 * o
     s = w / BBOX_W
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">\n'
-            f'  <!-- 배경 없음(투명). 검은 하트 + 얇은 흰 윤곽선, 그라디언트·그림자 없음 -->\n'
-            f'  <path d="{HEART_PATH}" fill="#000" stroke="#fff" stroke-width="{2 * o / s:.2f}" stroke-linejoin="round" '
-            f'paint-order="stroke" transform="translate(512 512) scale({s:.4f}) translate(-{CX:g} -{CY:g})"/>\n</svg>\n')
+            f'  <!-- 배경 없음(투명). 검은 하트 + 눈 + 아래쪽 흰 그라데이션 + 얇은 흰 윤곽선 -->\n'
+            f'  <defs>{_grad_svg("g")}</defs>\n'
+            f'  <g transform="translate(512 512) scale({s:.4f}) translate(-{CX:g} -{CY:g})">\n'
+            f'    <path d="{HEART_PATH}" fill="url(#g)" stroke="#fff" stroke-width="{2 * o / s:.2f}" stroke-linejoin="round" paint-order="stroke"/>\n'
+            + _eyes_svg('    ') +
+            f'  </g>\n</svg>\n')
+
+
+def svg_favicon():
+    t = f'translate(50 50) scale(.94) translate(-{CX:g} -{CY:g})'
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n'
+            f'  <defs>{_grad_svg("g")}</defs>\n'
+            f'  <g transform="{t}">\n'
+            f'    <path d="{HEART_PATH}" fill="url(#g)" stroke="#fff" stroke-width="3" stroke-linejoin="round" paint-order="stroke"/>\n'
+            + _eyes_svg('    ') +
+            '  </g>\n</svg>\n')
 
 
 def svg_heart(fill):
@@ -148,10 +256,7 @@ def main():
     write(os.path.join(SRC_DIR, 'heart-black.svg'), svg_heart('#000'))
     write(os.path.join(SRC_DIR, 'heart-white.svg'), svg_heart('#fff'))
     write(os.path.join(SRC_DIR, 'app-icon.svg'), svg_app_icon())
-    write(os.path.join(SRC_DIR, 'landing-favicon.svg'),
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n'
-          '  <style>path{fill:#000}@media (prefers-color-scheme:dark){path{fill:#fff}}</style>\n'
-          f'  <path d="{HEART_PATH}"/>\n</svg>\n')
+    write(os.path.join(SRC_DIR, 'landing-favicon.svg'), svg_favicon())
 
     # Windows: ico (크기별로 따로 그려 선명하게)
     win = [win_icon(n) for n in (256, 128, 64, 48, 32, 24, 16)]

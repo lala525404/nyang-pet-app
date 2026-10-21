@@ -1,4 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <style>path{fill:#000}@media (prefers-color-scheme:dark){path{fill:#fff}}</style>
-  <path d="M50 90 C47 90 44 88 41 86 C22 72 6 56 6 34 C6 18 18 8 31 8 C40 8 47 13 50 20 C53 13 60 8 69 8 C82 8 94 18 94 34 C94 56 78 72 59 86 C56 88 53 90 50 90 Z"/>
+  <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="8" x2="0" y2="90"><stop offset="0" stop-color="#0b0b0c"/><stop offset="0.5" stop-color="#131314"/><stop offset="0.74" stop-color="#48484e"/><stop offset="1" stop-color="#d6d6de"/></linearGradient></defs>
+  <g transform="translate(50 50) scale(.94) translate(-50 -49)">
+    <path d="M50 90 C47 90 44 88 41 86 C22 72 6 56 6 34 C6 18 18 8 31 8 C40 8 47 13 50 20 C53 13 60 8 69 8 C82 8 94 18 94 34 C94 56 78 72 59 86 C56 88 53 90 50 90 Z" fill="url(#g)" stroke="#fff" stroke-width="3" stroke-linejoin="round" paint-order="stroke"/>
+    <rect x="35.5" y="35.6" width="7" height="14.8" rx="3.5" fill="#fff"/>
+    <rect x="57.5" y="35.6" width="7" height="14.8" rx="3.5" fill="#fff"/>
+  </g>
 </svg>
