@@ -16,6 +16,9 @@ let settingsWindow = null;
 let petWindow = null;
 let yarWindow = null;
 let tray = null;
+// 버디 창은 말풍선이 들어갈 크기로 고정한다. 말풍선이 뜨고 질 때 창 크기를 바꾸면 버디가 화면에서 25·40px씩 튀었다.
+const PET_WIN_W = 240;
+const PET_WIN_H = 230;
 let isQuitting = false;     // 종료 요청이 들어온 뒤로는 true (창 닫힘·재생성 로직이 종료를 거스르지 않게)
 let quitReady = false;      // 저장과 정리가 끝나 실제로 app.quit을 해도 되는 상태
 let quitTimer = null;
@@ -38,6 +41,20 @@ function startAlwaysOnTopKeepAlive() {
 function stopAlwaysOnTopKeepAlive() {
   if (alwaysOnTopInterval) { clearInterval(alwaysOnTopInterval); alwaysOnTopInterval = null; }
 }
+
+// ★ 전체화면 알림(점심·퇴근·알람 카드, 야르)이 떠 있는 동안에는 버디 말풍선을 숨긴다. 끝나면 이어서 진행한다.
+let alertCount = 0;
+function notifyAlertState() {
+  if (petWindow && !petWindow.isDestroyed()) {
+    try { petWindow.webContents.send('alert-state', alertCount > 0); } catch {}
+  }
+}
+function trackAlertWindow(win) {
+  alertCount++;
+  notifyAlertState();
+  win.once('closed', () => { alertCount = Math.max(0, alertCount - 1); notifyAlertState(); });
+}
+ipcMain.handle('get-alert-state', () => alertCount > 0);
 
 // ★ 야르타임 창 생성
 function createYarWindow() {
@@ -66,6 +83,7 @@ function createYarWindow() {
     },
   });
 
+  trackAlertWindow(yarWindow);
   yarWindow.setAlwaysOnTop(true, 'screen-saver');
   // 클릭이 뒤로 통과되게 설정 (방해 없이)
   yarWindow.setIgnoreMouseEvents(true, { forward: true });
@@ -136,13 +154,47 @@ function maybeShowCloseNotice() {
   markFlag('closeNoticeShown');
 }
 
+// ─── 설정창 크기 ──────────────────────────────────────────────────────────────
+// 기본 크기는 홈 화면(칩, 점심·퇴근 카드)이 스크롤 없이 보이는 크기(내용 약 704px + 제목 표시줄). 작업 영역의 90%를 넘지 않고,
+// 화면이 작으면 줄인다. 최소 크기는 700x580(화면이 그보다 작으면 화면에 맞춘다). 사용자가 마지막으로 조절한 크기가 있으면 그걸 쓴다.
+const SETTINGS_MIN = { width: 700, height: 580 };
+const SETTINGS_DEFAULT = { width: 960, height: 770 };
+const windowSizeFile = () => path.join(app.getPath('userData'), 'window.json');
+
+function readSavedWindowSize() {
+  try {
+    const j = JSON.parse(fs.readFileSync(windowSizeFile(), 'utf8'));
+    if (Number.isFinite(j.width) && Number.isFinite(j.height)) return { width: Math.round(j.width), height: Math.round(j.height) };
+  } catch {}
+  return null;
+}
+
+function saveWindowSize(win) {
+  try {
+    if (win.isDestroyed() || win.isMaximized() || win.isMinimized() || win.isFullScreen()) return;
+    const [width, height] = win.getSize();
+    fs.writeFileSync(windowSizeFile(), JSON.stringify({ width, height }));
+  } catch {}
+}
+
+function initialSettingsSize() {
+  const wa = screen.getPrimaryDisplay().workAreaSize;
+  const min = { width: Math.min(SETTINGS_MIN.width, wa.width), height: Math.min(SETTINGS_MIN.height, wa.height) };
+  const saved = readSavedWindowSize();
+  const limit = saved ? wa : { width: Math.floor(wa.width * 0.9), height: Math.floor(wa.height * 0.9) };   // 직접 조절한 크기는 작업 영역까지
+  const base = saved || SETTINGS_DEFAULT;
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+  return { min, width: clamp(base.width, min.width, limit.width), height: clamp(base.height, min.height, limit.height) };
+}
+
 function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show(); settingsWindow.focus(); return;
   }
+  const size = initialSettingsSize();
   settingsWindow = new BrowserWindow({
-    width: 900, height: 700,
-    minWidth: 700, minHeight: 580,
+    width: size.width, height: size.height,
+    minWidth: size.min.width, minHeight: size.min.height,
     frame: true, resizable: true, show: false,
     title: '최애를 풀어놨습니다',
     backgroundColor: '#F4F4F4',
@@ -162,7 +214,12 @@ function createSettingsWindow() {
   });
   settingsWindow.loadURL(getPageURL('/settings'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());
-  settingsWindow.on('close', () => { settingsWindow = null; maybeShowCloseNotice(); });
+  // 사용자가 직접 조절한 경우(will-resize)에만 저장한다. 기본 크기를 그대로 쓰는 동안은 저장하지 않아야 나중에 기본 크기가 바뀌어도 반영된다.
+  let sizeTimer = null, userResized = false;
+  const win = settingsWindow;
+  win.on('will-resize', () => { userResized = true; });
+  win.on('resize', () => { if (!userResized) return; clearTimeout(sizeTimer); sizeTimer = setTimeout(() => saveWindowSize(win), 500); });
+  settingsWindow.on('close', () => { clearTimeout(sizeTimer); if (userResized) saveWindowSize(win); settingsWindow = null; maybeShowCloseNotice(); });
 }
 
 function createPetWindow() {
@@ -170,8 +227,8 @@ function createPetWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   petWindow = new BrowserWindow({
-    width: 190, height: 190,
-    x: width - 230, y: height - 230,
+    width: PET_WIN_W, height: PET_WIN_H,
+    x: width - PET_WIN_W - 40, y: height - PET_WIN_H - 40,
     transparent: true, frame: false, resizable: false,
     movable: true, skipTaskbar: false,
     alwaysOnTop: true, hasShadow: false, focusable: true,
@@ -557,6 +614,8 @@ ipcMain.handle('get-photo-state', () => photoState());
 // ★ 앱 시작시 설정 동기화 - PetPage에서 설정 로드 후 호출
 ipcMain.on('sync-settings', (_e, settings) => {
   configurePhotoRotation(settings);
+  // 버디 창이 2초 폴링을 기다리지 않고 바로 새 설정을 읽게 한다
+  if (petWindow && !petWindow.isDestroyed()) { try { petWindow.webContents.send('settings-changed'); } catch {} }
   // 야르타임 설정 동기화
   setYarMinutes(settings.yarEnabled && settings.yarInterval > 0 ? settings.yarInterval : 0);
   if (typeof settings.alwaysOnTop === 'boolean' && settings.alwaysOnTop !== alwaysOnTopFlag) {
@@ -604,6 +663,7 @@ function createBreakTimeWindow(type) {
     },
   });
 
+  trackAlertWindow(breakTimeWindow);
   breakTimeWindow.setAlwaysOnTop(true, 'screen-saver');
   breakTimeWindow.setIgnoreMouseEvents(true, { forward: true });
   breakTimeWindow.loadURL(getPageURL(`/breaktime?type=${type}`));

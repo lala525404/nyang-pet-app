@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties, ReactNode } from 'react';
 import { ChevronDown, LogOut, Minus, Plus, Utensils } from 'lucide-react';
 import CatEmoji from '../CatEmoji';
 import { Segmented, Switch, RangeInput } from '../ui';
 import { getAnimal } from '../../data/animals';
-import { MODE_PRESETS, activePhotos, formatInterval, formatTime } from '../../utils/settings';
+import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, cleanBubbleMessages, clampTo, formatInterval, formatTime } from '../../utils/settings';
 import { usePhotoState } from '../../hooks/usePhotoState';
 import type { PetSettings } from '../../utils/settings';
 import { MODE_NAME } from './shared';
@@ -37,7 +38,13 @@ function QuadIcon({ zone }: { zone: number }) {
   );
 }
 
-// 칩: 작은 라벨 + 굵은 현재 값. 누르면 칩 바로 아래 팝오버에서 바꾼다.
+// 칩: 작은 라벨 + 굵은 현재 값. 누르면 팝오버에서 바꾼다.
+// 팝오버는 창 기준 fixed 위치로 body에 그린다(포털). 스크롤하는 홈 영역이나 overflow 조상에 갇혀 잘리지 않는다.
+// 기본은 칩 아래, 아래 공간이 모자라면 위로 열고, 둘 다 모자라면 더 넓은 쪽에서 높이를 제한해 팝오버 안에서 스크롤한다.
+// 좌우는 창 안으로 민다. 창 크기·스크롤이 바뀌거나 팝오버 내용 높이가 바뀌면 다시 계산한다.
+type PopPlace = { left: number; top: number | null; bottom: number | null; maxH: number | null; side: 'bottom' | 'top' };
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
 function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   id: string; label: string; value: string; end: boolean;
   open: boolean; onOpen: () => void; onClose: () => void; children: ReactNode;
@@ -48,10 +55,57 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<PopPlace>({ left: 0, top: 0, bottom: null, maxH: null, side: 'bottom' });
+  const [fade, setFade] = useState(false);
+
+  // 스크롤할 내용이 더 남아 있을 때만 아래 가장자리에 페이드를 보인다
+  const updateFade = useCallback(() => {
+    const pop = popRef.current;
+    if (!pop) return;
+    setFade(pop.scrollHeight > pop.clientHeight + 2 && pop.scrollTop + pop.clientHeight < pop.scrollHeight - 2);
+  }, []);
+
+  const reposition = useCallback(() => {
+    const pop = popRef.current, btn = btnRef.current;
+    if (!pop || !btn) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const chip = btn.getBoundingClientRect();
+    const GAP = 8, MARGIN = 12;
+    const natural = pop.scrollHeight + (pop.offsetHeight - pop.clientHeight);   // 테두리 포함한 원래 높이
+    const below = vh - chip.bottom - GAP - MARGIN;
+    const above = chip.top - GAP - MARGIN;
+    let side: 'bottom' | 'top' = 'bottom';
+    let maxH: number | null = null;
+    if (natural <= below) side = 'bottom';
+    else if (natural <= above) side = 'top';
+    else { side = below >= above ? 'bottom' : 'top'; maxH = Math.max(140, Math.floor(side === 'bottom' ? below : above)); }
+    const width = pop.offsetWidth;
+    let left = end ? chip.right - width : chip.left;
+    left = Math.round(Math.min(Math.max(left, MARGIN), Math.max(MARGIN, vw - MARGIN - width)));
+    const next: PopPlace = side === 'bottom'
+      ? { left, top: Math.round(chip.bottom + GAP), bottom: null, maxH, side }
+      : { left, top: null, bottom: Math.round(vh - chip.top + GAP), maxH, side };
+    setPlace(prev => (prev.left === next.left && prev.top === next.top && prev.bottom === next.bottom && prev.maxH === next.maxH && prev.side === next.side ? prev : next));
+  }, [end]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    const pop = popRef.current;
+    const ro = typeof ResizeObserver !== 'undefined' && pop ? new ResizeObserver(() => { reposition(); updateFade(); }) : null;
+    if (ro && pop) ro.observe(pop);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);   // 홈 영역을 스크롤하면 칩이 움직이므로 따라간다
+    return () => { ro?.disconnect(); window.removeEventListener('resize', reposition); window.removeEventListener('scroll', reposition, true); };
+  }, [open, reposition, updateFade]);
+  useEffect(() => { if (open) updateFade(); }, [open, place, updateFade]);
 
   useEffect(() => {
     if (!open) return;
-    const outside = (e: Event) => { if (!wrapRef.current?.contains(e.target as Node)) onCloseRef.current(); };
+    const outside = (e: Event) => {
+      const t = e.target as Node;
+      if (!wrapRef.current?.contains(t) && !popRef.current?.contains(t)) onCloseRef.current();
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); onCloseRef.current(); btnRef.current?.focus(); }
     };
@@ -64,6 +118,25 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  // 팝오버가 body에 있어 Tab 순서가 칩에서 떨어져 있으므로, 열려 있는 동안은 팝오버 안에서 Tab이 순환하게 한다
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const items = Array.from(popRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+
+  const pop = (
+    <div ref={popRef} className="st-pop" id={`pop-${id}`} role="dialog" aria-label={`${label} 설정`}
+      data-open={open ? '' : undefined} data-end={end ? '' : undefined} data-side={place.side} data-fade={fade ? '' : undefined}
+      onScroll={updateFade} onKeyDown={trapTab}
+      style={{ left: place.left, top: place.top ?? undefined, bottom: place.bottom ?? undefined, maxHeight: place.maxH ?? undefined }}>
+      {children}
+    </div>
+  );
 
   return (
     <div className="st-chip-wrap" ref={wrapRef}>
@@ -78,10 +151,7 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
         <span className="st-chip-label">{label}</span>
         <span className="st-chip-value">{value}</span>
       </button>
-      <div ref={popRef} className="st-pop" id={`pop-${id}`} role="dialog" aria-label={`${label} 설정`}
-        data-open={open ? '' : undefined} data-end={end ? '' : undefined}>
-        {children}
-      </div>
+      {createPortal(pop, document.body)}
     </div>
   );
 }
@@ -121,10 +191,11 @@ function NoticeCard({ id, icon, title, enabled, time, pre, onEnabled, onTime, on
   );
 }
 
-export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onUpload }: PaneProps & {
+export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onOpenBubble, onUpload }: PaneProps & {
   monitors: Monitor[];
   applyMode: (mode: 'chill' | 'buddy' | 'chaos') => void;
   onOpenAnimal: () => void;
+  onOpenBubble: () => void;
   onUpload: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -151,6 +222,14 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   })();
 
   const rotateEnabled = s.imageRotateEnabled !== false;
+  // 말풍선: 내 메시지(최대 5개)를 순서대로, 빈 간격에는 시계. 둘 다 없으면 말풍선이 뜨지 않는다.
+  const bubbleOn = s.bubbleEnabled !== false;
+  const bubbleClock = s.bubbleClock !== false;
+  const bubbleCount = cleanBubbleMessages(s.bubbleMessages).length;
+  const bubbleShow = clampTo(s.bubbleShowSec, BUBBLE_SHOW_RANGE, 5);
+  const bubbleGap = clampTo(s.bubbleGapSec, BUBBLE_GAP_RANGE, 30);
+  const bubbleValue = !bubbleOn ? '끔'
+    : [bubbleCount ? `메시지 ${bubbleCount}개` : '', bubbleClock ? '시계' : ''].filter(Boolean).join(' · ') || '없음';
   const chips: { id: string; label: string; value: string; body: ReactNode }[] = [
     {
       id: 'mode', label: '모드', value: MODE_NAME[s.buddyMode] || 'Buddy',
@@ -252,6 +331,27 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
               <RangeInput min={10} max={300} step={5} value={s.distractInterval} onChange={v => update({ distractInterval: v })} label="졸림 방지 이모지 주기" />
             </>
           )}
+        </>
+      ),
+    },
+    {
+      id: 'bubble', label: '말풍선', value: bubbleValue,
+      body: (
+        <>
+          <div className="st-row"><span>말풍선 사용</span><Switch checked={bubbleOn} onChange={v => patch({ bubbleEnabled: v })} label="말풍선 사용" /></div>
+          <div className="st-row"><span>시계 표시</span><Switch checked={bubbleClock} onChange={v => patch({ bubbleClock: v })} label="시계 표시" disabled={!bubbleOn} /></div>
+          <p className="ui-note">{!bubbleOn ? '켜면 내 메시지와 시계가 말풍선으로 떠요.' : bubbleClock ? '메시지가 없는 동안에는 현재 시간을 보여줘요.' : '메시지가 없는 동안에는 말풍선이 숨겨져요.'}</p>
+          {bubbleOn && (
+            <>
+              <div className="st-row"><span>표시 시간</span><span className="ui-val">{bubbleShow}초</span></div>
+              <RangeInput min={BUBBLE_SHOW_RANGE[0]} max={BUBBLE_SHOW_RANGE[1]} step={1} value={bubbleShow} onChange={v => patch({ bubbleShowSec: v })} label="말풍선 표시 시간" />
+              <div className="st-row"><span>간격</span><span className="ui-val">{formatInterval(bubbleGap)}마다</span></div>
+              <RangeInput min={BUBBLE_GAP_RANGE[0]} max={BUBBLE_GAP_RANGE[1]} step={5} value={bubbleGap} onChange={v => patch({ bubbleGapSec: v })} label="말풍선 간격" />
+            </>
+          )}
+          <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
+            메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
+          </button>
         </>
       ),
     },
