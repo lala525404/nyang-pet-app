@@ -30,21 +30,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsFlushed:  () => ipcRenderer.send('settings-flushed'),
   // ★ 사진 교체: 메인이 하나뿐인 교체 시계를 돌리고, 설정창 미리보기와 버디가 같은 값을 받는다
   introSeen:        () => ipcRenderer.send('intro-seen'),
-  // ★ 처음 안내: 실제 버디를 설정창 옆에 세우고, 버디 클릭·드래그를 미션으로 받는다
-  onboardingStart:  () => ipcRenderer.invoke('onboarding-start'),
-  onboardingEnd:    (kind) => ipcRenderer.send('onboarding-end', kind),
-  onboardingTrayBeat: (times) => ipcRenderer.send('onboarding-tray-beat', times),
-  onOnboardingEvent: (cb) => {
-    const handler = (_e, kind) => cb(kind);
-    ipcRenderer.on('onboarding-event', handler);
-    return () => ipcRenderer.removeListener('onboarding-event', handler);
-  },
-  petInteraction:   (kind) => ipcRenderer.send('pet-interaction', kind),
-  onPetHold:        (cb) => {
-    const handler = (_e, p) => cb(p);
-    ipcRenderer.on('pet-hold', handler);
-    return () => ipcRenderer.removeListener('pet-hold', handler);
-  },
+  // ★ 처음 안내: 마지막 "버디 풀어놓기"는 설정창을 닫는다
+  onboardingFinish: () => ipcRenderer.send('onboarding-finish'),
   getAlertState:    () => ipcRenderer.invoke('get-alert-state'),
   onAlertState:     (cb) => {
     const handler = (_e, active) => cb(!!active);

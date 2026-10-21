@@ -60,7 +60,7 @@ export default function SettingsPage() {
   const chooseEntrance = useCallback((kind: EntranceKind) => { if (kind === 'new') setOnboarding(true); }, []);
   const closeOnboarding = useCallback((kind: 'done' | 'cancel') => {
     setOnboarding(false);
-    window.electronAPI?.onboardingEnd?.(kind);   // done: 버디가 그 자리에서 배회를 시작하고 설정창이 닫힌다 / cancel: 버디는 원래 상태로
+    if (kind === 'done') window.electronAPI?.onboardingFinish?.();   // 버디 풀어놓기: 설정창을 닫는다(버디는 이미 실행 중)
   }, []);
   // 인트로가 떠 있는 동안 뒤의 설정창은 키보드·마우스 대상이 아니다. 처음 안내 중에는 안내가 설정창 위를 덮으므로 아래 화면만 막는다.
   useEffect(() => {

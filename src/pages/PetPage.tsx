@@ -199,7 +199,6 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
     escapingTimerRef.current = setTimeout(() => { stateRef.current.escaping = false; }, 2000);
   }, []);
 
-  const holdRef = useRef(false);
   useEffect(() => {
     const r = (a: number, b: number) => Math.random() * (b - a) + a;
     const initArea = areaRef.current;
@@ -238,9 +237,8 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
       if (Date.now() >= nextEventRef.current) triggerEvent();
       s.vx *= 0.96; s.vy *= 0.96; s.vr *= 0.88;
 
-      // ★ 드래그 중이거나 처음 안내 중(제자리)이면 물리 이동 건너뜀
-      if (holdRef.current) { s.vx = 0; s.vy = 0; }
-      if (!draggingRef.current && !holdRef.current) {
+      // ★ 드래그 중이면 물리 이동 건너뜀
+      if (!draggingRef.current) {
         s.wx += s.vx; s.wy += s.vy;
       }
 
@@ -264,7 +262,7 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
 
       s.scale += (s.targetScale - s.scale) * 0.08;
 
-      if (!draggingRef.current && !holdRef.current) {
+      if (!draggingRef.current) {
         window.electronAPI?.movePetWindow(Math.round(s.wx), Math.round(s.wy));
       }
 
@@ -279,7 +277,7 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
     };
   }, []);
 
-  return { displayTransform, reset, triggerEscape, stateRef, draggingRef, holdRef, setOnWallHit: (fn: ()=>void) => { onWallHitRef.current = fn; } };
+  return { displayTransform, reset, triggerEscape, stateRef, draggingRef, setOnWallHit: (fn: ()=>void) => { onWallHitRef.current = fn; } };
 }
 
 // ── 메인 컴포넌트 ──────────────────────────────────────────────────
@@ -351,15 +349,7 @@ export default function PetPage() {
     setPetSize(s);   // 창 크기는 고정이라 버디 크기만 바꾼다
   }, [settings.size]);
 
-  const { displayTransform, reset, triggerEscape, stateRef, draggingRef, holdRef, setOnWallHit } = useScreenMovement(speedRef, zoneRef, areaRef);
-  // 처음 안내 중에는 메인이 버디를 설정창 옆에 세운다: 걸어다니지 않고 그 자리에 서 있다가, 끝나면 그 자리에서 다시 움직인다
-  useEffect(() => {
-    return window.electronAPI?.onPetHold?.(({ on, x, y }) => {
-      holdRef.current = on;
-      stateRef.current.wx = x; stateRef.current.wy = y;
-      stateRef.current.vx = 0; stateRef.current.vy = 0;
-    });
-  }, [holdRef, stateRef]);
+  const { displayTransform, reset, triggerEscape, stateRef, draggingRef, setOnWallHit } = useScreenMovement(speedRef, zoneRef, areaRef);
   const { rotate, scale } = displayTransform;
 
   const rand = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -771,7 +761,6 @@ export default function PetPage() {
     const onUp = () => {
       if (isDragging.current) {
         isDragging.current = false;
-        if (didDrag.current) window.electronAPI?.petInteraction?.('drag');
         window.electronAPI?.endDrag();
         // 실제 창 위치를 stateRef에 넣은 뒤에 draggingRef를 풀어, 예전 위치로 한 프레임 튀지 않게 한다
         const release = () => { draggingRef.current = false; };
@@ -798,7 +787,6 @@ export default function PetPage() {
   const handleCatClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (didDrag.current) { didDrag.current = false; return; }
-    window.electronAPI?.petInteraction?.('click');
     const now = Date.now();
     const isDoubleClick = now - lastClickTime.current < 400;
     lastClickTime.current = now;

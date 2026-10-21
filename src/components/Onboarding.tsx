@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check } from 'lucide-react';
 import CatEmoji from './CatEmoji';
 import { Switch } from './ui';
 import { ANIMALS, getAnimal } from '../data/animals';
@@ -7,31 +6,21 @@ import { formatTime } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
 import '../styles/onboarding.css';
 
-// 처음 안내(3단계, 1분 안에): 보기만 하는 소개가 아니라 직접 해 보면 실제로 설정되는 구조다.
-// 안내가 시작되면 메인이 실제 버디를 설정창 옆에 제자리로 세운다. 값은 바꾸는 즉시 저장되고 버디 창에 바로 전달된다.
-// 값을 안 물어본 항목(크기, 속도, 활동 구역, 말풍선, 야르, 졸림 방지)은 기본값 그대로 둔다.
+// 처음 안내(3단계 튜토리얼, 1분 안에): 버디 고르기 / 알림 / 마무리. 설정창 안에서만 진행되고 버디는 평소처럼 이미 실행 중이다.
+// 값은 바꾸는 즉시 저장된다. 값을 안 물어본 항목(크기, 속도, 활동 구역, 말풍선, 야르, 졸림 방지)은 기본값 그대로 둔다.
 const STEPS = 3;
 const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
 type Props = {
   settings: PetSettings;
   onChange: (p: Partial<PetSettings>) => void;      // 바꾸는 즉시 저장하고 버디 창에 전달
   onUpload: () => void;                              // 기존 사진 올리기 → 자르기 창
-  onClose: (kind: 'done' | 'cancel') => void;       // done: 버디 풀어놓기, cancel: 중간에 나가기
+  onClose: (kind: 'done' | 'cancel') => void;       // done: 버디 풀어놓기(설정창 닫기), cancel: 중간에 나가기
 };
 
 export default function Onboarding({ settings: s, onChange, onUpload, onClose }: Props) {
   const [step, setStep] = useState(0);
-  const [missions, setMissions] = useState({ click: false, drag: false });
   const rootRef = useRef<HTMLDivElement>(null);
-  const api = window.electronAPI;
-  const isMac = api?.platform === 'darwin';
-
-  // 시작: 실제 버디를 설정창 옆에 세운다(새 설치에서 버디 창이 아직 없으면 메인이 만든다)
-  useEffect(() => { api?.onboardingStart?.(); }, [api]);
-  // 해 보기: 실제 버디를 누르거나 끌면 체크
-  useEffect(() => api?.onOnboardingEvent?.(kind => setMissions(m => ({ ...m, [kind]: true }))), [api]);
-  // 마지막 단계: 트레이 아이콘이 두근하며 위치를 알려 준다(몇 번 반복, 움직임 줄이기면 한 번)
-  useEffect(() => { if (step === 2) api?.onboardingTrayBeat?.(3); }, [step, api]);
+  const isMac = window.electronAPI?.platform === 'darwin';
 
   const go = useCallback((d: number) => {
     if (d > 0 && step === STEPS - 1) { onClose('done'); return; }
@@ -60,7 +49,7 @@ export default function Onboarding({ settings: s, onChange, onUpload, onClose }:
   }, [go]);
   useEffect(() => { rootRef.current?.focus(); }, [step]);
 
-  const testAlert = () => { window.electronAPI?.testBreakTime('lunch'); };   // 정한 시각·켜짐과 상관없이 테스트 카드를 띄운다
+  const testAlert = () => { window.electronAPI?.testBreakTime('lunch'); };   // 정한 시각·켜짐과 상관없이 실제 알림 카드를 한 번 재생한다
   const photos = s.customImages.filter(Boolean) as string[];
   const usingPhoto = s.useCustomMode && photos.length > 0;
   const animal = getAnimal(s.animalId);
@@ -78,7 +67,7 @@ export default function Onboarding({ settings: s, onChange, onUpload, onClose }:
         {step === 0 && (
           <section className="ob-card" key="s0">
             <h2>함께할 버디를 골라 주세요</h2>
-            <p>고르면 바탕화면의 버디가 바로 바뀌어요. 나중에 홈에서 언제든 바꿀 수 있어요.</p>
+            <p>고르면 바로 바뀌어요. 나중에 홈에서 언제든 바꿀 수 있어요.</p>
             <div className="ob-s1">
               <div>
                 <div className="ob-tiles" role="group" aria-label="동물 고르기">
@@ -98,11 +87,6 @@ export default function Onboarding({ settings: s, onChange, onUpload, onClose }:
                   ? <CatEmoji emoji={animal.emoji} size={96} customImage={photos[0]} customShape={s.customShape} forceImage />
                   : <CatEmoji emoji={animal.emoji} size={96} forceImage />}
               </div>
-            </div>
-            <div className="ob-missions">
-              <p className="ob-m-title">해 보기 <span>(건너뛰어도 돼요)</span></p>
-              <p className="ob-m" data-done={missions.click ? '' : undefined}><span className="ob-chk" aria-hidden><Check size={12} strokeWidth={2.5} /></span>바탕화면의 버디를 눌러 보기<span className="ob-sr">{missions.click ? ' (완료)' : ''}</span></p>
-              <p className="ob-m" data-done={missions.drag ? '' : undefined}><span className="ob-chk" aria-hidden><Check size={12} strokeWidth={2.5} /></span>버디를 끌어서 옮겨 보기<span className="ob-sr">{missions.drag ? ' (완료)' : ''}</span></p>
             </div>
           </section>
         )}
@@ -129,8 +113,8 @@ export default function Onboarding({ settings: s, onChange, onUpload, onClose }:
                 </span>
               </div>
             </div>
-            <button type="button" className="ui-btn" onClick={testAlert}>지금 알림 받아보기</button>
-            <p className="ob-tiny">알림이 꺼져 있어도 테스트로 한 번 떠요. 점심 {formatTime(s.lunchTime)}, 퇴근 {formatTime(s.leaveTime)} 기준이에요.</p>
+            <button type="button" className="ui-btn" onClick={testAlert}>알림 미리 보기</button>
+            <p className="ob-tiny">알림이 꺼져 있어도 카드를 한 번 보여 줘요. 점심 {formatTime(s.lunchTime)}, 퇴근 {formatTime(s.leaveTime)} 기준이에요.</p>
           </section>
         )}
 
@@ -146,7 +130,7 @@ export default function Onboarding({ settings: s, onChange, onUpload, onClose }:
             </div>
             <p className="ob-tiny">
               {isMac
-                ? '메뉴 막대 오른쪽 위에 하트 아이콘이 있어요. 지금 두근하며 알려 주고 있어요.'
+                ? '메뉴 막대 오른쪽 위에 하트 아이콘이 있어요.'
                 : 'Windows 11에서는 트레이 아이콘이 ^ 안에 숨어 있을 수 있어요. 설정 > 개인 설정 > 작업 표시줄 > 기타 시스템 트레이 아이콘에서 켤 수 있어요.'}
             </p>
             <p className="ob-tiny">크기, 활동 구역, 말풍선은 홈에서 칩을 눌러 바꿀 수 있어요.</p>

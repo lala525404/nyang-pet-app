@@ -228,7 +228,7 @@ function createSettingsWindow() {
   const win = settingsWindow;
   win.on('will-resize', () => { userResized = true; });
   win.on('resize', () => { if (!userResized) return; clearTimeout(sizeTimer); sizeTimer = setTimeout(() => saveWindowSize(win), 500); });
-  settingsWindow.on('close', () => { clearTimeout(sizeTimer); if (userResized) saveWindowSize(win); settingsWindow = null; endOnboarding('cancel'); maybeShowCloseNotice(); });
+  settingsWindow.on('close', () => { clearTimeout(sizeTimer); if (userResized) saveWindowSize(win); settingsWindow = null; maybeShowCloseNotice(); });
 }
 
 function createPetWindow() {
@@ -323,9 +323,9 @@ async function refreshTrayIcon() {
 }
 
 // 미리 알림이 뜰 때 한 번만 두근. 움직임 줄이기가 켜져 있으면 바꾸지 않는다.
-function playTrayBeat(force = false) {
+function playTrayBeat() {
   if (!tray || trayBeating || isQuitting) return;
-  if (!force) { try { if (systemPreferences.getAnimationSettings().prefersReducedMotion) return; } catch {} }
+  try { if (systemPreferences.getAnimationSettings().prefersReducedMotion) return; } catch {}
   trayBeating = true;
   trayBeatTimers = TRAY_BEAT_FRAMES.map(([frame, at]) => setTimeout(() => {
     if (tray && !isQuitting) tray.setImage(trayImage(frame));
@@ -557,66 +557,11 @@ ipcMain.on('start-drag', (_e) => {
 });
 
 // ─── 처음 안내(온보딩) ────────────────────────────────────────────────────────
-// 안내 중에는 실제 버디가 설정창 옆에 제자리로 서 있고, 설정창이 고른 값을 바로 받는다. 끝나면 그 자리에서 배회를 시작하고, 중간에 나가면 원래 상태(숨김/기존 위치)로 돌아간다.
-let onboarding = null;   // { wasVisible, pos } — 안내 중에만 있다
-let onboardingBeatTimers = [];
-function buddySpot() {
-  const sb = settingsWindow.getBounds();
-  const wa = screen.getDisplayMatching(sb).workArea;   // 설정창이 있는 모니터 안
-  const gap = 16;
-  let x;
-  if (sb.x + sb.width + gap + PET_WIN_W <= wa.x + wa.width) x = sb.x + sb.width + gap;
-  else if (sb.x - gap - PET_WIN_W >= wa.x) x = sb.x - gap - PET_WIN_W;
-  else { settingsWindow.setPosition(wa.x, sb.y); x = wa.x + wa.width - PET_WIN_W - 8; }   // 옆 공간이 없으면 설정창을 왼쪽으로 붙인다
-  let y = sb.y + sb.height - PET_WIN_H - 24;
-  x = Math.round(Math.min(Math.max(x, wa.x), wa.x + wa.width - PET_WIN_W));
-  y = Math.round(Math.min(Math.max(y, wa.y), wa.y + wa.height - PET_WIN_H));
-  return { x, y };
-}
-function endOnboarding(kind) {
-  const ob = onboarding;
-  if (!ob) return;
-  onboarding = null;
-  onboardingBeatTimers.forEach(clearTimeout); onboardingBeatTimers = [];
-  const pw = petWindow;
-  if (!pw || pw.isDestroyed()) return;
-  if (kind === 'cancel') {
-    pw.setPosition(ob.pos[0], ob.pos[1], false);
-    pw.webContents.send('pet-hold', { on: false, x: ob.pos[0], y: ob.pos[1] });
-    if (!ob.wasVisible) { pw.hide(); stopAlwaysOnTopKeepAlive(); }
-  } else {
-    const [x, y] = pw.getPosition();
-    pw.webContents.send('pet-hold', { on: false, x, y });
-  }
-}
-ipcMain.handle('onboarding-start', async () => {
-  if (!settingsWindow || settingsWindow.isDestroyed()) return false;
-  if (!petWindow || petWindow.isDestroyed()) createPetWindow();   // 새 설치에서 아직 없으면 지금 만든다
-  const pw = petWindow;
-  if (pw.webContents.isLoading()) await new Promise(r => pw.webContents.once('did-finish-load', r));
-  if (!onboarding) onboarding = { wasVisible: pw.isVisible(), pos: pw.getPosition() };
-  const spot = buddySpot();
-  pw.setPosition(spot.x, spot.y, false);
-  pw.show(); resumeAlwaysOnTopKeepAlive();
-  pw.webContents.send('pet-hold', { on: true, x: spot.x, y: spot.y });
-  return true;
-});
-ipcMain.on('onboarding-end', (_e, kind) => {
-  endOnboarding(kind === 'done' ? 'done' : 'cancel');
-  if (kind === 'done') {
-    markFlag('closeNoticeShown');   // 마지막 화면에서 이미 알려 줬으니 닫을 때 안내 토스트는 다시 띄우지 않는다
-    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
-  }
-});
-ipcMain.on('pet-interaction', (_e, kind) => {
-  if (onboarding && settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('onboarding-event', kind);
-});
-ipcMain.on('onboarding-tray-beat', (_e, times) => {
-  onboardingBeatTimers.forEach(clearTimeout); onboardingBeatTimers = [];
-  let reduced = false;
-  try { reduced = systemPreferences.getAnimationSettings().prefersReducedMotion; } catch {}
-  const n = reduced ? 1 : Math.max(1, Math.min(4, Number(times) || 3));
-  for (let i = 0; i < n; i++) onboardingBeatTimers.push(setTimeout(() => playTrayBeat(true), 300 + i * 900));
+// 안내는 설정창 안에서만 진행되고 버디는 평소처럼 이미 실행 중이다. 마지막 "버디 풀어놓기"는 설정창을 닫는 동작만 한다.
+// 마지막 화면에서 이미 "설정창을 닫아도 버디는 계속 놀아요"를 알려 줬으니 닫을 때 안내 토스트는 다시 띄우지 않는다.
+ipcMain.on('onboarding-finish', () => {
+  markFlag('closeNoticeShown');
+  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
 });
 
 // ★ 고양이 우클릭 → 설정창 열기

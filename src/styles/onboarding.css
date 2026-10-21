@@ -25,12 +25,6 @@
 .ob-upload { margin-top: 10px; width: 100%; }
 .ob-pv { background: var(--ui-item); border-radius: var(--ui-r-inner); display: grid; place-items: center; min-height: 160px; position: relative; }
 .ob-pv small { position: absolute; top: 10px; left: 12px; font-size: 11px; color: var(--ui-sub); }
-.ob-missions { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--ui-line); }
-.ob-m-title { font-size: 13px !important; font-weight: 600; color: var(--ui-ink) !important; margin-bottom: 4px !important; }
-.ob-m-title span { color: var(--ui-sub); font-weight: 400; }
-.ob-m { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--ui-ink) !important; }
-.ob-chk { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--ui-line); display: inline-grid; place-items: center; color: transparent; transition: background-color 200ms var(--ui-ease-out), border-color 200ms var(--ui-ease-out); flex: none; }
-.ob-m[data-done] .ob-chk { background: var(--ui-accent); border-color: var(--ui-accent); color: var(--ui-accent-ink); }
 .ob-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .ob-rows { margin: 14px 0 12px; }
 .ob-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-top: 1px solid var(--ui-line); }
