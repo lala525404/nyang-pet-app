@@ -97,6 +97,11 @@ export function readStoredSettings(): Record<string, unknown> | null {
   }
 }
 
+// 설정을 한 번이라도 저장한 적이 있는지(완전 새 설치인지 가르는 데 쓴다)
+export function hasStoredSettings(): boolean {
+  try { return localStorage.getItem(STORAGE_KEY) !== null; } catch { return false; }
+}
+
 export function loadSettings(): PetSettings {
   const stored = readStoredSettings();
   return stored ? { ...DEFAULT_SETTINGS, ...stored } as PetSettings : DEFAULT_SETTINGS;

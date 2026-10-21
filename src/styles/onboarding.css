@@ -1,0 +1,52 @@
+/* 처음 안내(온보딩): 설정창 위에 한 장씩 보이는 3단계. 상자 한 겹, 포인트 색 하나(--ui-accent). 설정창 토큰을 그대로 쓴다. */
+.ob { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--ui-win); color: var(--ui-ink); outline: none; }
+.ob-top { position: relative; flex: none; height: 56px; display: flex; align-items: center; justify-content: center; }
+.ob-dots { display: inline-flex; gap: 8px; }
+.ob-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ui-line); transition: width 200ms var(--ui-ease-out), background-color 200ms var(--ui-ease-out); }
+.ob-dot[data-on] { width: 22px; border-radius: var(--ui-r-pill); background: var(--ui-accent); }
+.ob-exit { position: absolute; right: 24px; top: 14px; border: 0; background: transparent; color: var(--ui-sub); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: var(--ui-r-inner); cursor: pointer; }
+.ob-exit:hover { background: var(--ui-item); color: var(--ui-ink); }
+.ob-body { flex: 1; min-height: 0; display: flex; justify-content: center; padding: 8px 32px 0; overflow-y: auto; }
+.ob-card { width: min(640px, 100%); align-self: flex-start; background: var(--ui-panel); border: 1px solid var(--ui-line); border-radius: var(--ui-r-panel); padding: 28px; animation: ob-in 240ms var(--ui-ease-out); }
+@keyframes ob-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ob h2 { margin: 0 0 6px; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.ob p { margin: 0; color: var(--ui-sub); font-size: 14px; line-height: 1.6; }
+.ob button:focus-visible, .ob input:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.ob-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 32px 24px; width: min(704px, 100%); margin: 0 auto; }
+.ob-foot-r { display: flex; align-items: center; gap: 8px; }
+.ob-ghost { min-height: 40px; padding: 0 14px; border: 0; background: transparent; color: var(--ui-sub); font: inherit; font-size: 14px; font-weight: 600; border-radius: var(--ui-r-inner); cursor: pointer; }
+.ob-ghost:hover { background: var(--ui-item); color: var(--ui-ink); }
+.ob-pri { min-height: 40px; padding: 0 20px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-accent); color: var(--ui-accent-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 140ms var(--ui-ease-out); }
+.ob-pri:active, .ob-ghost:active, .ob-tile:active { transform: scale(.97); }
+.ob-s1 { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 20px; margin-top: 18px; }
+.ob-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.ob-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-sub); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out); }
+.ob-tile[aria-pressed="true"] { background: var(--ui-accent-tint); color: var(--ui-ink); box-shadow: inset 0 0 0 2px var(--ui-accent); }
+.ob-upload { margin-top: 10px; width: 100%; }
+.ob-pv { background: var(--ui-item); border-radius: var(--ui-r-inner); display: grid; place-items: center; min-height: 160px; position: relative; }
+.ob-pv small { position: absolute; top: 10px; left: 12px; font-size: 11px; color: var(--ui-sub); }
+.ob-missions { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--ui-line); }
+.ob-m-title { font-size: 13px !important; font-weight: 600; color: var(--ui-ink) !important; margin-bottom: 4px !important; }
+.ob-m-title span { color: var(--ui-sub); font-weight: 400; }
+.ob-m { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--ui-ink) !important; }
+.ob-chk { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--ui-line); display: inline-grid; place-items: center; color: transparent; transition: background-color 200ms var(--ui-ease-out), border-color 200ms var(--ui-ease-out); flex: none; }
+.ob-m[data-done] .ob-chk { background: var(--ui-accent); border-color: var(--ui-accent); color: var(--ui-accent-ink); }
+.ob-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ob-rows { margin: 14px 0 12px; }
+.ob-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-top: 1px solid var(--ui-line); }
+.ob-row:first-child { border-top: 0; }
+.ob-row b { font-size: 15px; }
+.ob-ctl { display: inline-flex; align-items: center; gap: 12px; }
+.ob-tiny { font-size: 12px !important; margin-top: 12px !important; }
+.ob-tray { margin: 18px 0 4px; padding: 14px 16px; border-radius: var(--ui-r-inner); background: var(--ui-item); display: flex; align-items: center; justify-content: flex-end; gap: 14px; font-size: 13px; color: var(--ui-sub); }
+.ob-tray-lab { margin-right: auto; }
+.ob-tray-ic { width: 22px; height: 22px; border-radius: 6px; background: var(--ui-line); display: grid; place-items: center; font-size: 11px; }
+.ob-tray-hot { padding: 3px; border-radius: 8px; box-shadow: 0 0 0 2px var(--ui-accent); display: inline-grid; }
+.ob-tray-heart { width: 16px; height: 16px; background: var(--ui-ink); clip-path: path('M8 14.4 C7.6 14.4 7 14 6.6 13.7 C3.5 11.5 1 9 1 5.4 C1 2.9 2.9 1.3 5 1.3 C6.4 1.3 7.5 2 8 3.2 C8.5 2 9.6 1.3 11 1.3 C13.1 1.3 15 2.9 15 5.4 C15 9 12.5 11.5 9.4 13.7 C9 14 8.4 14.4 8 14.4 Z'); animation: ob-beat 900ms var(--ui-ease-out) 3; }
+@keyframes ob-beat { 40% { transform: scale(1.3); } 100% { transform: none; } }
+@media (max-width: 760px) { .ob-s1 { grid-template-columns: minmax(0, 1fr); } .ob-body { padding: 8px 16px 0; } .ob-foot { padding: 12px 16px 20px; } .ob-card { padding: 20px; } }
+@media (prefers-reduced-motion: reduce) {
+  .ob-card { animation: none; }
+  .ob-tray-heart { animation-iteration-count: 1; }
+  .ob-pri:active, .ob-ghost:active, .ob-tile:active { transform: none; }
+}

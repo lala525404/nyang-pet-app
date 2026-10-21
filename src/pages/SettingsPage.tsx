@@ -10,9 +10,11 @@ import HelpPane from '../components/settings/HelpPane';
 import HeartMark from '../components/HeartMark';
 import BubbleModal from '../components/settings/BubbleModal';
 import Intro from '../components/Intro';
+import type { EntranceKind } from '../components/Intro';
+import Onboarding from '../components/Onboarding';
 import { createPortal } from 'react-dom';
 import type { Monitor } from '../components/settings/shared';
-import { MODE_PRESETS, loadSettings, saveSettings } from '../utils/settings';
+import { MODE_PRESETS, hasStoredSettings, loadSettings, saveSettings } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
 import { getThemePref, nextThemePref, setThemePref } from '../utils/theme';
 import type { ThemePref } from '../utils/theme';
@@ -41,20 +43,37 @@ export default function SettingsPage() {
 
   // ── 시작 인트로: 메인이 새 버전 첫 설정창에만 해시에 intro=1을 붙여 준다. 설정의 "시작 인트로 보기"가 꺼져 있으면 건너뛴다.
   // 움직임 줄이기면 인트로 없이 150ms 페이드만 한다.
+  // 입구: 완전 새 설치면 "처음 왔어요"를 강조하고(인트로 연출이 꺼져 있어도 버튼 화면은 반드시 보인다), 새 버전으로 올린 기존 사용자면 "오늘도 함께해요"를 강조한다.
+  // 새 설치라고 해도 이미 저장된 설정이 있으면 기존 사용자로 본다. 움직임 줄이기면 연출 없이 버튼 화면만 보인다.
   const introRequested = useRef(window.location.hash.includes('intro=1')).current;
+  const entranceParam = useRef(/entrance=(new|old)/.exec(window.location.hash)?.[1] ?? '').current;
+  const initialEntrance: EntranceKind | null = entranceParam === 'new' ? (hasStoredSettings() ? 'old' : 'new') : entranceParam === 'old' ? 'old' : null;
   const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const introWanted = introRequested && loadSettings().introEnabled !== false;
-  const [introPlaying, setIntroPlaying] = useState(() => introWanted && !reduceMotion());
-  const [fadeKey, setFadeKey] = useState(() => (introWanted && reduceMotion() ? 1 : 0));
+  const introWanted = initialEntrance === 'new' || (introRequested && loadSettings().introEnabled !== false);
+  const [entrance, setEntrance] = useState<EntranceKind | null>(introWanted ? initialEntrance : null);
+  const [introPlaying, setIntroPlaying] = useState(() => introWanted && (!reduceMotion() || initialEntrance !== null));
+  const [fadeKey, setFadeKey] = useState(() => (introWanted && reduceMotion() && initialEntrance === null ? 1 : 0));
+  const [onboarding, setOnboarding] = useState(false);
   useEffect(() => { if (introWanted) window.electronAPI?.introSeen?.(); }, []);   // 한 번 보여 줬다고 알린다(보는 중에 닫아도 다시 나오지 않게)
-  const replayIntro = useCallback(() => { if (reduceMotion()) setFadeKey(k => k + 1); else setIntroPlaying(true); }, []);
-  const endIntro = useCallback(() => setIntroPlaying(false), []);
-  // 인트로가 떠 있는 동안 뒤의 설정창은 키보드·마우스 대상이 아니다
+  const replayIntro = useCallback(() => { setEntrance(null); if (reduceMotion()) setFadeKey(k => k + 1); else setIntroPlaying(true); }, []);
+  const endIntro = useCallback(() => { setIntroPlaying(false); setEntrance(null); }, []);
+  const chooseEntrance = useCallback((kind: EntranceKind) => { if (kind === 'new') setOnboarding(true); }, []);
+  const closeOnboarding = useCallback((kind: 'done' | 'cancel') => {
+    setOnboarding(false);
+    window.electronAPI?.onboardingEnd?.(kind);   // done: 버디가 그 자리에서 배회를 시작하고 설정창이 닫힌다 / cancel: 버디는 원래 상태로
+  }, []);
+  // 인트로가 떠 있는 동안 뒤의 설정창은 키보드·마우스 대상이 아니다. 처음 안내 중에는 안내가 설정창 위를 덮으므로 아래 화면만 막는다.
   useEffect(() => {
     const root = document.querySelector('.settings-root');
     if (introPlaying) root?.setAttribute('inert', '');
     return () => root?.removeAttribute('inert');
   }, [introPlaying]);
+  useEffect(() => {
+    if (!onboarding) return;
+    const els = Array.from(document.querySelectorAll('.st-rail-col, .st-main'));
+    els.forEach(e => e.setAttribute('inert', ''));
+    return () => els.forEach(e => e.removeAttribute('inert'));
+  }, [onboarding]);
   const [themePref, setPref] = useState<ThemePref>(getThemePref);
   const [themeNote, setThemeNote] = useState('');
 
@@ -127,6 +146,8 @@ export default function SettingsPage() {
   // 예전 앱과 같은 규칙: update는 모드를 "커스텀"으로, patch는 모드를 건드리지 않는다
   const update = useCallback((p: Partial<PetSettings>) => change(prev => ({ ...prev, ...p, buddyMode: 'custom' })), [change]);
   const patch = useCallback((p: Partial<PetSettings>) => change(prev => ({ ...prev, ...p })), [change]);
+  // 처음 안내: 값을 바꾸는 즉시 저장하고 버디 창에 전달한다(300ms 묶음 저장을 기다리지 않는다)
+  const changeNow = useCallback((p: Partial<PetSettings>) => { patch(p); apply(); }, [patch, apply]);
   const applyMode = useCallback((mode: 'chill' | 'buddy' | 'chaos') =>
     change(prev => ({ ...prev, ...MODE_PRESETS[mode], size: prev.size })), [change]);
 
@@ -250,9 +271,10 @@ export default function SettingsPage() {
             onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onUpload={upload} />
         )}
         {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
-        {page === 'help' && <HelpPane settings={settings} patch={patch} onReplayIntro={replayIntro} />}
+        {page === 'help' && <HelpPane settings={settings} patch={patch} onReplayIntro={replayIntro} onReplayOnboarding={() => setOnboarding(true)} />}
       </main>
-      {introPlaying && createPortal(<Intro onDone={endIntro} />, document.body)}
+      {onboarding && <Onboarding settings={settings} onChange={changeNow} onUpload={upload} onClose={closeOnboarding} />}
+      {introPlaying && createPortal(<Intro onDone={endIntro} entrance={entrance ?? undefined} onChoose={chooseEntrance} />, document.body)}
     </div>
   );
 }

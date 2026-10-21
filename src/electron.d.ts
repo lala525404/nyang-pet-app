@@ -19,6 +19,12 @@ interface ElectronAPI {
   onFlushSettings: (cb: () => void) => () => void;
   settingsFlushed: () => void;
   introSeen: () => void;
+  onboardingStart: () => Promise<boolean>;
+  onboardingEnd: (kind: 'done' | 'cancel') => void;
+  onboardingTrayBeat: (times: number) => void;
+  onOnboardingEvent: (cb: (kind: 'click' | 'drag') => void) => () => void;
+  petInteraction: (kind: 'click' | 'drag') => void;
+  onPetHold: (cb: (p: { on: boolean; x: number; y: number }) => void) => () => void;
   getAlertState: () => Promise<boolean>;
   onAlertState: (cb: (active: boolean) => void) => () => void;
   onSettingsChanged: (cb: () => void) => () => void;
