@@ -1,6 +1,6 @@
 {
   "name": "choeae-app",
-  "version": "1.2.0-rc1",
+  "version": "1.2.0-rc2",
   "description": "최애를 풀어놨습니다 - Desktop Buddy App",
   "main": "main.cjs",
   "scripts": {
