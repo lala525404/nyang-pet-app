@@ -8,10 +8,11 @@
     "build": "tsc && vite build",
     "electron": "electron .",
     "fresh": "npm run build && node scripts/fresh-start.cjs",
-    "test": "node scripts/test-default-heart.cjs && node scripts/test-reopen-settings.cjs && node scripts/test-default-light.cjs && node tests/alarms-unit.cjs",
+    "test": "node scripts/test-default-heart.cjs && node scripts/test-reopen-settings.cjs && node scripts/test-default-light.cjs && node tests/alarms-unit.cjs && node tests/updater-unit.cjs",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "dist:win": "npm run build && electron-builder --win --dir",
-    "dist:mac": "npm run build && electron-builder --mac --dir"
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --publish never",
+    "release:meta": "node scripts/fix-update-meta.cjs"
   },
   "build": {
     "appId": "com.choeae.app",
@@ -20,24 +21,46 @@
       "dist/**/*",
       "main.cjs",
       "alarms.cjs",
+      "updater.cjs",
       "preload.cjs",
       "package.json"
     ],
     "directories": {
       "output": "release"
     },
+    "afterSign": "scripts/notarize.cjs",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "lala525404",
+        "repo": "nyang-pet-app"
+      }
+    ],
     "win": {
-      "target": "portable",
+      "target": [
+        "nsis"
+      ],
       "icon": "public/icon.ico"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
       "icon": "public/icon.icns",
       "hardenedRuntime": true,
-      "category": "public.app-category.entertainment"
-    },
-    "portable": {
-      "artifactName": "${productName}-${version}.${ext}"
+      "category": "public.app-category.entertainment",
+      "artifactName": "${productName}-${version}-${arch}-mac.${ext}"
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
@@ -49,10 +72,18 @@
       }
     ],
     "nsis": {
-      "shortcutName": "최애를 풀어놨습니다"
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "최애를 풀어놨습니다",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "artifactName": "choeae-app-Setup-${version}.${ext}"
     }
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
@@ -66,6 +97,7 @@
     "wait-on": "^7.2.0"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-easy-crop": "^6.2.4",

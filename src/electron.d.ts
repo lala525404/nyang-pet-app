@@ -1,3 +1,14 @@
+// 자동 업데이트 상태(메인의 updater.cjs가 보낸다)
+export interface UpdateState {
+  status: 'disabled' | 'idle' | 'checking' | 'none' | 'available' | 'blocked' | 'downloading' | 'downloaded' | 'error';
+  version?: string;
+  percent?: number;
+  message?: string;
+  error?: string;
+  reason?: string | null;
+  pendingInstall?: boolean;
+}
+
 interface ElectronAPI {
   quitApp: () => void;
   openSettings: () => void;
@@ -29,6 +40,11 @@ interface ElectronAPI {
   onShowToast: (cb: (msg: string, ms?: number) => void) => () => void;
   getAllDisplays: () => Promise<{ all: { minX: number; minY: number; width: number; height: number }; monitors: { id: number; displayId: number; isPrimary: boolean; label: string; bounds: { x: number; y: number; width: number; height: number } }[] }>;
   getPetPosition: () => Promise<{x:number,y:number}|null>;
+  getUpdateState: () => Promise<UpdateState>;
+  checkForUpdates: () => Promise<UpdateState>;
+  downloadUpdate: () => Promise<UpdateState>;
+  installUpdate: () => Promise<boolean | 'deferred'>;
+  onUpdateState: (cb: (state: UpdateState) => void) => () => void;
 }
 
 declare global {

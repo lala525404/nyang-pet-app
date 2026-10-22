@@ -58,6 +58,18 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 .st-brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-family: 'OngleipParkDahyeon', 'Pretendard Variable', Pretendard, sans-serif; font-size: 17px; line-height: 1.2; color: var(--ui-sub); }
 .st-brand-heart { align-self: center; width: 18px; height: 17px; color: var(--ui-ink); }
 .st-brand small { font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 12px; }
+/* 버전 옆 업데이트 확인: 작은 알약 버튼 하나와 상태 문구. 상태가 바뀌어도 머리말 높이가 움직이지 않게 줄 높이를 고정한다. */
+.st-brand { min-height: 28px; }
+.st-update { display: inline-flex; align-items: center; align-self: center; gap: 8px; margin-left: 4px; font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 12px; line-height: 1; font-weight: 400; }
+.st-update-note { color: var(--ui-sub); white-space: nowrap; }
+.st-update-bar { -webkit-appearance: none; appearance: none; width: 64px; height: 4px; border: 0; border-radius: var(--ui-r-pill); overflow: hidden; background: var(--ui-track); }
+.st-update-bar::-webkit-progress-bar { background: var(--ui-track); }
+.st-update-bar::-webkit-progress-value { background: var(--ui-accent); border-radius: var(--ui-r-pill); transition: width 160ms var(--ui-ease-out); }
+.st-update-btn { box-sizing: border-box; height: 28px; padding: 0 12px; border: 0; border-radius: var(--ui-r-pill); background: var(--ui-track); color: var(--ui-ink); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background-color 120ms var(--ui-ease-out); }
+.st-update-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.st-update-btn:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .st-update-btn:not(:disabled):hover { background: var(--ui-item); } }
+@media (prefers-reduced-motion: reduce) { .st-update-btn, .st-update-bar::-webkit-progress-value { transition: none; } }
 .st-title { font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
 .st-desc { margin-top: 4px; font-size: 14px; color: var(--ui-sub); }
 .st-pillbtn {

@@ -43,6 +43,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('settings-changed', handler);
     return () => ipcRenderer.removeListener('settings-changed', handler);
   },
+  // ★ 자동 업데이트: 상태는 메인(updater.cjs)이 보내 주고, 설정창은 확인·받기·재시작 설치를 요청한다
+  getUpdateState:   () => ipcRenderer.invoke('update-get-state'),
+  checkForUpdates:  () => ipcRenderer.invoke('update-check'),
+  downloadUpdate:   () => ipcRenderer.invoke('update-download'),
+  installUpdate:    () => ipcRenderer.invoke('update-install'),
+  onUpdateState:    (cb) => {
+    const handler = (_e, state) => cb(state);
+    ipcRenderer.on('update-state', handler);
+    return () => ipcRenderer.removeListener('update-state', handler);
+  },
   getPhotoState:    () => ipcRenderer.invoke('get-photo-state'),
   onPhotoState:     (cb) => {
     const handler = (_e, state) => cb(state);

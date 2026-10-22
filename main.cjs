@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, nativeTheme, powerMonitor, systemPreferences, shell } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, nativeTheme, powerMonitor, systemPreferences, shell, dialog } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -16,6 +16,7 @@ let settingsWindow = null;
 let petWindow = null;
 let yarWindow = null;
 let tray = null;
+let updater = null;       // 자동 업데이트(initUpdater에서 만든다)
 // 버디 창은 말풍선이 들어갈 크기로 고정한다. 말풍선이 뜨고 질 때 창 크기를 바꾸면 버디가 화면에서 25·40px씩 튀었다.
 const PET_WIN_W = 240;
 const PET_WIN_H = 230;
@@ -405,6 +406,7 @@ function stopAllTimers() {
   stopYarTimer();
   stopBreakTimeChecker();
   stopPhotoRotation();
+  if (updater) updater.stop();
 }
 
 // 설정창에 저장을 요청하고, 끝났다는 답이 오거나 SAVE_WAIT_MS가 지나면 넘어간다
@@ -432,7 +434,8 @@ function finishQuit() {
   settingsWindow = null; petWindow = null; yarWindow = null; breakTimeWindow = null;
   trayBeatTimers.forEach(clearTimeout);
   if (tray) { try { tray.destroy(); } catch {} tray = null; }
-  app.quit();
+  // 업데이트 재시작이 요청된 종료면, 정리가 모두 끝난 지금 설치하고 종료한다(quitAndInstall이 app.quit()을 대신한다). 아니면 평소처럼 종료.
+  if (!(updater && updater.runInstall())) app.quit();
 }
 
 function requestQuit() {
@@ -464,6 +467,7 @@ if (!gotLock) {
     createSettingsWindow();
     createPetWindow();
     createTray();
+    initUpdater();
   });
 }
 
@@ -478,6 +482,73 @@ app.on('before-quit', (e) => {
   e.preventDefault();
   requestQuit();
 });
+
+// ★ 자동 업데이트(electron-updater + GitHub 릴리스). 판단 로직은 updater.cjs(단위 테스트됨)에 있고, 여기서는 실제 Electron 값을 연결한다.
+//  - 패키징되지 않았거나 app-update.yml이 없으면(개발 모드, npm run fresh) 꺼진다.
+//  - 재시작 설치는 requestQuit()을 끝까지 거친 뒤 finishQuit()에서 수행한다(위).
+const { createUpdater, isUpdaterEnabled, installLocationStatus, MESSAGES: UPDATE_MESSAGES } = require('./updater.cjs');
+
+// ★ 중요: 부모 창 없는 dialog.showMessageBox는 맥에서 대화상자가 떠 있는 동안 메인 프로세스의 타이머(알람 스케줄러 포함)를 멈춘다(실측: 열린 뒤 tick이 완전히 멈춤).
+//   그래서 대화상자는 항상 보이는 창(설정창, 없으면 버디 창)에 붙여서 띄운다(시트 방식은 타이머가 계속 돈다). 보이는 창이 없으면 대화상자를 건너뛰고,
+//   상태는 설정창·트레이 표시로만 알린다(자동 확인이 창을 억지로 띄우지 않게).
+function promptParent() {
+  for (const w of [settingsWindow, petWindow]) if (w && !w.isDestroyed() && w.isVisible()) return w;
+  return null;
+}
+
+async function promptUpdate(kind, ctx) {
+  const parent = promptParent();
+  if (!parent) return 'later';   // 보이는 창이 없으면 묻지 않는다(다음 확인이나 설정창에서 다시 알린다)
+  const B = UPDATE_MESSAGES.buttons;
+  const spec = {
+    available:   { message: UPDATE_MESSAGES.available(ctx.version), buttons: [B.updateNow, B.later] },
+    downloaded:  { message: UPDATE_MESSAGES.downloaded, buttons: [B.restart, B.later] },
+    checkFailed: { message: UPDATE_MESSAGES.checkFailed, buttons: [B.ok] },
+    location:    { message: UPDATE_MESSAGES.moveToApplications, detail: UPDATE_MESSAGES.moveToApplicationsDetail(ctx.version), buttons: [B.ok] },
+  }[kind];
+  const { response } = await dialog.showMessageBox(parent, {   // 부모 창에 붙인다(위 주석: 부모 없이 띄우면 알람 타이머가 멈춘다)
+    type: 'info', title: UPDATE_MESSAGES.title, message: spec.message, detail: spec.detail,
+    buttons: spec.buttons, defaultId: 0, cancelId: spec.buttons.length - 1, noLink: true,
+  });
+  if (kind === 'available' || kind === 'downloaded') return response === 0 ? 'yes' : 'later';
+  return 'ok';
+}
+
+// 상태를 설정창에 보내고, 설정창이 닫혀 있어도 보이는 작은 표시를 한다(맥: 트레이 옆 숫자, Windows: 트레이 툴팁·작업 표시줄 진행 막대)
+function broadcastUpdateState(s) {
+  if (settingsWindow && !settingsWindow.isDestroyed()) { try { settingsWindow.webContents.send('update-state', s); } catch {} }
+  const downloading = s.status === 'downloading';
+  if (tray) {
+    try {
+      tray.setToolTip(downloading ? `최애를 풀어놨습니다 · 업데이트 다운로드 중 ${s.percent}%` : s.status === 'downloaded' ? '최애를 풀어놨습니다 · 재시작하면 업데이트가 설치돼요' : '최애를 풀어놨습니다');
+      if (process.platform === 'darwin') tray.setTitle(downloading ? `${s.percent}%` : '');
+    } catch {}
+  }
+  const bar = downloading ? Math.max(0, s.percent) / 100 : -1;
+  for (const w of [petWindow, settingsWindow]) if (w && !w.isDestroyed()) { try { w.setProgressBar(bar); } catch {} }
+}
+
+function initUpdater() {
+  const hasUpdateConfig = fs.existsSync(path.join(process.resourcesPath || '', 'app-update.yml'));
+  const enabled = isUpdaterEnabled({ isPackaged: app.isPackaged, hasUpdateConfig });
+  let autoUpdater = null;
+  if (enabled) { try { ({ autoUpdater } = require('electron-updater')); } catch (e) { console.error('[updater] 불러오지 못했어요', e && e.message); } }
+  updater = createUpdater({
+    autoUpdater,
+    enabled: enabled && !!autoUpdater,
+    location: installLocationStatus({ platform: process.platform, exePath: app.getPath('exe'), home: require('os').homedir() }),
+    isBusy: () => alertCount > 0,           // 알람·점심·퇴근·야르 같은 전체화면 알림이 떠 있는 동안은 재시작을 미룬다
+    showPrompt: promptUpdate,
+    requestInstallQuit: () => requestQuit(),
+    onState: broadcastUpdateState,
+    log: (...a) => console.log('[updater]', ...a),
+  });
+  updater.start();
+}
+ipcMain.handle('update-get-state', () => (updater ? updater.getState() : { status: 'disabled' }));
+ipcMain.handle('update-check', async () => (updater ? updater.check({ manual: true }) : { status: 'disabled' }));
+ipcMain.handle('update-download', async () => (updater ? updater.download() : { status: 'disabled' }));
+ipcMain.handle('update-install', () => (updater ? updater.install() : false));
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 ipcMain.on('quit-app', () => requestQuit());
