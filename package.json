@@ -33,6 +33,7 @@
     "mac": {
       "target": "dmg",
       "icon": "public/icon.icns",
+      "hardenedRuntime": true,
       "category": "public.app-category.entertainment"
     },
     "portable": {
