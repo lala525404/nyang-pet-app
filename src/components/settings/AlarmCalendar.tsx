@@ -25,7 +25,7 @@ const eventAria = (a: Alarm, day: Date, past: boolean) =>
 
 // 주간 알람 캘린더: 월~일 일자 열 아래로 그날의 알람 블록이 시각 순으로 쌓이고, 오전/오후만 구분선으로 나눈다(시간 축 없음).
 // 알람이 있는 날은 길어지고 없는 날은 비어 있어 한눈에 차이가 보인다. 블록에 마우스를 올리면 간단한 정보가 뜨고, 누르면 수정 창이 열린다.
-// 빈 곳(또는 +)을 누르면 그 요일의 오전(09:00)/오후(14:00)로 채워진 새 알람 폼이 열린다.
+// 빈 곳(또는 +)을 누르면 그 날짜의 오전(09:00)/오후(14:00)로 채워진 "하루짜리" 새 알람 폼이 열린다(편집 창의 "매주 반복"을 켜면 주간 반복).
 // 키보드: 칸을 방향키로 옮기고 Enter로 알람 만들기, Tab으로 블록 이동(Enter=수정), PageUp/PageDown으로 주 이동, T로 오늘. 좁은 폭에서는 요일별 목록.
 export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, onEdit, onClearPast }: Props) {
   const thisMonday = mondayOf(now);
@@ -160,7 +160,7 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
         </div>
       ) : (
         <>
-          <p className="ui-note st-cal-help" id="cal-help">알람 블록에 마우스를 올리면 간단한 정보가 뜨고, 누르면 수정해요 · 빈 곳을 누르면 새 알람 · 방향키로 칸 이동, Enter로 만들기 · PageUp/PageDown으로 주 이동</p>
+          <p className="ui-note st-cal-help" id="cal-help">알람 블록에 마우스를 올리면 간단한 정보가 뜨고, 누르면 수정해요 · 빈 곳을 누르면 그 날 하루짜리 새 알람 · 방향키로 칸 이동, Enter로 만들기 · PageUp/PageDown으로 주 이동</p>
           <div className="st-cal-sheet" role="group" aria-roledescription="주간 알람 캘린더" aria-label={`주간 알람 캘린더 ${weekRangeLabel(weekStart)}`} aria-describedby="cal-help" tabIndex={0}
             onKeyDown={onKeyDown} onFocus={(e) => { if (e.target === e.currentTarget) { setFocused(true); setAnnounce(describeCursor(cursor.col, cursor.zone)); } }} onBlur={(e) => { if (e.target === e.currentTarget) setFocused(false); }}>
             <div className="st-cal-corner" aria-hidden />

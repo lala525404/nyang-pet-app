@@ -7,7 +7,7 @@ import AlarmDetailFields from './AlarmDetailFields';
 import AlarmEditor from './AlarmEditor';
 import { formatTime } from '../../utils/settings';
 import { ALARM_NAME_MAX } from '../../utils/alarmText';
-import { MAX_ALARMS, isPastOneShot, parseYmd, repeatSummary } from '../../utils/alarmSchedule';
+import { MAX_ALARMS, isPastOneShot, parseYmd, repeatSummary, ymd } from '../../utils/alarmSchedule';
 import { openAfterAdd, openAfterRemove, openIfExists, toggleOpen } from '../../utils/alarmList';
 import type { Alarm } from '../../utils/settings';
 import type { PaneProps } from './shared';
@@ -71,10 +71,11 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
   const removeAlarm = (id: string) => { setOpenId(o => openAfterRemove(o, id)); update({ alarms: alarms.filter(a => a.id !== id) }); };
   const clearPast = () => update({ alarms: alarms.filter(a => !isPastOneShot(a, now)) });
 
-  // 캘린더에서 빈 칸을 눌렀을 때: 그 요일·시각이 채워진 새 알람 폼. 처음 값을 바꾸는 순간 알람이 만들어지므로 잘못 눌러도 남지 않는다.
+  // 캘린더에서 빈 칸을 눌렀을 때: 그 날짜·시각이 채워진 "하루짜리"(반복 없음) 새 알람 폼. 편집 창의 "매주 반복" 토글을 켜면 그 요일 주간 반복이 된다.
+  // 처음 값을 바꾸는 순간 알람이 만들어지므로 잘못 눌러도 남지 않는다.
   const startDraft = (day: Date, time: string) => {
     if (atLimit) return;
-    const draft: Alarm = { id: newId(), time, enabled: true, repeat: { kind: 'weekly', days: [day.getDay()] } };
+    const draft: Alarm = { id: newId(), time, enabled: true, repeat: { kind: 'date', date: ymd(day) } };
     setEditing({ id: draft.id, draft, anchor: day });
   };
   const editingAlarm = editing ? (alarms.find(a => a.id === editing.id) ?? editing.draft ?? null) : null;

@@ -396,4 +396,16 @@ t('폼 규격(정적 확인): 모든 입력 칸이 같은 높이·좌우 여백,
   assert.ok(!/^\.st-text \{/m.test(css) && !/^\.st-msg-input \{/m.test(css), '입력 칸 개별 높이·여백 정의는 공통 규격으로 일원화');
   assert.match(css, /\.st-daychip--day \{ width: var\(--ui-chip-h\); border-radius: 50%; \}/); assert.match(css, /\.st-daychip \{[^}]*height: var\(--ui-chip-h\)/); assert.match(css, /grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
 });
+t('캘린더 빈 칸은 그 날짜 하루짜리 알람, "매주 반복" 토글을 켜면 그 요일 주간 반복(정적 확인)', () => {
+  const pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmPane.tsx'), 'utf8'), ed = fs.readFileSync(path.join(root, 'src/components/settings/AlarmEditor.tsx'), 'utf8');
+  assert.match(pane, /const draft: Alarm = \{ id: newId\(\), time, enabled: true, repeat: \{ kind: 'date', date: ymd\(day\) \} \}/);   // 반복 없는 하루짜리가 기본
+  assert.ok(!/kind: 'weekly', days: \[day\.getDay\(\)\]/.test(pane), '빈 칸 기본값은 더 이상 주간 반복이 아니다');
+  assert.match(ed, /\{anchor && \(/); assert.match(ed, /<Switch checked=\{weekly\} onChange=\{setWeekly\} label="매주 반복" \/>/);   // 캘린더에서 연 새 알람에만 토글
+  assert.match(ed, /kind: 'weekly', days: alarm\.repeat\?\.kind === 'week' \? alarm\.repeat\.days : \[anchor\.getDay\(\)\]/); assert.match(ed, /\{ kind: 'date', date: ymd\(anchor\) \}/);
+  // 하루짜리는 그 날에만 나타나고, 주간 반복은 그 요일마다 나타난다
+  const day = new Date(2026, 9, 22), other = new Date(2026, 9, 29);   // 목요일, 다음 주 목요일
+  assert.ok(S.occursOn({ repeat: { kind: 'date', date: S.ymd(day) } }, day)); assert.ok(!S.occursOn({ repeat: { kind: 'date', date: S.ymd(day) } }, other));
+  assert.ok(S.occursOn({ repeat: { kind: 'weekly', days: [day.getDay()] } }, other));
+  assert.strictEqual(`${CAL.defaultTimeFor('am')}/${CAL.defaultTimeFor('pm')}`, '09:00/14:00');   // 기본 시각 유지
+});
 console.log(`\n${n}개 통과`);
