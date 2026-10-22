@@ -1,4 +1,5 @@
 import type { CustomShape } from '../components/CatEmoji';
+import { seedFreshTheme } from './theme';
 
 export interface Alarm {
   id: string;
@@ -113,7 +114,7 @@ let freshSeeded: boolean | undefined;
 export function seedFreshInstall(mainSaysFresh: boolean): boolean {
   if (freshSeeded === undefined) {
     freshSeeded = mainSaysFresh && !hasStoredSettings();
-    if (freshSeeded) saveSettings(freshDefaults());
+    if (freshSeeded) { seedFreshTheme(); saveSettings(freshDefaults()); }
   }
   return freshSeeded;
 }
