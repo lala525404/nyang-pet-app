@@ -180,4 +180,152 @@ t('글(이름·설명)이 있는 알람은 팝업을 2초 더 보여 준다: 판
   assert.match(main, /3000 \+ \(type === 'alarm' && alarms\.alarmHasText\(info\) \? alarms\.TEXT_EXTRA_MS : 0\)/); assert.match(main, /\}, showMs\);/); assert.match(main, /\}분 전이에요!`, a\.ms\);/);
   assert.match(card, /2600 \+ \(type === 'alarm' && alarmHasText\(alarmInfo\) \? ALARM_TEXT_EXTRA_MS : 0\)/);
 });
+// ── 반복 알람(위클리 캘린더): 요일·날짜·그 주만·건너뛰기·놓친 알람·상한 ──────────────────────────────
+const S = load('src/utils/alarmSchedule.ts');
+const CAL = load('src/utils/alarmCalendar.ts', { './settings': settingsTs, './alarmSchedule': S });
+const D = (y, m, d, h = 0, mi = 0, s = 30) => new Date(y, m - 1, d, h, mi, s);   // 2026-10-26은 월요일
+const MON = 26, TUE = 27, WED = 28;   // 2026년 10월의 월·화·수
+const al = (extra = {}) => ({ id: 'a', time: '10:00', enabled: true, name: '주간회의', ...extra });
+const fires = (alarm, when, fired = new Set()) => cards(A.dueActions(merge({ alarms: [alarm] }), when, fired)).includes('alarm');
+
+t('매주 반복: 지정한 요일에만 울린다(월·수), 프리셋(평일/주말)과 일치', () => {
+  const mw = al({ repeat: { kind: 'weekly', days: [1, 3] } });
+  assert.ok(fires(mw, D(2026, 10, MON, 10, 0)) && fires(mw, D(2026, 10, WED, 10, 0)));
+  assert.ok(!fires(mw, D(2026, 10, TUE, 10, 0)) && !fires(mw, D(2026, 10, 29, 10, 0)) && !fires(mw, D(2026, 10, 31, 10, 0)));
+  const weekdays = al({ repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5] } }), weekend = al({ repeat: { kind: 'weekly', days: [0, 6] } });
+  for (let d = 26; d <= 32; d++) { const day = new Date(2026, 9, d); const wd = day.getDay() >= 1 && day.getDay() <= 5; assert.strictEqual(fires(weekdays, new Date(2026, 9, d, 10, 0, 30)), wd); assert.strictEqual(fires(weekend, new Date(2026, 9, d, 10, 0, 30)), !wd); }
+  assert.deepStrictEqual(S.DAY_PRESETS.map(p => p.label), ['매일', '평일', '주말']);
+});
+t('특정 날짜 한 번: 그 날 한 번만 울리고, 다음 날·다음 해·같은 요일에는 안 울리며, 지난 뒤에는 완료로 본다', () => {
+  const one = al({ name: '1차시안 전달예정', time: '15:00', repeat: { kind: 'date', date: '2026-10-27' } });
+  const fired = new Set();
+  assert.ok(!fires(one, D(2026, 10, MON, 15, 0), fired));                       // 전날은 안 울림
+  assert.ok(fires(one, D(2026, 10, TUE, 15, 0), fired)); assert.ok(!fires(one, D(2026, 10, TUE, 15, 0), fired));   // 그 날 한 번만
+  assert.ok(!fires(one, D(2026, 10, WED, 15, 0), fired)); assert.ok(!fires(one, D(2026, 11, 3, 15, 0)));            // 다음 날·다음 주 같은 요일
+  assert.ok(!fires(one, D(2027, 10, 27, 15, 0)));                               // 다음 해 같은 날짜도 아님(연도 포함)
+  assert.strictEqual(S.isPastOneShot(one, D(2026, 10, TUE, 14, 59)), false); assert.strictEqual(S.isPastOneShot(one, D(2026, 10, TUE, 15, 1)), true);
+  assert.strictEqual(S.isPastOneShot(al({ repeat: { kind: 'weekly', days: [1] } }), D(2030, 1, 1)), false);   // 반복 알람은 완료가 없다
+});
+t('그 주만(요일 지정): 그 주의 지정 요일에만, 다음 주에는 안 울리고, 주가 지나면 완료', () => {
+  const wk = al({ repeat: { kind: 'week', weekStart: '2026-10-26', days: [3, 5] } });   // 이번 주 수·금만
+  assert.ok(fires(wk, D(2026, 10, WED, 10, 0)) && fires(wk, D(2026, 10, 30, 10, 0)));
+  assert.ok(!fires(wk, D(2026, 10, TUE, 10, 0)) && !fires(wk, D(2026, 11, 4, 10, 0)) && !fires(wk, D(2026, 11, 6, 10, 0)) && !fires(wk, D(2026, 10, 21, 10, 0)));
+  assert.strictEqual(S.isPastOneShot(wk, D(2026, 10, 30, 9, 0)), false); assert.strictEqual(S.isPastOneShot(wk, D(2026, 10, 30, 10, 5)), true);
+  assert.strictEqual(A.sanitizeRepeat({ kind: 'week', weekStart: '2026-10-28', days: [3] }).weekStart, '2026-10-26');   // 주 시작은 월요일로 정리
+});
+t('오늘만 건너뛰기: 그 날짜 하루만 안 울리고(미리 알림 포함) 다음 주에는 다시 울린다', () => {
+  const mon = al({ preMinutes: 10, repeat: { kind: 'weekly', days: [1] }, skipDate: '2026-10-26' });
+  assert.ok(!fires(mon, D(2026, 10, MON, 10, 0)));
+  assert.deepStrictEqual(A.dueActions(merge({ alarms: [mon] }), D(2026, 10, MON, 9, 50), new Set()), []);   // 미리 알림도 건너뜀
+  assert.ok(fires(mon, D(2026, 11, 2, 10, 0)));
+  assert.deepStrictEqual(toasts(A.dueActions(merge({ alarms: [{ ...mon, skipDate: undefined }] }), D(2026, 11, 2, 9, 50), new Set())), ['alarm10']);
+});
+t('알람 끔: 꺼진 알람은 반복·날짜와 상관없이 안 울린다', () => {
+  assert.ok(!fires(al({ enabled: false, repeat: { kind: 'weekly', days: [1] } }), D(2026, 10, MON, 10, 0)));
+  assert.ok(!fires(al({ enabled: false, repeat: { kind: 'date', date: '2026-10-26' } }), D(2026, 10, MON, 10, 0)));
+});
+t('기존 알람 호환: 반복 정보가 없으면 매일 울리고, 저장 정리 후에도 모양이 그대로(반복 키를 만들지 않음)', () => {
+  const old = { id: 'o1', time: '09:00', enabled: true }; const fired = new Set();
+  for (let d = 26; d <= 32; d++) assert.ok(fires(old, new Date(2026, 9, d, 9, 0, 30), fired));
+  assert.deepStrictEqual(merge({ alarms: [old] }).alarms, [old]);
+  const five = Array.from({ length: 5 }, (_, i) => ({ id: `o${i}`, time: `0${i + 1}:00`, enabled: i % 2 === 0, name: i ? `이름${i}` : undefined })).map(a => (a.name ? a : { id: a.id, time: a.time, enabled: a.enabled }));
+  assert.deepStrictEqual(merge({ alarms: five }).alarms, five);
+  assert.strictEqual(S.repeatSummary(old), '매일'); assert.deepStrictEqual(S.effectiveDays(old), [0, 1, 2, 3, 4, 5, 6]);
+});
+t('알람 상한 50개: 저장 정리가 50개까지만 남기고 앞쪽을 유지한다(점심·퇴근은 별도)', () => {
+  assert.strictEqual(A.MAX_ALARMS, 50); assert.strictEqual(S.MAX_ALARMS, 50);
+  const many = Array.from({ length: 73 }, (_, i) => ({ id: `m${i}`, time: `${String(i % 24).padStart(2, '0')}:00`, enabled: true }));
+  const out = merge({ lunchEnabled: true, alarms: many }); assert.strictEqual(out.alarms.length, 50); assert.strictEqual(out.alarms[0].id, 'm0'); assert.strictEqual(out.alarms[49].id, 'm49'); assert.strictEqual(out.lunchEnabled, true);
+});
+t('잘못된 반복·건너뛰기 값은 버린다(요일 없음·없는 날짜·모르는 종류)', () => {
+  for (const bad of [{ kind: 'weekly', days: [] }, { kind: 'weekly', days: [9, -1] }, { kind: 'date', date: '2026-02-30' }, { kind: 'date', date: '10/27' }, { kind: 'week', weekStart: 'x', days: [1] }, { kind: 'month' }, 'x', null]) assert.strictEqual(A.sanitizeRepeat(bad), undefined, JSON.stringify(bad));
+  assert.strictEqual(merge({ alarms: [{ id: 'z', time: '09:00', enabled: true, skipDate: '2026-13-01' }] }).alarms[0].skipDate, undefined);
+  assert.deepStrictEqual(A.sanitizeRepeat({ kind: 'weekly', days: [3, 1, 1, 3] }), { kind: 'weekly', days: [1, 3] });
+});
+t('놓친 알람: 앱이 꺼져 있던 동안 지난 알람은 최근 10분 이내만 "놓친 알람"으로 한 번, 점심·퇴근은 그대로 건너뜀', () => {
+  assert.strictEqual(A.MISSED_WINDOW_MIN, 10);
+  const settings = merge({ lunchEnabled: true, lunchTime: '10:02', alarms: [al({ id: 'recent', time: '10:00' }), al({ id: 'old', time: '09:40', name: '오래됨' })] });
+  const sch = A.createScheduler();   // 방금 앱을 켰다(10:05) — 마지막 확인 기록이 없다
+  const first = sch.check(settings, D(2026, 10, MON, 10, 5, 10));
+  assert.deepStrictEqual(first.map(a => [a.card, a.missed === true, a.alarm && a.alarm.name]), [['alarm', true, '주간회의']]);   // 10분 안: 놓친 카드 1장, 25분 전·점심은 없음
+  assert.deepStrictEqual(sch.check(settings, D(2026, 10, MON, 10, 5, 40)), []);                // 같은 분 다시 확인해도 중복 없음
+  assert.deepStrictEqual(sch.check(settings, D(2026, 10, MON, 10, 6, 10)), []);                // 다음 분에도 다시 안 울림
+  // 앱을 다시 켜도(저장해 둔 발화 기록을 넘겨 주면) 같은 알람이 또 울리지 않는다
+  const again = A.createScheduler({ fired: new Set(sch.fired) }); assert.deepStrictEqual(again.check(settings, D(2026, 10, MON, 10, 7, 0)), []);
+});
+t('제때 울린 알람은 "놓친 알람"이 아니고, 1분 안쪽 지연도 보통 카드로 본다', () => {
+  const settings = merge({ alarms: [al({ time: '10:00' })] }); const sch = A.createScheduler();
+  sch.check(settings, D(2026, 10, MON, 9, 59, 20));
+  const on = sch.check(settings, D(2026, 10, MON, 10, 0, 5)); assert.deepStrictEqual(on.map(a => a.missed === true), [false]);
+  const s2 = A.createScheduler(); s2.check(settings, D(2026, 10, MON, 9, 58, 59));
+  const lateOne = s2.check(settings, D(2026, 10, MON, 10, 1, 0)); assert.deepStrictEqual(lateOne.map(a => a.missed === true), [false]);   // 타이머가 1분쯤 밀림
+});
+t('절전에서 깨어남/시각 변경: 오래 자다 깨면 최근 10분만, 시계를 되돌려도 다시 울리지 않고, 크게 앞으로 가도 최근 10분만', () => {
+  const settings = merge({ alarms: [al({ id: 'x', time: '10:03' }), al({ id: 'y', time: '10:30', name: '반' })] });
+  const sch = A.createScheduler(); sch.check(settings, D(2026, 10, MON, 10, 0, 10));
+  const wake = sch.check(settings, D(2026, 10, MON, 10, 7, 20));            // 10:00 → 10:07에 깨어남
+  assert.deepStrictEqual(wake.map(a => [a.alarm.name, a.missed]), [['주간회의', true]]);
+  assert.deepStrictEqual(sch.check(settings, D(2026, 10, MON, 9, 30, 0)), []);                   // 시계를 30분 되돌림: 다시 울리지 않음
+  assert.deepStrictEqual(sch.check(settings, D(2026, 10, MON, 10, 4, 0)), []);                   // 되돌린 시계가 10:03을 다시 지나가도 기록 때문에 안 울림
+  const jump = A.createScheduler(); jump.check(settings, D(2026, 10, MON, 8, 0, 0));
+  const far = jump.check(settings, D(2026, 10, MON, 10, 35, 0));            // 2시간 35분 뒤로 건너뜀: 10:25~10:35만 본다 → 10:30 알람
+  assert.deepStrictEqual(far.map(a => [a.alarm.name, a.missed]), [['반', true]]);
+});
+t('자정 넘김은 시작한 날(요일) 기준: 월요일 23:30 시작 일정은 월요일에만 울리고 캘린더에서도 월요일에 그 날 끝까지 그린다', () => {
+  const night = al({ id: 'n', time: '23:30', endTime: '01:00', repeat: { kind: 'weekly', days: [1] } });
+  assert.ok(fires(night, D(2026, 10, MON, 23, 30))); assert.ok(!fires(night, D(2026, 10, TUE, 23, 30))); assert.ok(!fires(night, D(2026, 10, TUE, 0, 30)));
+  const mon = CAL.dayEvents([night], new Date(2026, 9, MON), D(2026, 10, MON, 12, 0)); assert.deepStrictEqual(mon.map(e => [e.startMin, e.endMin]), [[23 * 60 + 30, 1440]]);
+  assert.deepStrictEqual(CAL.dayEvents([night], new Date(2026, 9, TUE), D(2026, 10, MON, 12, 0)), []);
+  // 미리 알림이 자정을 넘어 전날 밤에 뜨는 경우: 알람이 울릴 날을 기준으로 판정한다(화요일 00:05 알람 → 월요일 23:55 토스트)
+  const early = al({ id: 'e', time: '00:05', preMinutes: 10, repeat: { kind: 'weekly', days: [2] } });
+  assert.deepStrictEqual(toasts(A.dueActions(merge({ alarms: [early] }), D(2026, 10, MON, 23, 55), new Set())), ['alarm10']);
+  assert.deepStrictEqual(A.dueActions(merge({ alarms: [early] }), D(2026, 10, TUE, 23, 55), new Set()), []);   // 수요일 00:05는 반복 요일이 아님
+});
+t('발화 기록 저장·복원(날짜+알람 id+시각 키), 깨진 파일은 빈 기록', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'choeae-alarm-unit-')); const f = path.join(dir, 'alarm-fired.json');
+  try {
+    const fired = new Set(); A.dueActions(merge({ alarms: [al({ id: 'k1' })] }), D(2026, 10, MON, 10, 0), fired);
+    assert.ok([...fired].some(k => k.endsWith('|alarm|k1|10:00') && k.startsWith(D(2026, 10, MON).toDateString()))); assert.strictEqual(A.saveFired(f, fired), true);
+    assert.deepStrictEqual([...A.loadFired(f)], [...fired]); fs.writeFileSync(f, '{깨짐'); assert.strictEqual(A.loadFired(f).size, 0); assert.strictEqual(A.loadFired(path.join(dir, 'none.json')).size, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+t('메인(alarms.cjs)과 화면(TypeScript)의 반복 규칙이 같은 결과를 낸다(여러 반복·날짜 조합)', () => {
+  const reps = [undefined, { kind: 'weekly', days: [1] }, { kind: 'weekly', days: [0, 6] }, { kind: 'weekly', days: [1, 2, 3, 4, 5] }, { kind: 'date', date: '2026-10-27' }, { kind: 'date', date: '2026-12-31' }, { kind: 'week', weekStart: '2026-10-26', days: [3, 5] }, { kind: 'week', weekStart: '2026-12-28', days: [0] }];
+  let checked = 0;
+  for (const repeat of reps) for (let off = -20; off <= 80; off++) { const day = new Date(2026, 9, 20 + off, 13, 0, 0); assert.strictEqual(A.occursOn({ repeat }, day), S.occursOn({ repeat }, day), `${JSON.stringify(repeat)} ${day.toDateString()}`); checked++; }
+  for (const d of [new Date(2026, 9, 25), new Date(2026, 9, 26), new Date(2026, 11, 31), new Date(2027, 0, 1)]) { assert.strictEqual(A.ymd(d), S.ymd(d)); assert.strictEqual(A.ymd(A.mondayOf(d)), S.ymd(S.mondayOf(d))); }
+  assert.ok(checked > 800);
+});
+t('캘린더 배치: 주는 월~일 7칸, 겹치는 알람은 옆으로 나눠 그리고, 꺼짐·건너뜀·지난 한 번짜리는 흐리게', () => {
+  const ws = S.mondayOf(new Date(2026, 9, 28)); assert.strictEqual(S.ymd(ws), '2026-10-26');
+  assert.deepStrictEqual(CAL.weekDates(ws).map(d => d.getDay()), [1, 2, 3, 4, 5, 6, 0]); assert.strictEqual(CAL.weekRangeLabel(ws), '10월 26일 – 11월 1일'); assert.strictEqual(CAL.weekRangeLabel(S.mondayOf(new Date(2026, 9, 21))), '10월 19일 – 25일');
+  const a1 = al({ id: '1', time: '10:00', endTime: '11:00' }), a2 = al({ id: '2', time: '10:30' }), a3 = al({ id: '3', time: '14:00' }), off = al({ id: '4', time: '16:00', enabled: false }), sk = al({ id: '5', time: '17:00', skipDate: '2026-10-28' });
+  const ev = CAL.dayEvents([a1, a2, a3, off, sk], new Date(2026, 9, 28), D(2026, 10, 28, 9, 0));
+  assert.deepStrictEqual(ev.map(e => [e.alarm.id, e.col, e.cols, e.dim]), [['1', 0, 2, false], ['2', 1, 2, false], ['3', 0, 1, false], ['4', 0, 1, true], ['5', 0, 1, true]]);
+  assert.strictEqual(ev.find(e => e.alarm.id === '3').endMin - ev.find(e => e.alarm.id === '3').startMin, CAL.MIN_EVENT_MIN);
+  const pastOne = al({ id: 'p', time: '09:00', repeat: { kind: 'date', date: '2026-10-28' } }); const pe = CAL.dayEvents([pastOne], new Date(2026, 9, 28), D(2026, 10, 28, 12, 0))[0]; assert.deepStrictEqual([pe.past, pe.dim], [true, true]);
+  assert.deepStrictEqual([0, 23, 24, 47, 48, 5000, -5].map(y => CAL.slotFromY(y)), [0, 0, 1, 1, 2, 47, 0]);   // 48px/시간 → 24px/30분
+  assert.strictEqual(CAL.minToY(600), 480); assert.strictEqual(S.minToTime(CAL.slotToMinutes(21)), '10:30');
+});
+t('반복 요약 문구: 매일/평일/주말/매주 월·수/날짜/그 주만', () => {
+  assert.deepStrictEqual([undefined, { kind: 'weekly', days: [1, 2, 3, 4, 5] }, { kind: 'weekly', days: [6, 0] }, { kind: 'weekly', days: [0, 1, 2, 3, 4, 5, 6] }, { kind: 'weekly', days: [3, 1] }, { kind: 'date', date: '2026-10-27' }, { kind: 'week', weekStart: '2026-10-26', days: [5, 3] }, { kind: 'week', weekStart: '2026-10-26', days: [1, 2, 3, 4, 5] }].map(repeat => S.repeatSummary({ repeat })),
+    ['매일', '평일', '주말', '매일', '매주 월·수', '10월 27일(화)', '그 주만 수·금', '그 주만 평일']);
+});
+t('"놓친 알람" 카드 문구와 메인 연결: 스케줄러 사용, 발화 기록 저장·복원, 절전 해제 시 확인, 카드에 놓침 표시 전달', () => {
+  assert.strictEqual(T.alarmSubText({ missed: true, time: '14:00' }), '놓친 알람 · 오후 2:00');
+  assert.strictEqual(T.alarmSubText({ missed: true, time: '14:00', endTime: '15:00', memo: '준비' }), '놓친 알람 · 오후 2:00 · 오후 2:00 – 오후 3:00 · 준비');
+  assert.strictEqual(T.alarmSubText({ missed: false, time: '14:00' }), '알람이 울렸어요!');
+  assert.strictEqual(A.cardInfo({ time: '14:00', missed: true }).missed, true); assert.strictEqual('missed' in A.cardInfo({ time: '14:00' }), false);
+  const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8'), card = fs.readFileSync(path.join(root, 'src/pages/BreakTimePage.tsx'), 'utf8');
+  assert.match(main, /alarms\.createScheduler\(/); assert.match(main, /scheduler\.check\(alarmSettings, now\)/); assert.match(main, /alarms\.saveFired\(firedFile\(\), scheduler\.fired\)/);
+  assert.match(main, /alarms\.loadFired\(firedFile\(\)\)/); assert.match(main, /powerMonitor\.on\('resume'/); assert.match(main, /x: info\.missed \? '1' : ''/);
+  assert.match(card, /missed: q\.get\('x'\) === '1'/);
+});
+t('스타일 이름 충돌 방지: 홈 화면 칩(.st-chips/.st-chip)은 한 번만 정의하고, 알람 요일 칩은 다른 이름(.st-dayrow/.st-daychip)을 쓴다', () => {
+  const css = fs.readFileSync(path.join(root, 'src/styles/settings.css'), 'utf8'), pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmDetailFields.tsx'), 'utf8');
+  assert.strictEqual((css.match(/^\.st-chips\s*\{/gm) || []).length, 1, '.st-chips 정의는 홈 칩 한 곳');
+  assert.strictEqual((css.match(/^\.st-chip\s*\{/gm) || []).length, 1, '.st-chip 정의는 홈 칩 한 곳');
+  assert.ok(/^\.st-dayrow\s*\{/m.test(css) && /^\.st-daychip\s*\{/m.test(css));
+  assert.ok(!/className="st-chips?\b/.test(pane) && /className="st-dayrow"/.test(pane) && /className="st-daychip/.test(pane));
+});
 console.log(`\n${n}개 통과`);
