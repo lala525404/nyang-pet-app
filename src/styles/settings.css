@@ -194,6 +194,26 @@ html[data-theme="dark"] .st-pop { color-scheme: dark; }
 .st-li + .st-li { border-top: 1px solid var(--ui-line); }
 .st-li .ui-time { min-width: 136px; }
 .st-li-label { flex: 1; min-width: 0; font-size: 13px; color: var(--ui-sub); }
+/* 알람 한 개: 위 줄(시간·이름·켜기·삭제) + 접힌 "자세히" */
+.st-li--alarm { flex-direction: column; align-items: stretch; gap: 4px; }
+.st-li-row { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.st-text { min-width: 0; min-height: 44px; padding: 0 14px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 14px; }
+.st-text::placeholder { color: var(--ui-sub); }
+.st-text:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.st-li-name { flex: 1; }
+.st-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 8px 0 4px; border: 0; background: transparent; color: var(--ui-sub); font: inherit; font-size: 13px; font-weight: 600; border-radius: var(--ui-r-inner); cursor: pointer; }
+.st-more .ui-i { width: 18px; height: 18px; transition: transform 160ms var(--ui-ease-out); }
+.st-more .ui-i[data-open] { transform: rotate(180deg); }
+.st-more:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .st-more:hover { color: var(--ui-ink); background: var(--ui-item); } }
+.st-more-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ui-accent); }
+.st-detail { display: grid; gap: 12px; padding: 8px 0 12px; }
+.st-detail .st-field { display: grid; gap: 6px; }
+.st-detail .st-field-label small { font-weight: 400; color: var(--ui-sub); }
+.st-detail .st-text { width: 100%; }
+.st-detail-time { display: flex; align-items: center; gap: 8px; }
+.st-detail .ui-select select { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .st-more .ui-i { transition: none; } }
 .st-empty { padding: 20px 0; font-size: 13px; color: var(--ui-sub); }
 .st-card-foot { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
 .st-work { display: flex; flex-direction: column; gap: 12px; }
