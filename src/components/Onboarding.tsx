@@ -128,11 +128,13 @@ export default function Onboarding({ settings: s, onChange, onUpload, onClose }:
               <span className="ob-tray-hot"><i className="ob-tray-heart" /></span>
               <span className="ob-tray-time">{isMac ? '화 오후 12:00' : '오후 12:00'}</span>
             </div>
-            <p className="ob-tiny">
-              {isMac
-                ? '메뉴 막대 오른쪽 위에 하트 아이콘이 있어요.'
-                : 'Windows 11에서는 트레이 아이콘이 ^ 안에 숨어 있을 수 있어요. 설정 > 개인 설정 > 작업 표시줄 > 기타 시스템 트레이 아이콘에서 켤 수 있어요.'}
-            </p>
+            <h3 className="ob-sub">설정창은 이렇게 다시 열어요</h3>
+            <ol className="ob-ways">
+              <li><b>버디를 우클릭해요</b><span>가장 쉬워요. 버디 위에서 오른쪽 버튼을 눌러 보세요.</span></li>
+              <li><b>트레이의 하트 아이콘을 눌러요</b>
+                <span>{isMac ? '화면 위 메뉴 막대 오른쪽에 있어요.' : '작업 표시줄 오른쪽 ^ 숨겨진 아이콘 칸 안에 있을 수 있어요.'}</span></li>
+              <li><b>앱을 다시 실행해요</b><span>이미 켜져 있으면 설정창만 앞으로 나와요.</span></li>
+            </ol>
             <p className="ob-tiny">크기, 활동 구역, 말풍선은 홈에서 칩을 눌러 바꿀 수 있어요.</p>
           </section>
         )}

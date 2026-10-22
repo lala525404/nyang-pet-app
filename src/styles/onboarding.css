@@ -44,3 +44,11 @@
   .ob-tray-heart { animation-iteration-count: 1; }
   .ob-pri:active, .ob-ghost:active, .ob-tile:active { transform: none; }
 }
+
+/* 마무리: 설정창 다시 여는 법 3가지 */
+.ob-sub { margin: 18px 0 8px; font-size: 15px; font-weight: 700; }
+.ob-ways { list-style: none; margin: 0; padding: 0; counter-reset: way; display: grid; gap: 8px; }
+.ob-ways li { counter-increment: way; position: relative; padding: 10px 12px 10px 44px; border-radius: var(--ui-r-inner); background: var(--ui-item); display: grid; gap: 2px; }
+.ob-ways li::before { content: counter(way); position: absolute; left: 12px; top: 12px; width: 22px; height: 22px; border-radius: 50%; background: var(--ui-accent-tint); color: var(--ui-ink); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.ob-ways b { font-size: 14px; }
+.ob-ways span { font-size: 13px; color: var(--ui-sub); line-height: 1.5; }
