@@ -104,7 +104,8 @@ export function hasStoredSettings(): boolean {
 
 // 완전 새 설치의 기본 버디는 최애 하트. 기존 사용자의 저장값은 건드리지 않는다(마이그레이션 없음).
 export const FRESH_ANIMAL_ID = 'heart';
-export const freshDefaults = (): PetSettings => ({ ...DEFAULT_SETTINGS, animalId: FRESH_ANIMAL_ID });
+// useCustomMode는 끈다: 설정창의 동물 바꾸기가 "동물" 탭(맨 앞 하트가 선택된 목록)으로 열린다. 사진을 올리면 업로드 경로가 다시 켠다.
+export const freshDefaults = (): PetSettings => ({ ...DEFAULT_SETTINGS, animalId: FRESH_ANIMAL_ID, useCustomMode: false });
 
 // 설정창이 새 설치(메인이 flags.json 없음 + 저장된 설정 없음)로 뜬 경우 하트 기본값을 한 번 저장한다.
 // 창이 다시 그려져도(StrictMode 등) 결과가 바뀌지 않도록 첫 판단을 기억한다.

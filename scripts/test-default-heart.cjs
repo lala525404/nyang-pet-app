@@ -48,7 +48,7 @@ t('신규 설치(메인=새 설치, 저장값 없음): 하트가 저장되고 �
   assert.strictEqual(saved(e).animalId, 'heart');
   assert.strictEqual(s.loadSettings().animalId, 'heart');
   assert.strictEqual(s.seedFreshInstall(true), true);   // 다시 불러도 같은 판단
-  assert.strictEqual(s.loadSettings().useCustomMode, true);   // 사진이 없으면 동물(하트)로 보인다
+  assert.strictEqual(s.loadSettings().useCustomMode, false);   // 동물 탭에서 하트가 선택된 채로 열린다(사진 업로드 시 true로 켜진다)
 });
 t('저장값이 있으면 메인이 새 설치라 해도 건드리지 않는다', () => {
   const e = env({ animalId: 'dog', customImages: ['data:a', null, 'data:b'], useCustomMode: false });

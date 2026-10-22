@@ -105,7 +105,7 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 // 새 설치(메인이 알려 줌)이고 저장값이 없는 동안은 하트가 기본 버디
-const startSettings = (): Settings => (isFreshWindow() ? { ...DEFAULT_SETTINGS, animalId: 'heart' } : DEFAULT_SETTINGS);
+const startSettings = (): Settings => (isFreshWindow() ? { ...DEFAULT_SETTINGS, animalId: 'heart', useCustomMode: false } : DEFAULT_SETTINGS);
 
 function getTimeCategory(workStart: string, workEnd: string): string {
   const now = new Date();
