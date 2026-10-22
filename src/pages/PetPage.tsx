@@ -841,7 +841,7 @@ export default function PetPage() {
       {toast && (
         <div className="pet-toast" role="status" key={toast.id}>
           <Bell className="pet-toast-icon" strokeWidth={1.5} aria-hidden />
-          <span>{toast.msg}</span>
+          <span>{toast.msg.replace(/(오전|오후) (?=\d)/g, '$1\u00A0')}</span>
         </div>
       )}
       <div className="pet-container">
