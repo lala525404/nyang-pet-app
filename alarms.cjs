@@ -168,8 +168,11 @@ function createScheduler({ fired = new Set(), maxMissedMinutes = MISSED_WINDOW_M
       let start = lastMinute === null ? floor : lastMinute + 60000;
       if (start > cur) start = cur;     // 같은 분이거나 시계를 되돌림
       if (start < floor) start = floor; // 오래 멈췄다 돌아오면 최근 N분만
+      // "놓침" 판정: 앱을 막 켠 첫 확인이거나 절전 등으로 2분 넘게 건너뛴 뒤라면 지난 분은 모두 놓친 것이고,
+      // 평소 1초 타이머에서는 1분 안쪽 지연(타이머 흔들림)까지는 제때 울린 것으로 본다.
+      const resumed = lastMinute === null || cur - lastMinute > 2 * 60000;
       const out = [];
-      for (let t = start; t <= cur; t += 60000) out.push(...dueActions(settings, new Date(t), fired, { late: cur - t > 60000 }));
+      for (let t = start; t <= cur; t += 60000) out.push(...dueActions(settings, new Date(t), fired, { late: t < cur && (resumed || cur - t > 60000) }));
       lastMinute = cur;
       return out;
     },
