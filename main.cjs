@@ -456,6 +456,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     freshInstall = !fs.existsSync(flagsFile());
+    restoreAlarms();   // 저장된 알람 설정으로 바로 시작(창 IPC를 기다리지 않는다)
     app.on('activate', () => {
       if (!settingsWindow || settingsWindow.isDestroyed()) createSettingsWindow();
       else { settingsWindow.show(); settingsWindow.focus(); }
@@ -657,8 +658,8 @@ ipcMain.on('sync-settings', (_e, settings) => {
   if (typeof settings.alwaysOnTop === 'boolean' && settings.alwaysOnTop !== alwaysOnTopFlag) {
     setPetAlwaysOnTop(settings.alwaysOnTop);
   }
-  // 점심/퇴근 알림 동기화
-  startBreakTimeChecker(settings);
+  // 점심/퇴근/일반 알람 동기화(메인이 저장도 한다)
+  applyAlarmSettings(settings);
 });
 
 ipcMain.on('yar-now', () => {
@@ -668,7 +669,6 @@ ipcMain.on('yar-now', () => {
 // ★ 점심/퇴근 알림 윈도우
 let breakTimeWindow = null;
 let breakTimeChecker = null;
-let lastBreakTrigger = { lunch: '', leave: '' };
 
 function createBreakTimeWindow(type) {
   if (breakTimeWindow && !breakTimeWindow.isDestroyed()) {
@@ -712,70 +712,41 @@ function createBreakTimeWindow(type) {
   }, 3000);
 }
 
-function getPreAlertTime(timeStr, minutes) {
-  const [h, m] = timeStr.split(':').map(Number);
-  const total = h * 60 + m - minutes;
-  const ph = Math.floor(((total % 1440) + 1440) % 1440 / 60);
-  const pm = ((total % 1440) + 1440) % 1440 % 60;
-  return `${String(ph).padStart(2, '0')}:${String(pm).padStart(2, '0')}`;
+// ★ 알람 스케줄: 설정은 메인이 직접 들고(alarmSettings) userData/alarm-settings.json에 저장한다.
+// 앱이 시작되면 설정창·펫 창의 IPC를 기다리지 않고 저장된 값으로 바로 체커를 돌리고, sync-settings가 오면 "들어 있는 알람 키만" 덮어쓴다.
+// 발화 기록은 날짜+알람 시각 기준이라(alarms.cjs) 같은 날 시각을 바꾸면 바꾼 시각에 다시 울린다.
+const alarms = require('./alarms.cjs');
+const alarmFile = () => path.join(app.getPath('userData'), 'alarm-settings.json');
+let alarmSettings = {};
+const firedAlarms = new Set();
+
+const KIND_LABEL = { lunch: '점심', leave: '퇴근' };
+function runAlarmCheck(now = new Date()) {
+  for (const a of alarms.dueActions(alarmSettings, now, firedAlarms)) {
+    if (a.type === 'card') createBreakTimeWindow(a.card);
+    else {
+      if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('show-toast', `${KIND_LABEL[a.kind]} ${a.minutes}분 전이에요!`);
+      playTrayBeat();
+    }
+  }
 }
 
-function startBreakTimeChecker(settings) {
-  if (breakTimeChecker) clearInterval(breakTimeChecker);
+function startBreakTimeChecker() {
+  if (breakTimeChecker) return;
+  breakTimeChecker = setInterval(runAlarmCheck, 1000);
+}
 
-  breakTimeChecker = setInterval(() => {
-    const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const today = now.toDateString();
+// 저장된 알람 설정 복원 + 체커 시작(창이 뜨기 전에 한 번)
+function restoreAlarms() {
+  alarmSettings = alarms.loadAlarmSettings(alarmFile());
+  startBreakTimeChecker();
+}
 
-    // 점심/퇴근 알림 (점심·퇴근 켜짐/미리 알림 분은 따로 관리. 마이그레이션 전 설정은 예전 키로 대체)
-    const lunchOn = settings && (settings.lunchEnabled ?? settings.breakTimeEnabled);
-    const leaveOn = settings && (settings.leaveEnabled ?? settings.breakTimeEnabled);
-    const lunchPre = (settings && (settings.lunchPreAlertMinutes || settings.preAlertMinutes)) || 5;
-    const leavePre = (settings && (settings.leavePreAlertMinutes || settings.preAlertMinutes)) || 5;
-
-    if (lunchOn && settings.lunchTime) {
-      if (currentTime === settings.lunchTime && lastBreakTrigger.lunch !== today) {
-        lastBreakTrigger.lunch = today;
-        createBreakTimeWindow('lunch');
-      }
-      // 미리 알림
-      const key = `pre_lunch_${today}`;
-      if (currentTime === getPreAlertTime(settings.lunchTime, lunchPre) && !lastBreakTrigger[key]) {
-        lastBreakTrigger[key] = today;
-        if (petWindow && !petWindow.isDestroyed()) {
-          petWindow.webContents.send('show-toast', `점심 ${lunchPre}분 전이에요!`);
-        }
-        playTrayBeat();
-      }
-    }
-    if (leaveOn && settings.leaveTime) {
-      if (currentTime === settings.leaveTime && lastBreakTrigger.leave !== today) {
-        lastBreakTrigger.leave = today;
-        createBreakTimeWindow('leave');
-      }
-      const key = `pre_leave_${today}`;
-      if (currentTime === getPreAlertTime(settings.leaveTime, leavePre) && !lastBreakTrigger[key]) {
-        lastBreakTrigger[key] = today;
-        if (petWindow && !petWindow.isDestroyed()) {
-          petWindow.webContents.send('show-toast', `퇴근 ${leavePre}분 전이에요!`);
-        }
-        playTrayBeat();
-      }
-    }
-
-    // 일반 알람
-    if (settings && settings.alarms) {
-      settings.alarms.forEach(alarm => {
-        if (!alarm.enabled) return;
-        const key = `alarm_${alarm.id}_${today}`;
-        if (currentTime === alarm.time && !lastBreakTrigger[key]) {
-          lastBreakTrigger[key] = today;
-          createBreakTimeWindow('alarm');
-        }
-      });
-    }
-  }, 1000);
+// 렌더러가 보낸 설정을 반영한다(키가 없는 설정은 기존 값을 지우지 못한다). 바뀌면 디스크에도 저장한다.
+function applyAlarmSettings(settings) {
+  const { settings: next, changed } = alarms.mergeAlarmSettings(alarmSettings, settings);
+  if (changed) { alarmSettings = next; alarms.saveAlarmSettings(alarmFile(), alarmSettings); }
+  startBreakTimeChecker();
 }
 
 function stopBreakTimeChecker() {
