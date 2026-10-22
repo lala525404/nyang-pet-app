@@ -52,7 +52,7 @@ export default function BubbleModal({ settings: s, patch, onClose, suspended }: 
               const left = BUBBLE_MAX_CHARS - charCount(text);
               return (
                 <div key={i} className="st-msg">
-                  <input ref={el => { inputsRef.current[i] = el; }} type="text" className="st-msg-input" value={text}
+                  <input ref={el => { inputsRef.current[i] = el; }} type="text" autoComplete="off" className="st-msg-input" value={text}
                     placeholder={`메시지 ${i + 1}`} aria-label={`메시지 ${i + 1}`} aria-describedby={`msg-left-${i}`}
                     onChange={e => set(messages.map((m, k) => (k === i ? limit(e.target.value) : m)))} />
                   <span className="st-msg-count" id={`msg-left-${i}`} data-low={left <= 3 ? '' : undefined}>남은 글자 {left}</span>
