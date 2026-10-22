@@ -29,6 +29,13 @@
   --ui-r-panel: 16px;
   --ui-r-inner: 10px;
   --ui-r-pill: 999px;
+  /* 폼 규격: 모든 입력 칸(시간·텍스트·드롭다운)은 같은 높이·같은 좌우 여백·같은 글자 크기를 쓰고, 칩은 한 높이를 쓴다 */
+  --ui-field-h: 44px;
+  --ui-field-px: 14px;
+  --ui-field-fs: 14px;
+  --ui-chip-h: 40px;
+  --ui-gap-label: 6px;     /* 라벨 → 입력 칸 */
+  --ui-gap-field: 16px;    /* 항목 사이 */
   --ui-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
