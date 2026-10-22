@@ -7,6 +7,7 @@ import { Segmented, Switch, RangeInput } from '../ui';
 import { getAnimal } from '../../data/animals';
 import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, cleanBubbleMessages, clampTo, formatInterval, formatTime } from '../../utils/settings';
 import { usePhotoState } from '../../hooks/usePhotoState';
+import { useLoginItem } from '../../hooks/useLoginItem';
 import type { PetSettings } from '../../utils/settings';
 import { MODE_NAME } from './shared';
 import type { Monitor, PaneProps } from './shared';
@@ -199,6 +200,8 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   onUpload: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const login = useLoginItem();
+  useEffect(() => { if (openKey === 'login') login.refresh(); }, [openKey, login.refresh]);   // 토글을 열 때마다 OS의 실제 상태를 다시 읽는다
   const [bubbleAdv, setBubbleAdv] = useState(false);   // 말풍선 팝오버의 "고급" 펼침
   const closePop = (key: string) => () => setOpenKey(cur => (cur === key ? null : cur));
 
@@ -388,6 +391,16 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
             </>
           )}
           <p className="ui-note">{rotateEnabled ? '버디와 미리보기가 같은 순서로 사진을 번갈아 보여줘요.' : '꺼 두면 대표 사진만 보여줘요.'}</p>
+        </>
+      ),
+    }] : []),
+    // 컴퓨터를 켜면 자동 실행: 기본 꺼짐. 켬/끔은 저장하지 않고 OS의 실제 상태를 읽고 쓴다. 쓸 수 없는 환경(개발·포터블·응용 프로그램 폴더 밖)에서는 꺼 둔 채 이유를 보여 준다.
+    ...(login.state ? [{
+      id: 'login', label: '자동 실행', value: !login.state.supported ? '사용 불가' : login.state.enabled ? '켜짐' : '꺼짐',
+      body: (
+        <>
+          <div className="st-row"><span>컴퓨터를 켜면 자동 실행</span><Switch checked={login.state.enabled} disabled={!login.state.supported} onChange={login.set} label="컴퓨터를 켜면 자동 실행" /></div>
+          <p className="ui-note">{login.state.note}</p>
         </>
       ),
     }] : []),

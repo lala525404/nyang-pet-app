@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('settings-changed', handler);
     return () => ipcRenderer.removeListener('settings-changed', handler);
   },
+  // ★ 컴퓨터를 켜면 자동 실행: 상태는 저장하지 않고 항상 OS에서 읽는다
+  getLoginItem:     () => ipcRenderer.invoke('login-item-get'),
+  setLoginItem:     (enabled) => ipcRenderer.invoke('login-item-set', enabled),
   // ★ 자동 업데이트: 상태는 메인(updater.cjs)이 보내 주고, 설정창은 확인·받기·재시작 설치를 요청한다
   getUpdateState:   () => ipcRenderer.invoke('update-get-state'),
   checkForUpdates:  () => ipcRenderer.invoke('update-check'),

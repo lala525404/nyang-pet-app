@@ -17,6 +17,8 @@ let petWindow = null;
 let yarWindow = null;
 let tray = null;
 let updater = null;       // 자동 업데이트(initUpdater에서 만든다)
+let silentUntil = 0;       // 로그인 자동 실행으로 켜졌으면, 이 시각 전의 맥 'activate'(실행 직후에도 오는 이벤트)로는 설정창을 띄우지 않는다
+const SILENT_ACTIVATE_MS = 5000;
 // 버디 창은 말풍선이 들어갈 크기로 고정한다. 말풍선이 뜨고 질 때 창 크기를 바꾸면 버디가 화면에서 25·40px씩 튀었다.
 const PET_WIN_W = 240;
 const PET_WIN_H = 230;
@@ -461,10 +463,15 @@ if (!gotLock) {
     freshInstall = !fs.existsSync(flagsFile());
     restoreAlarms();   // 저장된 알람 설정으로 바로 시작(창 IPC를 기다리지 않는다)
     app.on('activate', () => {
+      if (Date.now() < silentUntil) return;   // 로그인 자동 실행 직후의 activate는 무시(조용히 시작)
       if (!settingsWindow || settingsWindow.isDestroyed()) createSettingsWindow();
       else { settingsWindow.show(); settingsWindow.focus(); }
     });
-    createSettingsWindow();
+    // 로그인 때 자동으로 켜진 경우: 설정창·인트로 없이 버디와 알람만 조용히 시작한다(첫 실행·신규 설치 판정, introSeenVersion은 그대로).
+    // 설정창은 트레이·버디 우클릭·다시 실행(second-instance)으로 언제든 열 수 있고, 그때 필요한 인트로는 평소처럼 보인다.
+    const launchedAtLogin = loginItem.wasLaunchedAtLogin({ platform: process.platform, argv: process.argv, getSettings: () => app.getLoginItemSettings() });
+    if (launchedAtLogin) silentUntil = Date.now() + SILENT_ACTIVATE_MS;
+    else createSettingsWindow();
     createPetWindow();
     createTray();
     initUpdater();
@@ -482,6 +489,15 @@ app.on('before-quit', (e) => {
   e.preventDefault();
   requestQuit();
 });
+
+// ★ 컴퓨터를 켜면 자동 실행(로그인 항목). 판단 로직은 login-item.cjs(단위 테스트됨). 상태는 저장하지 않고 항상 OS에서 읽는다.
+const loginItem = require('./login-item.cjs');
+const loginItemDeps = () => ({
+  app, platform: process.platform, isPackaged: app.isPackaged, defaultApp: !!process.defaultApp,   // defaultApp: `electron .`(개발·fresh)로 띄운 경우
+  env: process.env, exePath: app.getPath('exe'), home: require('os').homedir(),
+});
+ipcMain.handle('login-item-get', () => loginItem.readLoginItem(loginItemDeps()));
+ipcMain.handle('login-item-set', (_e, enabled) => loginItem.writeLoginItem(loginItemDeps(), enabled === true));
 
 // ★ 자동 업데이트(electron-updater + GitHub 릴리스). 판단 로직은 updater.cjs(단위 테스트됨)에 있고, 여기서는 실제 Electron 값을 연결한다.
 //  - 패키징되지 않았거나 app-update.yml이 없으면(개발 모드, npm run fresh) 꺼진다.
