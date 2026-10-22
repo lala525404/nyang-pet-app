@@ -32,10 +32,13 @@
 
 /* ── 버디로 쓰는 하트(CatEmoji): 색은 테마 글자색(라이트 검정 / 다크 흰색) ─────────────── */
 .heart-glyph { flex: none; overflow: visible; fill: currentColor; color: var(--ui-ink, #111); }
-.heart-glyph path { transform-box: fill-box; transform-origin: 50% 58%; }
+.heart-glyph { --heart-eye: #fff; }                       /* 라이트: 검은 하트에 흰 눈 */
+:root[data-theme="dark"] .heart-glyph { --heart-eye: #111; }   /* 다크: 흰 하트에 검은 눈 */
+.heart-glyph .heart-eye { fill: var(--heart-eye); transform-box: fill-box; transform-origin: 50% 50%; }
+.heart-glyph .heart-body { transform-box: fill-box; transform-origin: 50% 58%; }
 
 /* 설정창·온보딩·알림 카드에 나타날 때 한 번 두근 (기존 heart-thump 1 → 1.12 → 1) */
-.heart-glyph path { animation: heart-thump 500ms; }
+.heart-glyph .heart-body { animation: heart-thump 500ms; }
 
 /* 버디 창: 떠다니기(catFloat)는 바깥 svg가, 두근은 안쪽 path가 맡아 transform이 겹치지 않게 한다.
    0.6초 동안 한 번 두근하고 3초 쉰다. 올라갈 때 빠른 ease-out, 내려올 때 ease-in-out. */
@@ -45,15 +48,19 @@
   17%  { transform: scale(1); }
   100% { transform: scale(1); }
 }
-.cat-emoji.heart-glyph path { animation: heart-idle-beat 3600ms infinite; }
+.cat-emoji.heart-glyph .heart-body { animation: heart-idle-beat 3600ms infinite; }
+/* 눈 깜빡임: 4.8초마다 한 번, 100ms 안에 감았다 뜬다 */
+@keyframes heart-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+.cat-emoji.heart-glyph .heart-eye { animation: heart-blink 4800ms infinite; }
 /* 누르면 확 두근: 기존 catBonk 대신 짧게 눌렸다 돌아오기 */
 .cat-area:active .cat-emoji.heart-glyph { animation: catFloat 3s ease-in-out infinite; }
-.cat-area:active .cat-emoji.heart-glyph path { animation: heart-thump 300ms; }
+.cat-area:active .cat-emoji.heart-glyph .heart-body { animation: heart-thump 300ms; }
 
 /* 움직임 줄이기: 두근·떠다니기·크기 변화를 모두 끈다(색과 모양은 그대로) */
 @media (prefers-reduced-motion: reduce) {
   .heart-glyph, .cat-emoji.heart-glyph, .cat-area:active .cat-emoji.heart-glyph,
-  .heart-glyph path, .cat-emoji.heart-glyph path, .cat-area:active .cat-emoji.heart-glyph path { animation: none; }
+  .heart-glyph .heart-body, .cat-emoji.heart-glyph .heart-body, .cat-area:active .cat-emoji.heart-glyph .heart-body,
+  .cat-emoji.heart-glyph .heart-eye { animation: none; }
   .cat-emoji.heart-glyph { transition: none; }
   .cat-area:hover .cat-emoji.heart-glyph, .cat-area:active .cat-emoji.heart-glyph { width: auto; height: auto; }
 }

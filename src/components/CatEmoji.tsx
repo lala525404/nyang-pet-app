@@ -59,7 +59,18 @@ export default function CatEmoji({ emoji, size = 64, className = '', customImage
     return (
       <svg className={`heart-glyph ${className}`.trim()} width={size} height={size} viewBox="0 0 100 100"
         role="img" aria-label="최애 하트" focusable="false" style={{ display: 'block', userSelect: 'none' }}>
-        <path d={HEART_PATH} />
+        <defs>
+          <radialGradient id="heart-sheen" cx="32%" cy="22%" r="62%">
+            <stop offset="0" stopColor="#fff" stopOpacity="0.22" />
+            <stop offset="1" stopColor="#fff" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <g className="heart-body">
+          <path d={HEART_PATH} />
+          <path d={HEART_PATH} fill="url(#heart-sheen)" />
+          <ellipse className="heart-eye" cx="37.5" cy="45" rx="4.6" ry="8" />
+          <ellipse className="heart-eye" cx="62.5" cy="45" rx="4.6" ry="8" />
+        </g>
       </svg>
     );
   }
