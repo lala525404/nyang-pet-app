@@ -1,46 +1,50 @@
 import type { Alarm } from './settings';
-import { addDays, isPastOneShot, isSkipped, mondayOf, occursOn, parseYmd, toMin, WEEKDAY_LABELS } from './alarmSchedule';
+import { addDays, isPastOneShot, isSkipped, mondayOf, occursOn, parseYmd, repeatSummary, toMin, ymd, WEEKDAY_LABELS } from './alarmSchedule';
+import { alarmTitle, formatAttendees, formatRange } from './alarmText';
+import { formatTime } from './settings';
 
-// 주간 캘린더 배치 계산(화면과 분리해 시험한다). 시간 축은 하루 전체(00:00~24:00)를 그리고 처음에는 오전 8시 근처로 스크롤한다.
-export const HOUR_PX = 48;                 // 한 시간의 높이
-export const SLOT_MIN = 30;                // 빈 칸을 눌렀을 때 시각을 맞추는 단위(분)
-export const SLOTS_PER_DAY = (24 * 60) / SLOT_MIN;
-export const DEFAULT_SCROLL_HOUR = 8;      // 처음 보이는 시각(오전 8시부터 약 12시간이 한눈에 보인다)
-export const MIN_EVENT_MIN = 30;           // 종료 시각이 없어도 카드가 이만큼은 보이게
+// 주간 캘린더 계산(화면과 분리해 시험한다). 시간 축은 없다: 일자(월~일) 열 아래로 그날의 알람이 시각 순으로 쌓이고,
+// 오전/오후만 구분선으로 나눈다. 알람이 많은 날은 길어지고 없는 날은 비어 있어 한눈에 차이가 보인다(구글 시트처럼).
+export const NOON_MIN = 12 * 60;           // 정오부터 오후
+export const DEFAULT_AM_TIME = '09:00';    // 오전 칸의 빈 곳을 눌렀을 때 새 알람의 기본 시각
+export const DEFAULT_PM_TIME = '14:00';    // 오후 칸
+
+export type Zone = 'am' | 'pm';
+export const zoneOf = (startMin: number): Zone => (startMin < NOON_MIN ? 'am' : 'pm');
+export const defaultTimeFor = (zone: Zone): string => (zone === 'am' ? DEFAULT_AM_TIME : DEFAULT_PM_TIME);
 
 export const weekDates = (weekStart: Date): Date[] => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));   // 월~일
 export const weekStartOf = (d: Date): Date => mondayOf(d);
-export const minToY = (min: number): number => (min / 60) * HOUR_PX;
-
-// 위에서부터의 y(px) → 30분 단위 슬롯 번호(0~47)
-export const slotFromY = (y: number): number => Math.max(0, Math.min(SLOTS_PER_DAY - 1, Math.floor(y / ((SLOT_MIN / 60) * HOUR_PX))));
-export const slotToMinutes = (slot: number): number => slot * SLOT_MIN;
 
 export interface DayEvent {
   alarm: Alarm; startMin: number; endMin: number;
-  col: number; cols: number;           // 같은 시간대에 겹치면 옆으로 나눠 그린다
   dim: boolean;                        // 꺼짐·오늘만 건너뜀·지난 한 번짜리 알람은 흐리게
   past: boolean;                       // 지난(완료된) 한 번짜리 알람
 }
 
-// 그 날의 알람 카드들. 자정을 넘는 일정(종료가 시작보다 이르면)은 시작한 날 기준으로 그 날 끝까지만 그린다.
+// 그 날의 알람들을 시각 순으로(같으면 종료 시각, id 순). 자정을 넘는 일정(종료가 시작보다 이르면)도 시작한 날에만 둔다.
 export function dayEvents(alarms: Alarm[], day: Date, now: Date): DayEvent[] {
-  const list: DayEvent[] = alarms.filter(a => a.time && occursOn(a, day)).map(a => {
+  return alarms.filter(a => a.time && occursOn(a, day)).map(a => {
     const startMin = toMin(a.time); const e = a.endTime ? toMin(a.endTime) : -1;
-    const endMin = e > startMin ? e : e >= 0 && e < startMin ? 24 * 60 : startMin + MIN_EVENT_MIN;
     const past = isPastOneShot(a, now);
-    return { alarm: a, startMin, endMin: Math.min(endMin, 24 * 60), col: 0, cols: 1, dim: !a.enabled || isSkipped(a, day) || past, past };
-  }).sort((x, y) => x.startMin - y.startMin || x.endMin - y.endMin);
-  // 겹치는 것끼리 묶어(클러스터) 칸 번호를 매긴다
-  let cluster: DayEvent[] = []; let clusterEnd = -1;
-  const flush = () => { const cols = Math.max(1, ...cluster.map(e => e.col + 1)); cluster.forEach(e => { e.cols = cols; }); cluster = []; clusterEnd = -1; };
-  for (const ev of list) {
-    if (cluster.length && ev.startMin >= clusterEnd) flush();
-    const used = new Set(cluster.filter(c => c.endMin > ev.startMin).map(c => c.col)); let col = 0; while (used.has(col)) col++;
-    ev.col = col; cluster.push(ev); clusterEnd = Math.max(clusterEnd, ev.endMin);
+    return { alarm: a, startMin, endMin: e > startMin ? e : startMin, dim: !a.enabled || isSkipped(a, day) || past, past };
+  }).sort((x, y) => x.startMin - y.startMin || x.endMin - y.endMin || (x.alarm.id < y.alarm.id ? -1 : 1));
+}
+
+export interface DayStack {
+  am: DayEvent[]; pm: DayEvent[];
+  count: number;                                       // 그날 알람 수(꺼진 것 포함)
+  nowAt: { zone: Zone; index: number } | null;         // 오늘이면 "지금" 표시가 들어갈 자리: 그 칸에서 지금보다 이른 알람 수
+}
+export function stackDay(alarms: Alarm[], day: Date, now: Date): DayStack {
+  const all = dayEvents(alarms, day, now);
+  const am = all.filter(e => zoneOf(e.startMin) === 'am'), pm = all.filter(e => zoneOf(e.startMin) === 'pm');
+  let nowAt: DayStack['nowAt'] = null;
+  if (ymd(day) === ymd(now)) {
+    const nowMin = now.getHours() * 60 + now.getMinutes(); const zone = zoneOf(nowMin); const list = zone === 'am' ? am : pm;
+    if (list.length) nowAt = { zone, index: list.filter(e => e.startMin <= nowMin).length };
   }
-  flush();
-  return list;
+  return { am, pm, count: all.length, nowAt };
 }
 
 export const dayLabel = (d: Date): string => `${d.getMonth() + 1}/${d.getDate()}`;
@@ -49,6 +53,19 @@ export const weekRangeLabel = (weekStart: Date): string => {
   const end = addDays(weekStart, 6);
   return `${weekStart.getMonth() + 1}월 ${weekStart.getDate()}일 – ${end.getMonth() + 1 === weekStart.getMonth() + 1 ? '' : `${end.getMonth() + 1}월 `}${end.getDate()}일`;
 };
+
+// 블록에 마우스를 올렸을 때 뜨는 간단한 정보(이름 → 시간 → 반복 → 참석자 → 메모 → 미리 알림 → 상태)
+export interface TipInfo { title: string; lines: string[]; status: string }
+export function tooltipInfo(a: Alarm, day: Date, past: boolean): TipInfo {
+  const lines: string[] = [];
+  lines.push(formatRange(a.time, a.endTime) || formatTime(a.time));
+  lines.push(repeatSummary(a));
+  const att = formatAttendees(a.attendees); if (att) lines.push(att);
+  const memo = (a.memo || '').trim(); if (memo) lines.push(memo);
+  if ((a.preMinutes ?? 0) > 0) lines.push(`${a.preMinutes}분 전에 미리 알림`);
+  const status = past ? '완료' : !a.enabled ? '꺼짐' : isSkipped(a, day) ? '오늘은 건너뜀' : '';
+  return { title: alarmTitle(a), lines, status };
+}
 
 // 앞으로 울릴 "한 번짜리" 알람(날짜 지정·그 주만)을 시각 순으로. 캘린더가 다른 주에 있는 날짜 알람으로 이동하는 안내에 쓴다.
 export interface UpcomingOneShot { alarm: Alarm; at: Date }
@@ -62,4 +79,3 @@ export function upcomingOneShots(alarms: Alarm[], now: Date): UpcomingOneShot[] 
   }
   return out.sort((x, y) => x.at.getTime() - y.at.getTime());
 }
-export const hourLabel = (h: number): string => `${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}시`;

@@ -327,30 +327,46 @@ button.st-slot:active { transform: scale(0.97); }
 .st-cal-jump { display: block; width: 100%; min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .st-cal-jump span { margin-left: 8px; color: var(--ui-link); font-weight: 600; }
 .st-cal-jump:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
-.st-cal-scroll { max-height: min(56vh, 456px); overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--ui-line); scrollbar-width: thin; }
-.st-cal-grid { outline: none; min-width: 560px; }
-.st-cal-grid:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; border-radius: 4px; }
-.st-cal-head, .st-cal-body { display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)); }
-.st-cal-head { position: sticky; top: 0; z-index: 3; background: var(--ui-panel); border-bottom: 1px solid var(--ui-line); }
-.st-cal-dayhead { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 8px; font-size: 12px; color: var(--ui-sub); }
+.st-cal-card { min-width: 0; }
+/* 시트: 일자(월~일) 열 아래로 알람 블록이 쌓이고, 오전/오후만 구분선으로 나눈다. 알람이 있는 날은 길어지고 없는 날은 비어 있다 */
+.st-cal-sheet { display: grid; grid-template-columns: 36px repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--ui-line); outline: none; }
+.st-cal-sheet:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; border-radius: 4px; }
+.st-cal-corner { border-bottom: 1px solid var(--ui-line); }
+.st-cal-dayhead { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-left: 1px solid var(--ui-line); border-bottom: 1px solid var(--ui-line); font-size: 12px; color: var(--ui-sub); }
 .st-cal-dayhead b { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 50%; font-size: 14px; font-weight: 700; color: var(--ui-ink); font-variant-numeric: tabular-nums; }
+.st-cal-dayhead[data-empty] { opacity: 0.6; }
 .st-cal-dayhead[data-today] { color: var(--ui-ink); }
 .st-cal-dayhead[data-today] b { background: var(--ui-accent); color: var(--ui-accent-ink); }
-.st-cal-axis { position: relative; }
-.st-cal-axis span { position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; color: var(--ui-sub); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.st-cal-col { position: relative; border-left: 1px solid var(--ui-line); cursor: cell;
-  background-image: linear-gradient(to bottom, var(--ui-line) 1px, transparent 1px); background-size: 100% 48px; }
-.st-cal-col[data-today] { background-color: color-mix(in srgb, var(--ui-accent) 6%, transparent); }
-.st-cal-ev { position: absolute; z-index: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; padding: 3px 6px 3px 8px; border: 0; border-radius: 6px;
-  background: var(--ui-accent-tint); color: var(--ui-ink); box-shadow: inset 3px 0 0 var(--ui-accent); font: inherit; font-size: 11px; line-height: 1.3; text-align: left; cursor: pointer; transition: background-color 120ms var(--ui-ease-out); }
-.st-cal-ev-time { margin-right: 4px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.st-cal-ev-done { margin-left: 4px; color: var(--ui-sub); }
-.st-cal-ev[data-dim] { opacity: 0.5; }
-.st-cal-ev:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; z-index: 5; }
-@media (hover: hover) and (pointer: fine) { .st-cal-ev:hover { background: color-mix(in srgb, var(--ui-accent) 24%, var(--ui-panel)); opacity: 1; } }
-.st-cal-now { position: absolute; left: 0; right: 0; z-index: 2; height: 2px; margin-top: -1px; background: var(--ui-accent); pointer-events: none; }
-.st-cal-now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--ui-accent); }
-.st-cal-cursor { position: absolute; left: 1px; right: 1px; z-index: 4; border: 2px solid var(--ui-accent); border-radius: 4px; pointer-events: none; }
+.st-cal-count { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--ui-r-pill); background: var(--ui-accent-tint); color: var(--ui-ink); font-size: 11px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-cal-gutter { display: grid; place-items: start center; padding-top: 10px; font-size: 11px; font-weight: 700; color: var(--ui-sub); }
+.st-cal-gutter[data-zone="pm"], .st-cal-cell[data-zone="pm"] { border-top: 2px solid var(--ui-line); }
+.st-cal-cell { position: relative; display: flex; flex-direction: column; gap: 4px; min-height: 64px; padding: 6px 4px 28px; border-left: 1px solid var(--ui-line); cursor: cell; }
+.st-cal-cell[data-has] { background: color-mix(in srgb, var(--ui-ink) 3%, transparent); }
+.st-cal-cell[data-today] { background: color-mix(in srgb, var(--ui-accent) 7%, transparent); }
+.st-cal-cell[data-cursor] { box-shadow: inset 0 0 0 2px var(--ui-accent); }
+.st-cal-add { position: absolute; left: 4px; right: 4px; bottom: 4px; display: grid; place-items: center; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-sub); opacity: 0; cursor: pointer; transition: opacity 120ms var(--ui-ease-out); }
+.st-cal-add .ui-i { width: 14px; height: 14px; }
+.st-cal-add:disabled { cursor: not-allowed; }
+.st-cal-cell:hover .st-cal-add:not(:disabled), .st-cal-add:focus-visible { opacity: 1; background: var(--ui-item); }
+.st-cal-add:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
+.st-cal-block { position: relative; display: block; width: 100%; padding: 4px 6px 4px 8px; border: 0; border-radius: 6px; background: var(--ui-accent-tint); color: var(--ui-ink); box-shadow: inset 3px 0 0 var(--ui-accent); font: inherit; font-size: 11.5px; line-height: 1.3; text-align: left; cursor: pointer; transition: background-color 120ms var(--ui-ease-out), opacity 120ms var(--ui-ease-out); }
+.st-cal-block-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; word-break: keep-all; }
+.st-cal-block-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-cal-block[data-dim] { opacity: 0.5; }
+.st-cal-block:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; z-index: 5; }
+@media (hover: hover) and (pointer: fine) { .st-cal-block:hover { background: color-mix(in srgb, var(--ui-accent) 24%, var(--ui-panel)); opacity: 1; z-index: 5; } }
+/* 블록에 마우스를 올리면(또는 키보드로 포커스하면) 뜨는 간단한 정보 */
+.st-cal-tip { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: flex; flex-direction: column; gap: 2px; width: max-content; max-width: 220px; padding: 8px 10px; border-radius: var(--ui-r-inner); background: var(--ui-tip); color: var(--ui-tip-ink); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; box-shadow: var(--ui-shadow-float); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-2px);
+  transition: opacity 120ms var(--ui-ease-out), transform 120ms var(--ui-ease-out), visibility 0s linear 120ms; }
+.st-cal-block[data-align="right"] .st-cal-tip { left: auto; right: 0; }
+.st-cal-tip b { font-size: 13px; font-weight: 700; }
+.st-cal-tip i { margin-left: 6px; font-style: normal; font-weight: 500; opacity: 0.75; }
+.st-cal-tip em { margin-top: 4px; font-style: normal; font-size: 11px; opacity: 0.65; }
+@media (hover: hover) and (pointer: fine) { .st-cal-block:hover .st-cal-tip { opacity: 1; visibility: visible; transform: none; transition-delay: 150ms; } }
+.st-cal-block:focus-visible .st-cal-tip { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.st-cal-now { display: flex; align-items: center; gap: 4px; height: 10px; color: var(--ui-accent); font-size: 9px; font-weight: 700; pointer-events: none; }
+.st-cal-now::after { content: ''; flex: 1; height: 2px; border-radius: 1px; background: var(--ui-accent); }
+.st-list { max-height: min(42vh, 380px); overflow-y: auto; padding: 2px; margin: -2px; scrollbar-width: thin; }
 
 /* 좁은 폭: 요일별 세로 목록 */
 .st-cal-agenda { display: flex; flex-direction: column; }
@@ -368,5 +384,4 @@ button.st-slot:active { transform: scale(0.97); }
 .st-agenda-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-agenda-ev small { color: var(--ui-sub); }
 .st-agenda-ev:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
-.st-cal[data-narrow] .st-cal-grid { min-width: 0; }
-@media (prefers-reduced-motion: reduce) { .st-daychip, .st-cal-ev { transition: none; } .st-daychip:active:not(:disabled) { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .st-daychip, .st-cal-block, .st-cal-add, .st-cal-tip { transition: none; } .st-daychip:active:not(:disabled) { transform: none; } }

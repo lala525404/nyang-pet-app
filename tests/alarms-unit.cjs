@@ -182,7 +182,7 @@ t('글(이름·설명)이 있는 알람은 팝업을 2초 더 보여 준다: 판
 });
 // ── 반복 알람(위클리 캘린더): 요일·날짜·그 주만·건너뛰기·놓친 알람·상한 ──────────────────────────────
 const S = load('src/utils/alarmSchedule.ts');
-const CAL = load('src/utils/alarmCalendar.ts', { './settings': settingsTs, './alarmSchedule': S });
+const CAL = load('src/utils/alarmCalendar.ts', { './settings': settingsTs, './alarmSchedule': S, './alarmText': T });
 const D = (y, m, d, h = 0, mi = 0, s = 30) => new Date(y, m - 1, d, h, mi, s);   // 2026-10-26은 월요일
 const MON = 26, TUE = 27, WED = 28;   // 2026년 10월의 월·화·수
 const al = (extra = {}) => ({ id: 'a', time: '10:00', enabled: true, name: '주간회의', ...extra });
@@ -257,8 +257,11 @@ t('제때 울린 알람은 "놓친 알람"이 아니고, 1분 안쪽 지연도 �
   const settings = merge({ alarms: [al({ time: '10:00' })] }); const sch = A.createScheduler();
   sch.check(settings, D(2026, 10, MON, 9, 59, 20));
   const on = sch.check(settings, D(2026, 10, MON, 10, 0, 5)); assert.deepStrictEqual(on.map(a => a.missed === true), [false]);
-  const s2 = A.createScheduler(); s2.check(settings, D(2026, 10, MON, 9, 58, 59));
-  const lateOne = s2.check(settings, D(2026, 10, MON, 10, 1, 0)); assert.deepStrictEqual(lateOne.map(a => a.missed === true), [false]);   // 타이머가 1분쯤 밀림
+  const s2 = A.createScheduler(); s2.check(settings, D(2026, 10, MON, 9, 59, 30));
+  const lateOne = s2.check(settings, D(2026, 10, MON, 10, 1, 0)); assert.deepStrictEqual(lateOne.map(a => a.missed === true), [false]);   // 타이머가 1분쯤 밀림(2분 이내)
+  // 앱을 막 켠 첫 확인이거나 2분 넘게 건너뛴 뒤(절전)에는 지난 분은 1분 전이어도 "놓친 알람"
+  const first = A.createScheduler().check(settings, D(2026, 10, MON, 10, 1, 20)); assert.deepStrictEqual(first.map(a => a.missed === true), [true]);
+  const wake = A.createScheduler(); wake.check(settings, D(2026, 10, MON, 9, 55, 0)); assert.deepStrictEqual(wake.check(settings, D(2026, 10, MON, 10, 1, 20)).map(a => a.missed === true), [true]);
 });
 t('절전에서 깨어남/시각 변경: 오래 자다 깨면 최근 10분만, 시계를 되돌려도 다시 울리지 않고, 크게 앞으로 가도 최근 10분만', () => {
   const settings = merge({ alarms: [al({ id: 'x', time: '10:03' }), al({ id: 'y', time: '10:30', name: '반' })] });
@@ -274,7 +277,7 @@ t('절전에서 깨어남/시각 변경: 오래 자다 깨면 최근 10분만, �
 t('자정 넘김은 시작한 날(요일) 기준: 월요일 23:30 시작 일정은 월요일에만 울리고 캘린더에서도 월요일에 그 날 끝까지 그린다', () => {
   const night = al({ id: 'n', time: '23:30', endTime: '01:00', repeat: { kind: 'weekly', days: [1] } });
   assert.ok(fires(night, D(2026, 10, MON, 23, 30))); assert.ok(!fires(night, D(2026, 10, TUE, 23, 30))); assert.ok(!fires(night, D(2026, 10, TUE, 0, 30)));
-  const mon = CAL.dayEvents([night], new Date(2026, 9, MON), D(2026, 10, MON, 12, 0)); assert.deepStrictEqual(mon.map(e => [e.startMin, e.endMin]), [[23 * 60 + 30, 1440]]);
+  const mon = CAL.dayEvents([night], new Date(2026, 9, MON), D(2026, 10, MON, 12, 0)); assert.deepStrictEqual(mon.map(e => [e.startMin, e.alarm.id]), [[23 * 60 + 30, 'n']]);   // 시작한 날(월요일)에만
   assert.deepStrictEqual(CAL.dayEvents([night], new Date(2026, 9, TUE), D(2026, 10, MON, 12, 0)), []);
   // 미리 알림이 자정을 넘어 전날 밤에 뜨는 경우: 알람이 울릴 날을 기준으로 판정한다(화요일 00:05 알람 → 월요일 23:55 토스트)
   const early = al({ id: 'e', time: '00:05', preMinutes: 10, repeat: { kind: 'weekly', days: [2] } });
@@ -296,17 +299,6 @@ t('메인(alarms.cjs)과 화면(TypeScript)의 반복 규칙이 같은 결과를
   for (const d of [new Date(2026, 9, 25), new Date(2026, 9, 26), new Date(2026, 11, 31), new Date(2027, 0, 1)]) { assert.strictEqual(A.ymd(d), S.ymd(d)); assert.strictEqual(A.ymd(A.mondayOf(d)), S.ymd(S.mondayOf(d))); }
   assert.ok(checked > 800);
 });
-t('캘린더 배치: 주는 월~일 7칸, 겹치는 알람은 옆으로 나눠 그리고, 꺼짐·건너뜀·지난 한 번짜리는 흐리게', () => {
-  const ws = S.mondayOf(new Date(2026, 9, 28)); assert.strictEqual(S.ymd(ws), '2026-10-26');
-  assert.deepStrictEqual(CAL.weekDates(ws).map(d => d.getDay()), [1, 2, 3, 4, 5, 6, 0]); assert.strictEqual(CAL.weekRangeLabel(ws), '10월 26일 – 11월 1일'); assert.strictEqual(CAL.weekRangeLabel(S.mondayOf(new Date(2026, 9, 21))), '10월 19일 – 25일');
-  const a1 = al({ id: '1', time: '10:00', endTime: '11:00' }), a2 = al({ id: '2', time: '10:30' }), a3 = al({ id: '3', time: '14:00' }), off = al({ id: '4', time: '16:00', enabled: false }), sk = al({ id: '5', time: '17:00', skipDate: '2026-10-28' });
-  const ev = CAL.dayEvents([a1, a2, a3, off, sk], new Date(2026, 9, 28), D(2026, 10, 28, 9, 0));
-  assert.deepStrictEqual(ev.map(e => [e.alarm.id, e.col, e.cols, e.dim]), [['1', 0, 2, false], ['2', 1, 2, false], ['3', 0, 1, false], ['4', 0, 1, true], ['5', 0, 1, true]]);
-  assert.strictEqual(ev.find(e => e.alarm.id === '3').endMin - ev.find(e => e.alarm.id === '3').startMin, CAL.MIN_EVENT_MIN);
-  const pastOne = al({ id: 'p', time: '09:00', repeat: { kind: 'date', date: '2026-10-28' } }); const pe = CAL.dayEvents([pastOne], new Date(2026, 9, 28), D(2026, 10, 28, 12, 0))[0]; assert.deepStrictEqual([pe.past, pe.dim], [true, true]);
-  assert.deepStrictEqual([0, 23, 24, 47, 48, 5000, -5].map(y => CAL.slotFromY(y)), [0, 0, 1, 1, 2, 47, 0]);   // 48px/시간 → 24px/30분
-  assert.strictEqual(CAL.minToY(600), 480); assert.strictEqual(S.minToTime(CAL.slotToMinutes(21)), '10:30');
-});
 t('반복 요약 문구: 매일/평일/주말/매주 월·수/날짜/그 주만', () => {
   assert.deepStrictEqual([undefined, { kind: 'weekly', days: [1, 2, 3, 4, 5] }, { kind: 'weekly', days: [6, 0] }, { kind: 'weekly', days: [0, 1, 2, 3, 4, 5, 6] }, { kind: 'weekly', days: [3, 1] }, { kind: 'date', date: '2026-10-27' }, { kind: 'week', weekStart: '2026-10-26', days: [5, 3] }, { kind: 'week', weekStart: '2026-10-26', days: [1, 2, 3, 4, 5] }].map(repeat => S.repeatSummary({ repeat })),
     ['매일', '평일', '주말', '매일', '매주 월·수', '10월 27일(화)', '그 주만 수·금', '그 주만 평일']);
@@ -327,5 +319,50 @@ t('스타일 이름 충돌 방지: 홈 화면 칩(.st-chips/.st-chip)은 한 번
   assert.strictEqual((css.match(/^\.st-chip\s*\{/gm) || []).length, 1, '.st-chip 정의는 홈 칩 한 곳');
   assert.ok(/^\.st-dayrow\s*\{/m.test(css) && /^\.st-daychip\s*\{/m.test(css));
   assert.ok(!/className="st-chips?\b/.test(pane) && /className="st-dayrow"/.test(pane) && /className="st-daychip/.test(pane));
+});
+t('주간 캘린더(일자 아래로 쌓기): 주는 월~일 7열, 알람은 시각 순으로 쌓이고 정오부터 오후 칸, 있는 날/없는 날이 개수로 구분된다', () => {
+  const ws = S.mondayOf(new Date(2026, 9, 28)); assert.strictEqual(S.ymd(ws), '2026-10-26');
+  assert.deepStrictEqual(CAL.weekDates(ws).map(d => d.getDay()), [1, 2, 3, 4, 5, 6, 0]); assert.strictEqual(CAL.weekRangeLabel(ws), '10월 26일 – 11월 1일'); assert.strictEqual(CAL.weekRangeLabel(S.mondayOf(new Date(2026, 9, 21))), '10월 19일 – 25일');
+  const mk = (id, time, extra = {}) => al({ id, time, ...extra }); const wed = new Date(2026, 9, 28); const nowD = D(2026, 10, 28, 9, 0);
+  const st = CAL.stackDay([mk('c', '14:30'), mk('a', '09:30'), mk('b', '11:59'), mk('d', '12:00'), mk('e', '23:00'), mk('f', '09:30', { id: 'z', enabled: false })], wed, nowD);
+  assert.deepStrictEqual(st.am.map(e => e.alarm.id), ['a', 'z', 'b']);   // 09:30(같으면 id 순) → 11:59
+  assert.deepStrictEqual(st.pm.map(e => e.alarm.id), ['d', 'c', 'e']);   // 12:00은 오후
+  assert.strictEqual(st.count, 6); assert.deepStrictEqual(st.am.map(e => e.dim), [false, true, false]);
+  assert.strictEqual(CAL.stackDay([], wed, nowD).count, 0); assert.deepStrictEqual([CAL.stackDay([], wed, nowD).am, CAL.stackDay([], wed, nowD).pm], [[], []]);   // 없는 날은 비어 있다
+  assert.deepStrictEqual([CAL.zoneOf(0), CAL.zoneOf(719), CAL.zoneOf(720), CAL.zoneOf(1439)], ['am', 'am', 'pm', 'pm']);
+  assert.deepStrictEqual([CAL.defaultTimeFor('am'), CAL.defaultTimeFor('pm')], ['09:00', '14:00']);   // 빈 곳을 눌렀을 때 새 알람의 기본 시각
+});
+t('캘린더 상태 표시: 꺼짐·오늘 건너뜀·지난 한 번짜리는 흐리게, 오늘 칸의 "지금" 자리, 반복 요일별 배치', () => {
+  const day = new Date(2026, 9, 28), nowD = D(2026, 10, 28, 13, 0);
+  const off = al({ id: 'o', time: '10:00', enabled: false }), sk = al({ id: 's', time: '15:00', skipDate: '2026-10-28' }), pastOne = al({ id: 'p', time: '08:00', repeat: { kind: 'date', date: '2026-10-28' } });
+  const st = CAL.stackDay([off, sk, pastOne, al({ id: 'n1', time: '12:30' }), al({ id: 'n2', time: '16:00' })], day, nowD);
+  assert.deepStrictEqual(st.am.map(e => [e.alarm.id, e.dim, e.past]), [['p', true, true], ['o', true, false]]);
+  assert.deepStrictEqual(st.pm.map(e => [e.alarm.id, e.dim]), [['n1', false], ['s', true], ['n2', false]]);
+  assert.deepStrictEqual(st.nowAt, { zone: 'pm', index: 1 });                                   // 13:00 → 오후 칸에서 12:30 다음, 15:00 앞
+  assert.strictEqual(CAL.stackDay([off], new Date(2026, 9, 27), nowD).nowAt, null);               // 오늘이 아니면 표시 없음
+  assert.strictEqual(CAL.stackDay([], day, nowD).nowAt, null);                                    // 알람이 없는 칸에는 표시하지 않음
+  const alarms = [al({ id: 'w', time: '10:00', repeat: { kind: 'weekly', days: [1, 3] } }), al({ id: 'd', time: '15:00', repeat: { kind: 'date', date: '2026-10-27' } })];
+  assert.deepStrictEqual(CAL.weekDates(S.mondayOf(day)).map(d => CAL.stackDay(alarms, d, nowD).count), [1, 1, 1, 0, 0, 0, 0]);   // 월(w) 화(d) 수(w)
+});
+t('블록 말풍선 정보: 이름·시간(범위)·반복·참석자·메모·미리 알림·상태 순으로 간단히', () => {
+  const day = new Date(2026, 9, 28);
+  const full = CAL.tooltipInfo(al({ name: '디자인 리뷰', time: '14:00', endTime: '15:00', attendees: '김OO, 이OO, 박OO, 최OO', memo: '시안 3종', preMinutes: 10, repeat: { kind: 'weekly', days: [3] } }), day, false);
+  assert.deepStrictEqual(full, { title: '디자인 리뷰', lines: ['오후 2:00 – 오후 3:00', '매주 수', '참석 김OO, 이OO, 박OO 외 1명', '시안 3종', '10분 전에 미리 알림'], status: '' });
+  const bare = CAL.tooltipInfo({ id: 'x', time: '09:00', enabled: false }, day, false); assert.deepStrictEqual(bare, { title: '알람', lines: ['오전 9:00', '매일'], status: '꺼짐' });
+  assert.strictEqual(CAL.tooltipInfo(al({ skipDate: '2026-10-28' }), day, false).status, '오늘은 건너뜀'); assert.strictEqual(CAL.tooltipInfo(al({ repeat: { kind: 'date', date: '2026-10-20' } }), day, true).status, '완료');
+});
+t('다가오는 한 번짜리 알람(다른 주 이동 안내): 날짜·그 주만, 시각 순, 꺼짐·지난 것 제외', () => {
+  const nowD = D(2026, 10, 28, 12, 0);
+  const list = CAL.upcomingOneShots([al({ id: 'late', time: '09:00', repeat: { kind: 'date', date: '2026-11-03' } }), al({ id: 'soon', time: '15:00', repeat: { kind: 'date', date: '2026-10-29' } }), al({ id: 'gone', time: '09:00', repeat: { kind: 'date', date: '2026-10-20' } }),
+    al({ id: 'off', time: '09:00', enabled: false, repeat: { kind: 'date', date: '2026-10-30' } }), al({ id: 'wk', time: '10:00', repeat: { kind: 'weekly', days: [1] } }), al({ id: 'wo', time: '08:00', repeat: { kind: 'week', weekStart: '2026-10-26', days: [5] } })], nowD);
+  assert.deepStrictEqual(list.map(u => u.alarm.id), ['soon', 'wo', 'late']);
+});
+t('알람 탭 화면 연결(정적 확인): 설정(목록) 아래에 캘린더 카드, 보기 전환 없음, 말풍선·키보드·편집', () => {
+  const pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmPane.tsx'), 'utf8'), cal = fs.readFileSync(path.join(root, 'src/components/settings/AlarmCalendar.tsx'), 'utf8'), css = fs.readFileSync(path.join(root, 'src/styles/settings.css'), 'utf8');
+  assert.ok(pane.indexOf('className="st-two"') < pane.indexOf('st-cal-card') && pane.indexOf('<AlarmCalendar') > pane.indexOf('className="st-two"'), '목록·근무 시간이 위, 캘린더가 아래');
+  assert.ok(!/Segmented/.test(pane) && !/alarmView/.test(pane), '보기 전환 제거');
+  assert.match(cal, /className="st-cal-tip" role="tooltip"/); assert.match(cal, /onClick=\{\(\) => onEdit\(a\.id\)\}/); assert.match(cal, /ArrowDown'\) moveCursor\(cursor\.col, 'pm'\)/); assert.match(cal, /오전/);
+  assert.match(css, /\.st-cal-sheet\s*\{/); assert.match(css, /\.st-cal-gutter\[data-zone="pm"\], \.st-cal-cell\[data-zone="pm"\] \{ border-top: 2px/); assert.match(css, /\.st-cal-block:hover \.st-cal-tip/);
+  for (const gone of ['.st-cal-axis', '.st-cal-col', '.st-cal-ev ', '.st-cal-fold', '--cal-hour']) assert.ok(!css.includes(gone), `옛 시간 축 스타일 제거: ${gone}`);
 });
 console.log(`\n${n}개 통과`);
