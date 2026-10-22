@@ -52,3 +52,5 @@
 .ob-ways li::before { content: counter(way); position: absolute; left: 12px; top: 12px; width: 22px; height: 22px; border-radius: 50%; background: var(--ui-accent-tint); color: var(--ui-ink); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
 .ob-ways b { font-size: 14px; }
 .ob-ways span { font-size: 13px; color: var(--ui-sub); line-height: 1.5; }
+.ob-theme-note { margin-bottom: 10px !important; }
+.ob .ui-seg { width: 100%; }

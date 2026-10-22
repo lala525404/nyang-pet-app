@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import CatEmoji from './CatEmoji';
-import { Switch } from './ui';
+import { Segmented, Switch } from './ui';
 import { ANIMALS, getAnimal } from '../data/animals';
 import { formatTime } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
+import type { ThemePref } from '../utils/theme';
 import '../styles/onboarding.css';
 
 // 처음 안내(3단계 튜토리얼, 1분 안에): 버디 고르기 / 알림 / 마무리. 설정창 안에서만 진행되고 버디는 평소처럼 이미 실행 중이다.
@@ -13,11 +14,13 @@ const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disa
 type Props = {
   settings: PetSettings;
   onChange: (p: Partial<PetSettings>) => void;      // 바꾸는 즉시 저장하고 버디 창에 전달
+  themePref: ThemePref;                              // 화면 테마(라이트/다크/시스템). 설정창 오른쪽 위 테마 버튼과 같은 값
+  onTheme: (t: ThemePref) => void;                   // 누르는 즉시 반영·저장
   onUpload: () => void;                              // 기존 사진 올리기 → 자르기 창
   onClose: (kind: 'done' | 'cancel') => void;       // done: 버디 풀어놓기(설정창 닫기), cancel: 중간에 나가기
 };
 
-export default function Onboarding({ settings: s, onChange, onUpload, onClose }: Props) {
+export default function Onboarding({ settings: s, onChange, themePref, onTheme, onUpload, onClose }: Props) {
   const [step, setStep] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const isMac = window.electronAPI?.platform === 'darwin';
@@ -135,6 +138,11 @@ export default function Onboarding({ settings: s, onChange, onUpload, onClose }:
                 <span>{isMac ? '화면 위 메뉴 막대 오른쪽에 있어요.' : '작업 표시줄 오른쪽 ^ 숨겨진 아이콘 칸 안에 있을 수 있어요.'}</span></li>
               <li><b>앱을 다시 실행해요</b><span>이미 켜져 있으면 설정창만 앞으로 나와요.</span></li>
             </ol>
+            <h3 className="ob-sub">화면 색을 골라 보세요</h3>
+            <p className="ob-theme-note">화면 색은 라이트 / 다크 / 시스템 중에서 고를 수 있어요. 설정창에서 언제든 바꿀 수 있어요.</p>
+            <Segmented<ThemePref> label="화면 색" value={themePref} onChange={onTheme}
+              options={[{ value: 'light', label: '라이트' }, { value: 'dark', label: '다크' }, { value: 'system', label: '시스템' }]} />
+            <p className="ob-tiny">설정창 오른쪽 위의 테마 버튼(지금 고른 색 이름이 적힌 버튼)을 누를 때마다 라이트 → 다크 → 시스템 순서로 바뀌어요.</p>
             <p className="ob-tiny">크기, 활동 구역, 말풍선은 홈에서 칩을 눌러 바꿀 수 있어요.</p>
           </section>
         )}

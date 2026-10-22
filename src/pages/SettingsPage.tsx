@@ -275,7 +275,7 @@ export default function SettingsPage() {
         {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
         {page === 'help' && <HelpPane settings={settings} patch={patch} onReplayIntro={replayIntro} onReplayOnboarding={() => setOnboarding(true)} />}
       </main>
-      {onboarding && <Onboarding settings={settings} onChange={changeNow} onUpload={upload} onClose={closeOnboarding} />}
+      {onboarding && <Onboarding settings={settings} onChange={changeNow} themePref={themePref} onTheme={(t) => { setThemePref(t); setPref(t); setThemeNote(`화면 테마 ${THEME_UI[t].name}`); }} onUpload={upload} onClose={closeOnboarding} />}
       {introPlaying && createPortal(<Intro onDone={endIntro} entrance={entrance ?? undefined} onChoose={chooseEntrance} />, document.body)}
     </div>
   );
