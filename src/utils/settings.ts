@@ -1,10 +1,18 @@
 import type { CustomShape } from '../components/CatEmoji';
+import type { AlarmRepeat } from './alarmSchedule';
 import { seedFreshTheme } from './theme';
 
 export interface Alarm {
   id: string;
   time: string;
   enabled: boolean;
+  name?: string;       // 알람 이름(카드 제목). 비어 있으면 "알람"
+  endTime?: string;    // 종료 시각(있으면 카드에 시간 범위로)
+  attendees?: string;  // 참석자(쉼표로 구분)
+  memo?: string;
+  preMinutes?: number; // 이 알람의 미리 알림(분 전). 없거나 0이면 미리 알림 없음
+  repeat?: AlarmRepeat; // 반복(매주 요일 / 특정 날짜 한 번 / 그 주만). 없으면 예전 알람처럼 매일
+  skipDate?: string;   // "오늘만 건너뛰기": 이 날짜(YYYY-MM-DD) 하루만 울리지 않는다
 }
 
 export type BuddyMode = 'chill' | 'buddy' | 'chaos' | 'custom';

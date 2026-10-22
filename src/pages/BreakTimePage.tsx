@@ -5,6 +5,8 @@ import CatEmoji from '../components/CatEmoji';
 import HeartMark from '../components/HeartMark';
 import { getAnimal } from '../data/animals';
 import { formatTime, loadSettings } from '../utils/settings';
+import { ALARM_TEXT_EXTRA_MS, alarmHasText, alarmSubText, alarmTitle, titleSize } from '../utils/alarmText';
+import type { AlarmCardInfo } from '../utils/alarmText';
 
 const LUNCH_EMOJIS = ['🍚', '🍜', '🍣', '🍱', '🍙', '🥪', '🍕', '🍔', '🥗', '🍲', '🍰', '🥘', '🍝', '🍛', '🧋'];
 const ALARM_EMOJIS = ['⏰', '🔔', '⏰', '🔔', '⏰'];
@@ -49,8 +51,16 @@ function readTypeFromHash(fallback?: BreakType): BreakType {
   return fallback || 'lunch';
 }
 
+// 알람 카드의 이름·시간 범위·참석자·메모는 URL 해시 쿼리(n, t, e, a, m)로 받는다. 없으면 기본 카드.
+function readAlarmInfoFromHash(): AlarmCardInfo {
+  const hash = window.location.hash; const i = hash.indexOf('?');
+  const q = new URLSearchParams(i >= 0 ? hash.substring(i + 1) : '');
+  return { name: q.get('n') || undefined, time: q.get('t') || undefined, endTime: q.get('e') || undefined, attendees: q.get('a') || undefined, memo: q.get('m') || undefined, missed: q.get('x') === '1' };
+}
+
 export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
   const [type] = useState<BreakType>(() => readTypeFromHash(propType));
+  const [alarmInfo] = useState<AlarmCardInfo>(readAlarmInfoFromHash);
   const [sideBursts, setSideBursts] = useState<SideBurst[]>([]);
   const [upBursts, setUpBursts] = useState<UpBurst[]>([]);
   const [visible, setVisible] = useState(true);
@@ -108,7 +118,8 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
     }
 
     const textTimer = setTimeout(() => setShowText(true), 200);
-    const fadeTimer = setTimeout(() => setVisible(false), 2600);
+    // 글이 있는 알람 카드는 사라지기 시작하는 때도 2초 늦춘다(창은 메인이 같은 만큼 늦게 닫는다)
+    const fadeTimer = setTimeout(() => setVisible(false), 2600 + (type === 'alarm' && alarmHasText(alarmInfo) ? ALARM_TEXT_EXTRA_MS : 0));
 
     return () => {
       clearTimeout(textTimer);
@@ -121,8 +132,8 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
   const photos = settings.customImages.filter(Boolean) as string[];
   const photo = settings.useCustomMode && photos.length > 0 ? photos[0] : null;
 
-  const label = type === 'lunch' ? '점심' : type === 'alarm' ? '알람' : '퇴근';
-  const subLabel = type === 'lunch' ? '맛있게 드세요' : type === 'alarm' ? '알람이 울렸어요!' : '오늘도 수고했어요';
+  const label = type === 'lunch' ? '점심' : type === 'alarm' ? alarmTitle(alarmInfo) : '퇴근';
+  const subLabel = type === 'lunch' ? '맛있게 드세요' : type === 'alarm' ? alarmSubText(alarmInfo) : '오늘도 수고했어요';
   const Icon = type === 'lunch' ? Utensils : type === 'alarm' ? AlarmClock : LogOut;
   const meta = type === 'lunch' ? formatTime(settings.lunchTime)
     : type === 'leave' ? formatTime(settings.leaveTime)
@@ -176,8 +187,8 @@ export default function BreakTimePage({ type: propType }: BreakTimePageProps) {
             <div className="bt-buddy">
               <CatEmoji emoji={animal.emoji} size={144} forceImage customImage={photo} customShape={settings.customShape} />
             </div>
-            <div className="bt-word">{label}</div>
-            <div className="bt-sub">{subLabel}</div>
+            <div className="bt-word" data-size={titleSize(label)}><span>{label}</span></div>
+            <div className="bt-sub" data-long={subLabel.length > 28 ? '' : undefined}>{subLabel}</div>
           </div>
         </div>
       )}

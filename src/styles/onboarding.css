@@ -18,6 +18,8 @@
 .ob-ghost:hover { background: var(--ui-item); color: var(--ui-ink); }
 .ob-pri { min-height: 40px; padding: 0 20px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-accent); color: var(--ui-accent-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 140ms var(--ui-ease-out); }
 .ob-pri:active, .ob-ghost:active, .ob-tile:active { transform: scale(.97); }
+/* 다크의 포인트 파랑(#3B82F6) 위 흰 글자는 3.68:1이라 기준(4.5:1) 미만이다. 이 버튼 바탕만 더 짙은 파랑(#2563EB)으로 해 5.2:1을 맞춘다 */
+html[data-theme="dark"] .ob-pri { background: #2563EB; }
 .ob-s1 { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 20px; margin-top: 18px; }
 .ob-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
 .ob-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-sub); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out); }

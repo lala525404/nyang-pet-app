@@ -77,7 +77,7 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 .st-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .st-stack { display: flex; flex-direction: column; gap: 12px; }
 .st-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.st-field-label { font-size: 12px; color: var(--ui-sub); }
+.st-field-label { font-size: 12px; line-height: 18px; color: var(--ui-sub); }
 
 /* ── 홈: 메인 카드 ── */
 .st-home { overflow: visible; }
@@ -194,6 +194,25 @@ html[data-theme="dark"] .st-pop { color-scheme: dark; }
 .st-li + .st-li { border-top: 1px solid var(--ui-line); }
 .st-li .ui-time { min-width: 136px; }
 .st-li-label { flex: 1; min-width: 0; font-size: 13px; color: var(--ui-sub); }
+/* 알람 한 개: 위 줄(시간·이름·켜기·삭제) + 접힌 "자세히" */
+.st-li--alarm { flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px; }   /* flex-shrink 0: 목록 높이를 제한해도 줄이 줄어들어 내용이 겹치지 않게. 좌우 12px 안쪽 여백 */
+.st-li-row { display: flex; align-items: center; gap: 12px; min-height: var(--ui-field-h); }
+.st-text::placeholder { color: var(--ui-sub); }
+.st-text:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.st-li-name { flex: 1; min-width: 0; }   /* 입력 칸의 기본 최소 너비 때문에 좁은 목록(스크롤바 있음)에서 삭제 버튼이 밀려나지 않게 */
+.st-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 8px 0 4px; border: 0; background: transparent; color: var(--ui-sub); font: inherit; font-size: 13px; font-weight: 600; border-radius: var(--ui-r-inner); cursor: pointer; }
+.st-more .ui-i { width: 18px; height: 18px; transition: transform 160ms var(--ui-ease-out); }
+.st-more .ui-i[data-open] { transform: rotate(180deg); }
+.st-more:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .st-more:hover { color: var(--ui-ink); background: var(--ui-item); } }
+.st-more-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ui-accent); }
+.st-detail { display: grid; gap: var(--ui-gap-field); padding: 8px 0 12px; }
+.st-detail .st-field { display: grid; gap: var(--ui-gap-label); }
+.st-detail .st-field-label small { font-weight: 400; color: var(--ui-sub); }
+.st-detail .st-text { width: 100%; }
+.st-detail-time { display: flex; align-items: center; gap: 8px; }
+.st-detail .ui-select select { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .st-more .ui-i { transition: none; } }
 .st-empty { padding: 20px 0; font-size: 13px; color: var(--ui-sub); }
 .st-card-foot { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
 .st-work { display: flex; flex-direction: column; gap: 12px; }
@@ -226,7 +245,6 @@ button.st-slot:active { transform: scale(0.97); }
 .st-slot img { width: calc(100% - 24px); height: calc(100% - 24px); object-fit: cover; display: block; }
 .st-msgs { display: flex; flex-direction: column; gap: 8px; }
 .st-msg { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; align-items: center; gap: 8px; }
-.st-msg-input { min-width: 0; min-height: 44px; padding: 0 14px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 14px; }
 .st-msg-input::placeholder { color: var(--ui-sub); }
 .st-msg-input:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 .st-msg-count { min-width: 5.2em; text-align: right; font-size: 12px; color: var(--ui-sub); font-variant-numeric: tabular-nums; }
@@ -272,3 +290,113 @@ button.st-slot:active { transform: scale(0.97); }
 .settings-root[data-fade="b"] { animation: st-intro-fade-b 150ms linear both; }
 @keyframes st-intro-fade-a { from { opacity: 0; } to { opacity: 1; } }
 @keyframes st-intro-fade-b { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── 알람 반복·주간 캘린더 ─────────────────────────────────────────────────────────────
+   중립 톤 한 겹: 카드 안에서 선(hairline)과 옅은 면만 쓰고 박스 안에 박스를 만들지 않는다. 색은 모두 토큰이라 라이트/다크가 자동으로 따른다. */
+.st-alarm-head { align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.st-alarm-head .st-h { display: flex; align-items: baseline; gap: 10px; }
+.st-alarm-head .ui-seg { width: 200px; }
+.st-cal-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }   /* minmax(0,…): 격자의 최소 폭이 카드를 밀어내지 않게(좁아지면 요일별 목록으로 바뀐다) */
+.st-cal-card { min-width: 0; }
+.st-limit { margin-top: 8px; }
+.st-li[data-past] .st-li-row { opacity: 0.55; }
+.st-more-sub { margin-left: 8px; font-weight: 400; color: var(--ui-sub); }
+.st-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.st-repeat { gap: 8px; }
+.st-repeat-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.st-dayrow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); justify-items: center; gap: 6px; }
+.st-dayrow--presets { display: flex; justify-content: flex-start; gap: 8px; }
+.st-daychip { box-sizing: border-box; display: grid; place-items: center; height: var(--ui-chip-h); margin: 0; padding: 0; border: 0; border-radius: var(--ui-r-pill); background: var(--ui-item); color: var(--ui-sub); font: inherit; font-size: 13px; line-height: 1; font-weight: 600; cursor: pointer; transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out); }
+.st-daychip--day { width: var(--ui-chip-h); border-radius: 50%; }
+.st-daychip--preset { min-width: 72px; padding: 0 16px; }
+.st-daychip[aria-pressed="true"] { background: var(--ui-accent-tint); color: var(--ui-ink); box-shadow: inset 0 0 0 2px var(--ui-accent); }
+.st-daychip:active:not(:disabled) { transform: scale(0.97); }
+.st-daychip:disabled { opacity: 0.4; cursor: not-allowed; }
+.st-daychip:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .st-daychip:not(:disabled):not([aria-pressed="true"]):hover { background: var(--ui-track); color: var(--ui-ink); } }
+.st-editor-top { display: flex; align-items: center; gap: 12px; }
+.st-editor-repeat { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-editor-repeat .ui-note { margin: 2px 0 0; }
+.st-editor .st-detail { padding: 0; }
+
+.st-cal { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.st-cal-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 36px; }
+.st-cal-nav { display: flex; align-items: center; gap: 4px; }
+.st-cal-nav .ui-iconbtn { width: 36px; height: 36px; }
+.st-cal-title { display: flex; align-items: center; flex: 1 1 150px; min-width: 150px; min-height: 36px; margin: 0; font-size: 15px; line-height: 1.3; font-weight: 700; }
+.st-cal-title small { margin-left: 6px; font-size: 13px; font-weight: 400; color: var(--ui-sub); }
+.st-cal-tools { display: flex; gap: 8px; }
+.st-cal-help { margin: 0; line-height: 18px; }
+.st-cal-jump { display: block; width: 100%; min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.st-cal-jump span { margin-left: 8px; color: var(--ui-link); font-weight: 600; }
+.st-cal-jump:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.st-cal-card { min-width: 0; }
+/* 시트: 일자(월~일) 열 아래로 알람 블록이 쌓이고, 오전/오후만 구분선으로 나눈다. 알람이 있는 날은 길어지고 없는 날은 비어 있다 */
+.st-cal-sheet { display: grid; grid-template-columns: 36px repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--ui-line); outline: none; }
+.st-cal-sheet:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; border-radius: 4px; }
+.st-cal-corner { border-bottom: 1px solid var(--ui-line); }
+.st-cal-dayhead { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-left: 1px solid var(--ui-line); border-bottom: 1px solid var(--ui-line); font-size: 12px; color: var(--ui-sub); }
+.st-cal-dayhead b { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 50%; font-size: 14px; font-weight: 700; color: var(--ui-ink); font-variant-numeric: tabular-nums; }
+.st-cal-dayhead[data-empty] { opacity: 0.6; }
+.st-cal-dayhead[data-today] { color: var(--ui-ink); }
+.st-cal-dayhead[data-today] b { background: var(--ui-accent); color: var(--ui-accent-ink); }
+html[data-theme="dark"] .st-cal-dayhead[data-today] b { background: #2563EB; }   /* 다크의 포인트 파랑 위 흰 숫자는 3.68:1 → 짙은 파랑으로 5.2:1 */
+.st-cal-count { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--ui-r-pill); background: var(--ui-accent-tint); color: var(--ui-ink); font-size: 11px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-cal-gutter { display: grid; place-items: start center; padding-top: 10px; font-size: 11px; font-weight: 700; color: var(--ui-sub); }
+.st-cal-gutter[data-zone="pm"], .st-cal-cell[data-zone="pm"] { border-top: 2px solid var(--ui-line); }
+.st-cal-cell { position: relative; display: flex; flex-direction: column; gap: 4px; min-height: 64px; padding: 6px 4px 28px; border-left: 1px solid var(--ui-line); cursor: cell; }
+.st-cal-cell[data-has] { background: color-mix(in srgb, var(--ui-ink) 3%, transparent); }
+.st-cal-cell[data-today] { background: color-mix(in srgb, var(--ui-accent) 7%, transparent); }
+/* 지난 날짜: 새 알람을 만들 수 없는 칸은 빗금으로 흐리게(이미 있는 알람 블록은 글자 대비를 그대로 두고 눌러서 수정할 수 있다) */
+.st-cal-cell[data-pastday] { cursor: not-allowed; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ui-ink) 6%, transparent) 0 6px, transparent 6px 12px); }
+.st-cal-cell[data-pastday] .st-cal-block { cursor: pointer; }
+.st-agenda-day[data-pastday] > header .ui-iconbtn { opacity: 0.4; cursor: not-allowed; }
+.st-cal-notice { margin: 0; padding: 6px 12px; border-radius: var(--ui-r-pill); background: var(--ui-item); color: var(--ui-ink); font-size: 13px; font-weight: 600; }
+.st-cal-cell[data-cursor] { box-shadow: inset 0 0 0 2px var(--ui-accent); }
+.st-cal-add { position: absolute; left: 4px; right: 4px; bottom: 4px; display: grid; place-items: center; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-sub); opacity: 0; cursor: pointer; transition: opacity 120ms var(--ui-ease-out); }
+.st-cal-add .ui-i { width: 14px; height: 14px; }
+.st-cal-add:disabled { cursor: not-allowed; }
+.st-cal-cell:hover .st-cal-add:not(:disabled), .st-cal-add:focus-visible { opacity: 1; background: var(--ui-item); }
+.st-cal-add:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
+.st-cal-block { position: relative; display: block; width: 100%; padding: 4px 6px 4px 8px; border: 0; border-radius: 6px; background: var(--ui-accent-tint); color: var(--ui-ink); box-shadow: inset 3px 0 0 var(--ui-accent); font: inherit; font-size: 11.5px; line-height: 1.3; text-align: left; cursor: pointer; transition: background-color 120ms var(--ui-ease-out), opacity 120ms var(--ui-ease-out); }
+.st-cal-block-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; word-break: keep-all; }
+.st-cal-block-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-cal-block[data-dim] { opacity: 0.62; }   /* 꺼짐·건너뜀·완료는 흐리게(글자 4.5:1 이상 유지) */
+.st-cal-block:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; z-index: 5; }
+@media (hover: hover) and (pointer: fine) { .st-cal-block:hover { background: color-mix(in srgb, var(--ui-accent) 24%, var(--ui-panel)); opacity: 1; z-index: 5; } }
+/* 블록에 마우스를 올리면(또는 키보드로 포커스하면) 뜨는 간단한 정보 */
+.st-cal-tip { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: flex; flex-direction: column; gap: 2px; width: max-content; max-width: 220px; padding: 8px 10px; border-radius: var(--ui-r-inner); background: var(--ui-tip); color: var(--ui-tip-ink); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; box-shadow: var(--ui-shadow-float); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-2px);
+  transition: opacity 120ms var(--ui-ease-out), transform 120ms var(--ui-ease-out), visibility 0s linear 120ms; }
+.st-cal-block[data-align="right"] .st-cal-tip { left: auto; right: 0; }
+.st-cal-tip b { font-size: 13px; font-weight: 700; }
+.st-cal-tip i { margin-left: 6px; font-style: normal; font-weight: 500; opacity: 0.75; }
+.st-cal-tip em { margin-top: 4px; font-style: normal; font-size: 11px; opacity: 0.65; }
+@media (hover: hover) and (pointer: fine) { .st-cal-block:hover .st-cal-tip { opacity: 1; visibility: visible; transform: none; transition-delay: 150ms; } }
+.st-cal-block:focus-visible .st-cal-tip { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.st-cal-now { display: flex; align-items: center; gap: 4px; height: 10px; color: var(--ui-accent); font-size: 9px; font-weight: 700; pointer-events: none; }
+.st-cal-now::after { content: ''; flex: 1; height: 2px; border-radius: 1px; background: var(--ui-accent); }
+.st-list { max-height: min(70vh, 720px); overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }   /* 가로 스크롤은 만들지 않는다. 알람이 많아도 아래 캘린더에 닿을 수 있게 자체 스크롤 */
+
+/* 좁은 폭: 요일별 세로 목록 */
+.st-cal-agenda { display: flex; flex-direction: column; }
+.st-agenda-day { padding: 8px 0; border-top: 1px solid var(--ui-line); }
+.st-agenda-day:first-child { border-top: 0; }
+.st-agenda-day header { display: flex; align-items: center; justify-content: space-between; }
+.st-agenda-day h4 { margin: 0; font-size: 14px; font-weight: 700; }
+.st-agenda-day h4 small { margin-left: 6px; font-weight: 400; color: var(--ui-sub); }
+.st-agenda-day[data-today] h4 { color: var(--ui-accent); }
+.st-agenda-day ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.st-agenda-empty { margin: 0; padding: 4px 0 8px; font-size: 13px; color: var(--ui-sub); }
+.st-agenda-ev { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-accent-tint); color: var(--ui-ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.st-agenda-ev[data-dim] { opacity: 0.62; }
+.st-agenda-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-agenda-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-agenda-ev small { color: var(--ui-sub); }
+.st-agenda-ev:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .st-daychip, .st-cal-block, .st-cal-add, .st-cal-tip { transition: none; } .st-daychip:active:not(:disabled) { transform: none; } }
+
+/* "자세히" 접이식 영역: 높이가 200~300ms로 부드럽게 늘고 줄어든다(0fr ↔ 1fr). 움직임 줄이기에서는 즉시 전환 */
+.st-acc { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--acc-ms, 240ms) var(--ui-ease-out), opacity var(--acc-ms, 240ms) var(--ui-ease-out); }
+.st-acc[data-open] { grid-template-rows: 1fr; opacity: 1; }
+.st-acc-inner { min-height: 0; overflow: hidden; padding-inline: 4px; margin-inline: -4px; }   /* 좌우 4px: 입력 칸의 포커스 링이 잘리지 않게 */
+@media (prefers-reduced-motion: reduce) { .st-acc { transition: none; } }
