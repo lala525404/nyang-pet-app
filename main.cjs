@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, nativeTheme, systemPreferences, shell } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage, nativeTheme, powerMonitor, systemPreferences, shell } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -704,7 +704,7 @@ function createBreakTimeWindow(type, info) {
   breakTimeWindow.setIgnoreMouseEvents(true, { forward: true });
   // 알람 카드는 이름·시간 범위·참석자·메모를 쿼리로 받아 두 텍스트 칸만 바꾼다(모양과 모션은 그대로)
   const q = new URLSearchParams({ type });
-  if (type === 'alarm' && info) for (const [k, v] of Object.entries({ n: info.name, t: info.time, e: info.endTime, a: info.attendees, m: info.memo })) if (v) q.set(k, v);
+  if (type === 'alarm' && info) for (const [k, v] of Object.entries({ n: info.name, t: info.time, e: info.endTime, a: info.attendees, m: info.memo, x: info.missed ? '1' : '' })) if (v) q.set(k, v);
   breakTimeWindow.loadURL(getPageURL(`/breaktime?${q.toString()}`));
 
   // 생성 시점의 창을 캡처해 그 창만 닫는다 (연속 생성 시 새 창이 닫히는 것 방지)
@@ -722,17 +722,27 @@ function createBreakTimeWindow(type, info) {
 const alarms = require('./alarms.cjs');
 const alarmFile = () => path.join(app.getPath('userData'), 'alarm-settings.json');
 let alarmSettings = {};
-const firedAlarms = new Set();
+// 발화 기록은 디스크(alarm-fired.json)에도 남겨서 앱을 껐다 켜도 같은 알람이 또 울리지 않는다.
+// 스케줄러는 마지막으로 확인한 분 이후를 모두 훑어, 앱이 꺼져 있었거나 컴퓨터가 잠들어 있던 동안 지난 알람 중
+// 최근 MISSED_WINDOW_MIN(10)분 안의 것만 "놓친 알람" 카드로 한 번 보여 준다(alarms.cjs).
+const scheduler = alarms.createScheduler({ fired: new Set() });
+const firedFile = () => path.join(app.getPath('userData'), 'alarm-fired.json');
+let firedSaved = '';
+function persistFired() {
+  const json = JSON.stringify([...scheduler.fired]);
+  if (json !== firedSaved) { firedSaved = json; alarms.saveFired(firedFile(), scheduler.fired); }
+}
 
 const KIND_LABEL = { lunch: '점심', leave: '퇴근' };
 function runAlarmCheck(now = new Date()) {
-  for (const a of alarms.dueActions(alarmSettings, now, firedAlarms)) {
+  for (const a of scheduler.check(alarmSettings, now)) {
     if (a.type === 'card') createBreakTimeWindow(a.card, a.alarm);
     else {
       if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('show-toast', a.text || `${KIND_LABEL[a.kind]} ${a.minutes}분 전이에요!`, a.ms);
       playTrayBeat();
     }
   }
+  persistFired();
 }
 
 function startBreakTimeChecker() {
@@ -743,7 +753,11 @@ function startBreakTimeChecker() {
 // 저장된 알람 설정 복원 + 체커 시작(창이 뜨기 전에 한 번)
 function restoreAlarms() {
   alarmSettings = alarms.loadAlarmSettings(alarmFile());
+  for (const k of alarms.loadFired(firedFile())) scheduler.fired.add(k);
+  firedSaved = JSON.stringify([...scheduler.fired]);
   startBreakTimeChecker();
+  // 절전에서 깨어나면 바로 확인한다(잠든 동안 지난 알람이 최근 N분 안이면 "놓친 알람"으로 보여 준다)
+  try { powerMonitor.on('resume', () => runAlarmCheck()); } catch { /* 전원 이벤트를 못 받는 환경이어도 1초 타이머는 돈다 */ }
 }
 
 // 렌더러가 보낸 설정을 반영한다(키가 없는 설정은 기존 값을 지우지 못한다). 바뀌면 디스크에도 저장한다.
