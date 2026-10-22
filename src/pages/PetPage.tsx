@@ -93,6 +93,14 @@ interface Settings {
   yarInterval: number;
   buddyMode: string;
   size: number;
+  // 알람 키: 메인이 알람을 돌릴 때 필요한 값. 시작 동기화에 빠지지 않도록 기본값에도 넣는다(켬/끔 기본은 모두 꺼짐)
+  lunchEnabled: boolean;
+  leaveEnabled: boolean;
+  lunchTime: string;
+  leaveTime: string;
+  lunchPreAlertMinutes: number;
+  leavePreAlertMinutes: number;
+  alarms: { id: string; time: string; enabled: boolean }[];
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -102,6 +110,8 @@ const DEFAULT_SETTINGS: Settings = {
   bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true,
   useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
+  lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
+  lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, alarms: [],
 };
 
 // 새 설치(메인이 알려 줌)이고 저장값이 없는 동안은 하트가 기본 버디
@@ -367,6 +377,7 @@ export default function PetPage() {
 
   // ── 설정 로드 (2초마다 폴링) ─────────────────────────────────────
   const initialSyncedRef = useRef(false);
+  const lastSyncedRawRef = useRef<string | null>(null);   // 마지막으로 메인에 보낸 저장값(바뀌었는지 비교용)
   const displaysReadyRef = useRef(false);
   useEffect(() => {
     const load = () => {
@@ -377,14 +388,18 @@ export default function PetPage() {
           setSettings({ ...DEFAULT_SETTINGS, ...parsed });
         }
       } catch {}
-      // 앱 시작 시 1회만 메인 프로세스와 동기화 (저장값이 없거나 파싱 실패해도 기본값으로 동기화)
-      if (!initialSyncedRef.current) {
+      // 메인 프로세스와 동기화: 앱 시작 시 1회(저장값이 없거나 파싱 실패해도 기본값으로), 그리고 저장값이 바뀐 것을 알아차렸을 때 다시.
+      // 설정창이 보낸 동기화가 빠지거나 늦어도 펫 창이 2초 안에 메인을 저장값에 맞춘다.
+      let rawNow: string | null = null;
+      try { rawNow = localStorage.getItem('petSettings'); } catch {}
+      if (!initialSyncedRef.current || (rawNow && rawNow !== lastSyncedRawRef.current)) {
         initialSyncedRef.current = true;
         let merged: Record<string, unknown> = { ...startSettings() };
         try {
           const stored = readStoredSettings();
           if (stored) merged = { ...DEFAULT_SETTINGS, ...stored };
         } catch {}
+        try { lastSyncedRawRef.current = localStorage.getItem('petSettings'); } catch {}
         window.electronAPI?.syncSettings(merged);
       }
     };

@@ -143,6 +143,7 @@ export default function SettingsPage() {
     api?.setAlwaysOnTop(s.alwaysOnTop);
     if (s.petVisible) api?.showPet(); else api?.hidePet();
     api?.setYarTimer(s.yarEnabled ? s.yarInterval : 0);
+    api?.syncSettings(s as unknown as Record<string, unknown>);   // 알람·사진 교체도 저장값에 맞춘다(펫 창의 시작 동기화와 별개로 한 번 더)
   }, []);
 
   // 예전 앱과 같은 규칙: update는 모드를 "커스텀"으로, patch는 모드를 건드리지 않는다
