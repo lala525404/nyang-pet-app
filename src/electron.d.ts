@@ -14,7 +14,7 @@ interface ElectronAPI {
   platform: string;
   setYarTimer: (intervalMinutes: number) => void;
   yarNow: () => void;
-  testBreakTime: (type: string) => void;
+  testBreakTime: (type: string, info?: Record<string, unknown>) => void;
   syncSettings: (settings: Record<string, unknown>) => void;
   onFlushSettings: (cb: () => void) => () => void;
   settingsFlushed: () => void;

@@ -670,7 +670,7 @@ ipcMain.on('yar-now', () => {
 let breakTimeWindow = null;
 let breakTimeChecker = null;
 
-function createBreakTimeWindow(type) {
+function createBreakTimeWindow(type, info) {
   if (breakTimeWindow && !breakTimeWindow.isDestroyed()) {
     breakTimeWindow.destroy();
     breakTimeWindow = null;
@@ -702,14 +702,18 @@ function createBreakTimeWindow(type) {
   trackAlertWindow(breakTimeWindow);
   breakTimeWindow.setAlwaysOnTop(true, 'screen-saver');
   breakTimeWindow.setIgnoreMouseEvents(true, { forward: true });
-  breakTimeWindow.loadURL(getPageURL(`/breaktime?type=${type}`));
+  // 알람 카드는 이름·시간 범위·참석자·메모를 쿼리로 받아 두 텍스트 칸만 바꾼다(모양과 모션은 그대로)
+  const q = new URLSearchParams({ type });
+  if (type === 'alarm' && info) for (const [k, v] of Object.entries({ n: info.name, t: info.time, e: info.endTime, a: info.attendees, m: info.memo })) if (v) q.set(k, v);
+  breakTimeWindow.loadURL(getPageURL(`/breaktime?${q.toString()}`));
 
   // 생성 시점의 창을 캡처해 그 창만 닫는다 (연속 생성 시 새 창이 닫히는 것 방지)
   const w = breakTimeWindow;
+  const showMs = 3000 + (type === 'alarm' && alarms.alarmHasText(info) ? alarms.TEXT_EXTRA_MS : 0);   // 글이 있는 알람 카드는 2초 더
   setTimeout(() => {
     if (w && !w.isDestroyed()) w.close();
     if (breakTimeWindow === w) breakTimeWindow = null;
-  }, 3000);
+  }, showMs);
 }
 
 // ★ 알람 스케줄: 설정은 메인이 직접 들고(alarmSettings) userData/alarm-settings.json에 저장한다.
@@ -723,9 +727,9 @@ const firedAlarms = new Set();
 const KIND_LABEL = { lunch: '점심', leave: '퇴근' };
 function runAlarmCheck(now = new Date()) {
   for (const a of alarms.dueActions(alarmSettings, now, firedAlarms)) {
-    if (a.type === 'card') createBreakTimeWindow(a.card);
+    if (a.type === 'card') createBreakTimeWindow(a.card, a.alarm);
     else {
-      if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('show-toast', `${KIND_LABEL[a.kind]} ${a.minutes}분 전이에요!`);
+      if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('show-toast', a.text || `${KIND_LABEL[a.kind]} ${a.minutes}분 전이에요!`, a.ms);
       playTrayBeat();
     }
   }
@@ -771,6 +775,7 @@ ipcMain.handle('get-all-displays', () => {
   };
 });
 
-ipcMain.on('test-break-time', (_e, type) => {
-  createBreakTimeWindow(type);
+// 알람 테스트: 설정창에서 입력한 이름·설명이 반영된 카드로 미리 본다(없으면 기본 카드)
+ipcMain.on('test-break-time', (_e, type, info) => {
+  createBreakTimeWindow(type, type === 'alarm' && info && typeof info === 'object' ? alarms.cardInfo(info) : undefined);
 });

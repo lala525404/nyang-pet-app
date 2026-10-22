@@ -16,6 +16,32 @@ const DEFAULTS = Object.freeze({
 const LEGACY_KEYS = ['breakTimeEnabled', 'preAlertMinutes'];
 const KEYS = [...Object.keys(DEFAULTS), ...LEGACY_KEYS];
 
+// 알람 한 개: 이름·종료 시각·참석자·메모·미리 알림은 있을 때만 남긴다(글자 수 제한은 설정창 입력 칸과 같다)
+const LIMITS = { name: 30, attendees: 80, memo: 60 };
+const clip = (v, n) => (typeof v === 'string' ? Array.from(v.trim()).slice(0, n).join('') : '');
+function sanitizeAlarm(a) {
+  const out = { id: a.id, time: normTime(a.time), enabled: !!a.enabled };
+  const name = clip(a.name, LIMITS.name), attendees = clip(a.attendees, LIMITS.attendees), memo = clip(a.memo, LIMITS.memo);
+  if (name) out.name = name;
+  if (isTime(a.endTime)) out.endTime = normTime(a.endTime);
+  if (attendees) out.attendees = attendees;
+  if (memo) out.memo = memo;
+  if (Number.isFinite(a.preMinutes) && a.preMinutes > 0 && a.preMinutes <= 120) out.preMinutes = Math.round(a.preMinutes);
+  return out;
+}
+// 카드에 넘길 정보(미리보기 포함). 시간 범위의 시작은 알람 시각이다.
+function cardInfo(a) { const s = sanitizeAlarm({ id: 'x', time: a && isTime(a.time) ? a.time : '00:00', enabled: true, ...a }); const { name, endTime, attendees, memo, time } = s; return { name, time, endTime, attendees, memo }; }
+
+// 비어 있거나 설정창이 붙여 주는 자동 이름("알람", "알람 1")이면 기본 이름으로 본다(src/utils/alarmText.ts와 같은 규칙)
+const isDefaultAlarmName = (name) => { const t = String(name || '').trim(); return !t || /^알람\s*\d*$/.test(t); };
+// 이름이나 설명(시간 범위·참석자·메모)을 넣은 알람은 읽을 글이 있으므로 팝업을 2초 더 오래 보여 준다
+const TEXT_EXTRA_MS = 2000;
+const DEFAULT_TOAST_MS = 3000;   // 펫 창 토스트의 기본 표시 시간(PetPage showToast 기본값과 같다)
+const alarmHasText = (a) => !!a && (!isDefaultAlarmName(a.name) || !!a.endTime || !!a.attendees || !!a.memo);
+const formatClockKo = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return `${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')}`; };
+// 미리 알림 토스트 글: 이름이 있으면 "10분 뒤 · 디자인 리뷰 회의 · 오후 2:00", 없으면 점심·퇴근과 같은 "알람 10분 전이에요!"
+const alarmToastText = (a, minutes) => (isDefaultAlarmName(a.name) ? `알람 ${minutes}분 전이에요!` : `${minutes}분 뒤 · ${a.name} · ${formatClockKo(a.time)}`);
+
 const isTime = (v) => typeof v === 'string' && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
 const normTime = (v) => { const [h, m] = v.split(':'); return `${String(h).padStart(2, '0')}:${m}`; };
 const validators = {
@@ -34,7 +60,7 @@ function mergeAlarmSettings(current, incoming) {
       if (!(k in incoming) || incoming[k] === undefined || !validators[k](incoming[k])) continue;
       let v = incoming[k];
       if (k === 'lunchTime' || k === 'leaveTime') v = normTime(v);
-      if (k === 'alarms') v = v.filter(a => a && typeof a.id === 'string' && isTime(a.time)).map(a => ({ id: a.id, time: normTime(a.time), enabled: !!a.enabled }));
+      if (k === 'alarms') v = v.filter(a => a && typeof a.id === 'string' && isTime(a.time)).map(sanitizeAlarm);
       next[k] = v;
     }
   }
@@ -78,7 +104,9 @@ function dueActions(settings, now, fired) {
   }
   for (const a of r.alarms) {
     if (!a || !a.enabled || !a.time) continue;
-    if (cur === a.time && once(`${date}|alarm|${a.id}|${a.time}`)) out.push({ type: 'card', card: 'alarm' });
+    if (cur === a.time && once(`${date}|alarm|${a.id}|${a.time}`)) out.push({ type: 'card', card: 'alarm', alarm: cardInfo(a) });
+    // 알람마다 정한 "미리 알림"(분 전)이 있을 때만. 기본은 꺼짐이라 지금까지의 동작은 그대로다.
+    if (a.preMinutes > 0 && cur === getPreAlertTime(a.time, a.preMinutes) && once(`${date}|pre-alarm|${a.id}|${a.time}|${a.preMinutes}`)) out.push({ type: 'toast', kind: 'alarm', minutes: a.preMinutes, text: alarmToastText(a, a.preMinutes), ...(isDefaultAlarmName(a.name) ? {} : { ms: DEFAULT_TOAST_MS + TEXT_EXTRA_MS }) });
   }
   return out;
 }
@@ -91,4 +119,4 @@ function saveAlarmSettings(file, settings) {
   try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = `${file}.tmp`; fs.writeFileSync(tmp, JSON.stringify(settings)); fs.renameSync(tmp, file); return true; } catch { return false; }
 }
 
-module.exports = { DEFAULTS, KEYS, mergeAlarmSettings, resolveAlarmSettings, getPreAlertTime, dueActions, loadAlarmSettings, saveAlarmSettings };
+module.exports = { DEFAULTS, KEYS, LIMITS, TEXT_EXTRA_MS, DEFAULT_TOAST_MS, alarmHasText, sanitizeAlarm, cardInfo, isDefaultAlarmName, alarmToastText, mergeAlarmSettings, resolveAlarmSettings, getPreAlertTime, dueActions, loadAlarmSettings, saveAlarmSettings };

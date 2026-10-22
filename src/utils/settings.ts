@@ -5,6 +5,11 @@ export interface Alarm {
   id: string;
   time: string;
   enabled: boolean;
+  name?: string;       // 알람 이름(카드 제목). 비어 있으면 "알람"
+  endTime?: string;    // 종료 시각(있으면 카드에 시간 범위로)
+  attendees?: string;  // 참석자(쉼표로 구분)
+  memo?: string;
+  preMinutes?: number; // 이 알람의 미리 알림(분 전). 없거나 0이면 미리 알림 없음
 }
 
 export type BuddyMode = 'chill' | 'buddy' | 'chaos' | 'custom';

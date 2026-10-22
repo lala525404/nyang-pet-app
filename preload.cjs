@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ★ 야르타임
   setYarTimer:      (intervalMinutes) => ipcRenderer.send('set-yar-timer', intervalMinutes),
   yarNow:           () => ipcRenderer.send('yar-now'),
-  testBreakTime:    (type) => ipcRenderer.send('test-break-time', type),
+  testBreakTime:    (type, info) => ipcRenderer.send('test-break-time', type, info),
   syncSettings:     (settings) => ipcRenderer.send('sync-settings', settings),
   getAllDisplays:   () => ipcRenderer.invoke('get-all-displays'),
   getPetPosition:     () => ipcRenderer.invoke('get-pet-position'),
