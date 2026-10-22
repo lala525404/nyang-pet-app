@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { HEART_EMOJI } from '../data/animals';
+import { HEART_PATH } from './HeartMark';
+import '../styles/heart.css';
 
 // 앱에 포함된 Twemoji SVG (public/twemoji). 오프라인에서도 보이도록 CDN을 쓰지 않는다.
 const TWEMOJI_BASE = './twemoji/';
@@ -48,6 +51,16 @@ export default function CatEmoji({ emoji, size = 64, className = '', customImage
           borderRadius: customShapeRadius(customShape),
         }}
       />
+    );
+  }
+
+  // 최애 하트: 글꼴 이모지 대신 SVG. 색은 currentColor라 라이트=검정, 다크=흰색으로 테마를 따른다.
+  if (emoji === HEART_EMOJI) {
+    return (
+      <svg className={`heart-glyph ${className}`.trim()} width={size} height={size} viewBox="0 0 100 100"
+        role="img" aria-label="최애 하트" focusable="false" style={{ display: 'block', userSelect: 'none' }}>
+        <path d={HEART_PATH} />
+      </svg>
     );
   }
 

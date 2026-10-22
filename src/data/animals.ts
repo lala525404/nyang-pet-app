@@ -8,7 +8,18 @@ export interface AnimalData {
   escapeLines: string[];
 }
 
+// 하트는 이모지가 아니라 앱 하트 SVG(assets/icon/heart.svg)로 그린다. CatEmoji가 이 값을 보면 SVG로 바꿔 그린다.
+export const HEART_EMOJI = 'choeae:heart';
+const H = HEART_EMOJI;
+
 export const ANIMALS: AnimalData[] = [
+  {
+    id: 'heart', name: '최애 하트', emoji: H,
+    moods: { normal:H, happy:H, sleepy:H, surprised:H, angry:H, party:H, love:H, cool:H, scared:H },
+    nags: ['잠깐 쉬어요 🤍','물 마셨어요? 💧','허리 펴요!','눈 좀 쉬게 해요 👀','커피 한 잔 어때요 ☕','야근은 적당히 해요 🌙'],
+    reactions: ['두근두근 🤍','왜 불러요? 두근!','나 여기 있어요','쓰다듬어 줘요','졸려요... 😴','깜짝이야!'],
+    escapeLines: ['잡아봐요!','도망가요! 🏃','못 잡아요~','두근두근!!! 💨'],
+  },
   {
     id: 'cat', name: '고양이', emoji: '🐱',
     moods: { normal:'🐱', happy:'😸', sleepy:'😴', surprised:'🙀', angry:'😾', party:'🎉', love:'😻', cool:'😎', scared:'🙀' },
@@ -68,5 +79,5 @@ export const ANIMALS: AnimalData[] = [
 ];
 
 export function getAnimal(id: string): AnimalData {
-  return ANIMALS.find(a => a.id === id) || ANIMALS[0];
+  return ANIMALS.find(a => a.id === id) || ANIMALS.find(a => a.id === 'cat')!;   // 모르는 id는 예전과 같이 고양이로 (맨 앞이 하트가 돼도 기존 사용자는 그대로)
 }

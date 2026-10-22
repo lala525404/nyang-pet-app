@@ -29,3 +29,31 @@
   .heart-mark--hover { transition: none; }
   .heart-mark-host:hover .heart-mark--hover { transform: none; }
 }
+
+/* ── 버디로 쓰는 하트(CatEmoji): 색은 테마 글자색(라이트 검정 / 다크 흰색) ─────────────── */
+.heart-glyph { flex: none; overflow: visible; fill: currentColor; color: var(--ui-ink, #111); }
+.heart-glyph path { transform-box: fill-box; transform-origin: 50% 58%; }
+
+/* 설정창·온보딩·알림 카드에 나타날 때 한 번 두근 (기존 heart-thump 1 → 1.12 → 1) */
+.heart-glyph path { animation: heart-thump 500ms; }
+
+/* 버디 창: 떠다니기(catFloat)는 바깥 svg가, 두근은 안쪽 path가 맡아 transform이 겹치지 않게 한다.
+   0.6초 동안 한 번 두근하고 3초 쉰다. 올라갈 때 빠른 ease-out, 내려올 때 ease-in-out. */
+@keyframes heart-idle-beat {
+  0%   { transform: scale(1);    animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1); }
+  7%   { transform: scale(1.12); animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+  17%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+.cat-emoji.heart-glyph path { animation: heart-idle-beat 3600ms infinite; }
+/* 누르면 확 두근: 기존 catBonk 대신 짧게 눌렸다 돌아오기 */
+.cat-area:active .cat-emoji.heart-glyph { animation: catFloat 3s ease-in-out infinite; }
+.cat-area:active .cat-emoji.heart-glyph path { animation: heart-thump 300ms; }
+
+/* 움직임 줄이기: 두근·떠다니기·크기 변화를 모두 끈다(색과 모양은 그대로) */
+@media (prefers-reduced-motion: reduce) {
+  .heart-glyph, .cat-emoji.heart-glyph, .cat-area:active .cat-emoji.heart-glyph,
+  .heart-glyph path, .cat-emoji.heart-glyph path, .cat-area:active .cat-emoji.heart-glyph path { animation: none; }
+  .cat-emoji.heart-glyph { transition: none; }
+  .cat-area:hover .cat-emoji.heart-glyph, .cat-area:active .cat-emoji.heart-glyph { width: auto; height: auto; }
+}
