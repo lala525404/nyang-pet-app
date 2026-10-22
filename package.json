@@ -1,6 +1,6 @@
 {
   "name": "choeae-app",
-  "version": "1.2.0-rc2",
+  "version": "1.2.0-rc3",
   "description": "최애를 풀어놨습니다 - Desktop Buddy App",
   "main": "main.cjs",
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "electron": "electron .",
     "fresh": "npm run build && node scripts/fresh-start.cjs",
+    "test": "node scripts/test-default-heart.cjs",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "dist:win": "npm run build && electron-builder --win --dir",
     "dist:mac": "npm run build && electron-builder --mac --dir"
