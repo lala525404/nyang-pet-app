@@ -146,19 +146,29 @@ function markFlag(name, value = true) {
 
 // 설정창 시작 인트로: 이 버전에서 아직 보여 준 적이 없으면 첫 설정창에만 intro=1을 붙인다(새로 설치했거나 새 버전으로 올린 뒤 처음).
 // 보여 줬다는 표시는 설정창이 인트로를 시작할 때 알려 온다. 설정의 "시작 인트로 보기"가 꺼져 있으면 설정창이 알아서 건너뛴다.
-ipcMain.on('intro-seen', () => { freshInstall = false; markFlag('introSeenVersion', app.getVersion()); });
+ipcMain.on('intro-seen', () => {
+  // 완전 새 설치였다는 사실은 flags.json에 남긴다(온보딩을 나중에 마치거나 다시 봐도 새 유저인지 알 수 있게). 기존 사용자에게는 이 표시가 없다.
+  if (freshInstall) markFlag('newInstall');
+  freshInstall = false;
+  markFlag('introSeenVersion', app.getVersion());
+});
 const needsIntro = () => readFlags().introSeenVersion !== app.getVersion();
 // 완전 새 설치(설정 폴더에 flags.json이 아직 없음)인지는 앱이 뜰 때 한 번만 본다. 입구 화면은 새 설치면 "처음 왔어요"를, 새 버전으로 올린 기존 사용자면 "오늘도 함께해요"를 강조한다.
 let freshInstall = false;
 const entranceKind = () => (freshInstall ? 'new' : needsIntro() ? 'old' : '');
 
-const CLOSE_NOTICE = '버디는 계속 놀고 있어요. 완전히 끄려면 트레이 아이콘 → 앱 종료';
+// 설정창을 처음 닫을 때의 안내: 트레이(하트 아이콘) 위치를 OS별로 구체적으로 알려 준다. 설정은 버디를 우클릭해도 열린다.
+const CLOSE_NOTICE = process.platform === 'darwin'
+  ? '버디는 계속 놀고 있어요. 설정은 버디 우클릭, 앱 종료는 화면 위 메뉴 막대 오른쪽의 하트 아이콘에서 해요'
+  : '버디는 계속 놀고 있어요. 설정은 버디 우클릭, 앱 종료는 작업 표시줄 오른쪽 ^ 안의 하트 아이콘에서 해요';
+const CLOSE_NOTICE_MS = 9000;
+const REOPEN_HINT = '나를 우클릭하면 설정을 열 수 있어요';
 
 // 설정창을 처음 X로 닫을 때 버디 위에 한 번만 알려 준다. 버디가 숨겨져 있으면 안 보이므로 다음 기회로 미룬다.
 function maybeShowCloseNotice() {
   if (isQuitting || readFlags().closeNoticeShown) return;
   if (!petWindow || petWindow.isDestroyed() || !petWindow.isVisible()) return;
-  petWindow.webContents.send('show-toast', CLOSE_NOTICE, 6000);
+  petWindow.webContents.send('show-toast', CLOSE_NOTICE, CLOSE_NOTICE_MS);
   markFlag('closeNoticeShown');
 }
 
@@ -562,6 +572,14 @@ ipcMain.on('start-drag', (_e) => {
 ipcMain.on('onboarding-finish', () => {
   markFlag('closeNoticeShown');
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
+  // 새 설치 유저에게만, 온보딩을 마친 직후 한 번: 버디 말풍선으로 다시 여는 법을 알려 준다
+  const flags = readFlags();
+  if (flags.newInstall && !flags.reopenHintShown && petWindow && !petWindow.isDestroyed() && petWindow.isVisible()) {
+    markFlag('reopenHintShown');
+    setTimeout(() => {
+      if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('show-bubble', REOPEN_HINT, 7000);
+    }, 600);
+  }
 });
 
 // ★ 고양이 우클릭 → 설정창 열기

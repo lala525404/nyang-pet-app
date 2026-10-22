@@ -209,7 +209,7 @@ html, body, #root {
 .pet-toast {
   position: fixed; top: 10px; left: 50%; translate: -50% 0; z-index: 9999;
   display: flex; align-items: center; gap: 6px;
-  width: max-content; max-width: 170px; padding: 8px 12px;
+  width: max-content; max-width: 210px; padding: 8px 12px;
   background: var(--ui-panel); color: var(--ui-ink);
   border: 1px solid var(--ui-line); border-radius: var(--ui-r-inner); box-shadow: var(--ui-shadow-toast);
   font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;

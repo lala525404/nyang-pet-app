@@ -420,7 +420,7 @@ export default function PetPage() {
   }, []);
 
   // ── 말풍선 ────────────────────────────────────────────────────────
-  const showBubble = useCallback((text: string, newMood = 'normal', colorize = false) => {
+  const showBubble = useCallback((text: string, newMood = 'normal', colorize = false, ms = 4000) => {
     if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
     setBubble(text);
     setBubbleKey(k => k + 1);
@@ -430,8 +430,11 @@ export default function PetPage() {
       setBubble(null);
       setBubbleStyle(null);
       setMood('normal');
-    }, 4000);
+    }, ms);
   }, []);
+
+  // 메인이 보내는 안내 말풍선(예: 온보딩 직후 "우클릭하면 설정을 열 수 있어요")
+  useEffect(() => window.electronAPI?.onShowBubble?.((text, ms) => showBubble(text, 'happy', false, ms)), [showBubble]);
 
   // ── 파티클 ────────────────────────────────────────────────────────
   const spawnParticles = useCallback((count = 8) => {

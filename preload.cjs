@@ -49,6 +49,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('photo-state', handler);
     return () => ipcRenderer.removeListener('photo-state', handler);
   },
+  onShowBubble:     (cb) => {
+    const handler = (_e, text, ms) => cb(text, ms);
+    ipcRenderer.on('show-bubble', handler);
+    return () => ipcRenderer.removeListener('show-bubble', handler);
+  },
   onShowToast:      (cb) => {
     ipcRenderer.removeAllListeners('show-toast');
     const handler = (_e, msg, ms) => cb(msg, ms);
