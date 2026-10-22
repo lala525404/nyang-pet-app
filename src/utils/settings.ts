@@ -102,9 +102,27 @@ export function hasStoredSettings(): boolean {
   try { return localStorage.getItem(STORAGE_KEY) !== null; } catch { return false; }
 }
 
+// 완전 새 설치의 기본 버디는 최애 하트. 기존 사용자의 저장값은 건드리지 않는다(마이그레이션 없음).
+export const FRESH_ANIMAL_ID = 'heart';
+export const freshDefaults = (): PetSettings => ({ ...DEFAULT_SETTINGS, animalId: FRESH_ANIMAL_ID });
+
+// 설정창이 새 설치(메인이 flags.json 없음 + 저장된 설정 없음)로 뜬 경우 하트 기본값을 한 번 저장한다.
+// 창이 다시 그려져도(StrictMode 등) 결과가 바뀌지 않도록 첫 판단을 기억한다.
+let freshSeeded: boolean | undefined;
+export function seedFreshInstall(mainSaysFresh: boolean): boolean {
+  if (freshSeeded === undefined) {
+    freshSeeded = mainSaysFresh && !hasStoredSettings();
+    if (freshSeeded) saveSettings(freshDefaults());
+  }
+  return freshSeeded;
+}
+
+// 버디 창: 메인이 새 설치라고 알려 준 경우(#/pet?fresh=1)에만, 저장값이 없는 동안 하트를 보여 준다
+export const isFreshWindow = (): boolean => window.location.hash.includes('fresh=1');
+
 export function loadSettings(): PetSettings {
   const stored = readStoredSettings();
-  return stored ? { ...DEFAULT_SETTINGS, ...stored } as PetSettings : DEFAULT_SETTINGS;
+  return stored ? { ...DEFAULT_SETTINGS, ...stored } as PetSettings : (isFreshWindow() ? freshDefaults() : DEFAULT_SETTINGS);
 }
 
 export function saveSettings(s: PetSettings): boolean {

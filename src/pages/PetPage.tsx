@@ -3,7 +3,7 @@ import '../styles/pet.css';
 import { Bell } from 'lucide-react';
 import CatEmoji from '../components/CatEmoji';
 import { usePhotoState } from '../hooks/usePhotoState';
-import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, cleanBubbleMessages, clampTo, clockText, readStoredSettings } from '../utils/settings';
+import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, cleanBubbleMessages, clampTo, clockText, readStoredSettings, isFreshWindow } from '../utils/settings';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
 
@@ -103,6 +103,9 @@ const DEFAULT_SETTINGS: Settings = {
   useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
 };
+
+// 새 설치(메인이 알려 줌)이고 저장값이 없는 동안은 하트가 기본 버디
+const startSettings = (): Settings => (isFreshWindow() ? { ...DEFAULT_SETTINGS, animalId: 'heart' } : DEFAULT_SETTINGS);
 
 function getTimeCategory(workStart: string, workEnd: string): string {
   const now = new Date();
@@ -310,7 +313,7 @@ export default function PetPage() {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [ambushEmoji, setAmbushEmoji] = useState<string | null>(null);
   const { index: customImgIndex } = usePhotoState(); // 몇 번째 사진인지는 메인의 교체 시계가 정한다
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<Settings>(startSettings);
   // ★ 모션 상태
   const [motionClass, setMotionClass] = useState(''); // 벽쿵, 낮잠 등
   const [sparkles, setSparkles] = useState<{id:number,x:number,y:number,emoji:string}[]>([]); // 반짝임
@@ -377,7 +380,7 @@ export default function PetPage() {
       // 앱 시작 시 1회만 메인 프로세스와 동기화 (저장값이 없거나 파싱 실패해도 기본값으로 동기화)
       if (!initialSyncedRef.current) {
         initialSyncedRef.current = true;
-        let merged: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+        let merged: Record<string, unknown> = { ...startSettings() };
         try {
           const stored = readStoredSettings();
           if (stored) merged = { ...DEFAULT_SETTINGS, ...stored };

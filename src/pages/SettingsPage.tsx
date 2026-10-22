@@ -14,7 +14,7 @@ import type { EntranceKind } from '../components/Intro';
 import Onboarding from '../components/Onboarding';
 import { createPortal } from 'react-dom';
 import type { Monitor } from '../components/settings/shared';
-import { MODE_PRESETS, hasStoredSettings, loadSettings, saveSettings } from '../utils/settings';
+import { MODE_PRESETS, loadSettings, saveSettings, seedFreshInstall } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
 import { getThemePref, nextThemePref, setThemePref } from '../utils/theme';
 import type { ThemePref } from '../utils/theme';
@@ -36,6 +36,8 @@ const THEME_UI: Record<ThemePref, { icon: LucideIcon; name: string }> = {
 const SAVE_DELAY_MS = 300;
 
 export default function SettingsPage() {
+  // 새 설치면 첫 렌더 전에 하트 기본값을 저장해 둔다(아래 loadSettings가 그 값을 읽는다)
+  const freshSeed = useRef(seedFreshInstall(/entrance=new/.test(window.location.hash))).current;
   const [settings, setSettings] = useState<PetSettings>(loadSettings);
   const [page, setPage] = useState<NavPage>('home');
   const [animalOpen, setAnimalOpen] = useState(false);
@@ -47,7 +49,7 @@ export default function SettingsPage() {
   // 새 설치라고 해도 이미 저장된 설정이 있으면 기존 사용자로 본다. 움직임 줄이기면 연출 없이 버튼 화면만 보인다.
   const introRequested = useRef(window.location.hash.includes('intro=1')).current;
   const entranceParam = useRef(/entrance=(new|old)/.exec(window.location.hash)?.[1] ?? '').current;
-  const initialEntrance: EntranceKind | null = entranceParam === 'new' ? (hasStoredSettings() ? 'old' : 'new') : entranceParam === 'old' ? 'old' : null;
+  const initialEntrance: EntranceKind | null = entranceParam === 'new' ? (freshSeed ? 'new' : 'old') : entranceParam === 'old' ? 'old' : null;
   const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const introWanted = initialEntrance === 'new' || (introRequested && loadSettings().introEnabled !== false);
   const [entrance, setEntrance] = useState<EntranceKind | null>(introWanted ? initialEntrance : null);

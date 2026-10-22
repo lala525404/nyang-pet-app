@@ -248,7 +248,7 @@ function createPetWindow() {
     },
   });
   petWindow.setAlwaysOnTop(alwaysOnTopFlag, 'screen-saver');
-  petWindow.loadURL(getPageURL('/pet'));
+  petWindow.loadURL(getPageURL(freshInstall ? '/pet?fresh=1' : '/pet'));
   petWindow.on('closed', () => { petWindow = null; stopAlwaysOnTopKeepAlive(); });
   resumeAlwaysOnTopKeepAlive();
 }
