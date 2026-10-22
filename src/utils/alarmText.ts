@@ -14,6 +14,7 @@ export interface AlarmCardInfo {
   endTime?: string;    // 종료 시각 HH:MM (있을 때만 시간 범위로 표시)
   attendees?: string;  // 쉼표로 구분한 참석자
   memo?: string;
+  missed?: boolean;    // 앱이 꺼져 있던 동안 지난 알람(최근 10분 이내)을 늦게 보여 주는 카드
 }
 
 // 이름이나 설명을 넣은 알람은 팝업을 2초 더 오래 보여 준다(메인의 alarms.cjs와 같은 규칙)
@@ -50,6 +51,7 @@ export function formatRange(time?: string, endTime?: string): string {
 
 // 작은 문구: 시간 → 참석자 → 메모 순서로 · 로 이어 붙인다(화면에서 2줄까지 보이고 넘치면 말줄임). 아무것도 없으면 기존 문구.
 export function alarmSubText(info: AlarmCardInfo): string {
-  const parts = [formatRange(info.time, info.endTime), formatAttendees(info.attendees), (info.memo || '').trim()].filter(Boolean);
+  const missed = info.missed ? `놓친 알람${info.time ? ` · ${formatTime(info.time)}` : ''}` : '';
+  const parts = [missed, formatRange(info.time, info.endTime), formatAttendees(info.attendees), (info.memo || '').trim()].filter(Boolean);
   return parts.length ? parts.join(' · ') : ALARM_DEFAULT_SUB;
 }

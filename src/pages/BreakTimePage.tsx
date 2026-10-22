@@ -55,7 +55,7 @@ function readTypeFromHash(fallback?: BreakType): BreakType {
 function readAlarmInfoFromHash(): AlarmCardInfo {
   const hash = window.location.hash; const i = hash.indexOf('?');
   const q = new URLSearchParams(i >= 0 ? hash.substring(i + 1) : '');
-  return { name: q.get('n') || undefined, time: q.get('t') || undefined, endTime: q.get('e') || undefined, attendees: q.get('a') || undefined, memo: q.get('m') || undefined };
+  return { name: q.get('n') || undefined, time: q.get('t') || undefined, endTime: q.get('e') || undefined, attendees: q.get('a') || undefined, memo: q.get('m') || undefined, missed: q.get('x') === '1' };
 }
 
 export default function BreakTimePage({ type: propType }: BreakTimePageProps) {

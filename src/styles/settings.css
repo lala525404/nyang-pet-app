@@ -292,3 +292,81 @@ button.st-slot:active { transform: scale(0.97); }
 .settings-root[data-fade="b"] { animation: st-intro-fade-b 150ms linear both; }
 @keyframes st-intro-fade-a { from { opacity: 0; } to { opacity: 1; } }
 @keyframes st-intro-fade-b { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── 알람 반복·주간 캘린더 ─────────────────────────────────────────────────────────────
+   중립 톤 한 겹: 카드 안에서 선(hairline)과 옅은 면만 쓰고 박스 안에 박스를 만들지 않는다. 색은 모두 토큰이라 라이트/다크가 자동으로 따른다. */
+.st-alarm-head { align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.st-alarm-head .st-h { display: flex; align-items: baseline; gap: 10px; }
+.st-alarm-head .ui-seg { width: 200px; }
+.st-cal-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }   /* minmax(0,…): 격자의 최소 폭이 카드를 밀어내지 않게(좁아지면 요일별 목록으로 바뀐다) */
+.st-cal-card { min-width: 0; }
+.st-limit { margin-top: 8px; }
+.st-li[data-past] .st-li-row { opacity: 0.55; }
+.st-more-sub { margin-left: 8px; font-weight: 400; color: var(--ui-sub); }
+.st-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.st-repeat { gap: 8px; }
+.st-repeat-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.st-dayrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-daychip { min-height: 36px; padding: 0 14px; border: 0; border-radius: var(--ui-r-pill); background: var(--ui-item); color: var(--ui-sub); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out); }
+.st-daychip--day { min-width: 40px; padding: 0; }
+.st-daychip[aria-pressed="true"] { background: var(--ui-accent-tint); color: var(--ui-ink); box-shadow: inset 0 0 0 2px var(--ui-accent); }
+.st-daychip:active:not(:disabled) { transform: scale(0.97); }
+.st-daychip:disabled { opacity: 0.4; cursor: not-allowed; }
+.st-daychip:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .st-daychip:not(:disabled):not([aria-pressed="true"]):hover { background: var(--ui-track); color: var(--ui-ink); } }
+.st-editor-top { display: flex; gap: 12px; }
+.st-editor .st-detail { padding: 0; }
+
+.st-cal { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.st-cal-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.st-cal-nav { display: flex; align-items: center; gap: 4px; }
+.st-cal-title { flex: 1 1 150px; min-width: 150px; margin: 0; font-size: 15px; font-weight: 700; }
+.st-cal-title small { margin-left: 6px; font-size: 13px; font-weight: 400; color: var(--ui-sub); }
+.st-cal-tools { display: flex; gap: 8px; }
+.st-cal-help { margin: 0; }
+.st-cal-jump { display: block; width: 100%; min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.st-cal-jump span { margin-left: 8px; color: var(--ui-link); font-weight: 600; }
+.st-cal-jump:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.st-cal-scroll { max-height: min(56vh, 456px); overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--ui-line); scrollbar-width: thin; }
+.st-cal-grid { outline: none; min-width: 560px; }
+.st-cal-grid:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; border-radius: 4px; }
+.st-cal-head, .st-cal-body { display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)); }
+.st-cal-head { position: sticky; top: 0; z-index: 3; background: var(--ui-panel); border-bottom: 1px solid var(--ui-line); }
+.st-cal-dayhead { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 8px; font-size: 12px; color: var(--ui-sub); }
+.st-cal-dayhead b { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 50%; font-size: 14px; font-weight: 700; color: var(--ui-ink); font-variant-numeric: tabular-nums; }
+.st-cal-dayhead[data-today] { color: var(--ui-ink); }
+.st-cal-dayhead[data-today] b { background: var(--ui-accent); color: var(--ui-accent-ink); }
+.st-cal-axis { position: relative; }
+.st-cal-axis span { position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; color: var(--ui-sub); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.st-cal-col { position: relative; border-left: 1px solid var(--ui-line); cursor: cell;
+  background-image: linear-gradient(to bottom, var(--ui-line) 1px, transparent 1px); background-size: 100% 48px; }
+.st-cal-col[data-today] { background-color: color-mix(in srgb, var(--ui-accent) 6%, transparent); }
+.st-cal-ev { position: absolute; z-index: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; padding: 3px 6px 3px 8px; border: 0; border-radius: 6px;
+  background: var(--ui-accent-tint); color: var(--ui-ink); box-shadow: inset 3px 0 0 var(--ui-accent); font: inherit; font-size: 11px; line-height: 1.3; text-align: left; cursor: pointer; transition: background-color 120ms var(--ui-ease-out); }
+.st-cal-ev-time { margin-right: 4px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-cal-ev-done { margin-left: 4px; color: var(--ui-sub); }
+.st-cal-ev[data-dim] { opacity: 0.5; }
+.st-cal-ev:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; z-index: 5; }
+@media (hover: hover) and (pointer: fine) { .st-cal-ev:hover { background: color-mix(in srgb, var(--ui-accent) 24%, var(--ui-panel)); opacity: 1; } }
+.st-cal-now { position: absolute; left: 0; right: 0; z-index: 2; height: 2px; margin-top: -1px; background: var(--ui-accent); pointer-events: none; }
+.st-cal-now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--ui-accent); }
+.st-cal-cursor { position: absolute; left: 1px; right: 1px; z-index: 4; border: 2px solid var(--ui-accent); border-radius: 4px; pointer-events: none; }
+
+/* 좁은 폭: 요일별 세로 목록 */
+.st-cal-agenda { display: flex; flex-direction: column; }
+.st-agenda-day { padding: 8px 0; border-top: 1px solid var(--ui-line); }
+.st-agenda-day:first-child { border-top: 0; }
+.st-agenda-day header { display: flex; align-items: center; justify-content: space-between; }
+.st-agenda-day h4 { margin: 0; font-size: 14px; font-weight: 700; }
+.st-agenda-day h4 small { margin-left: 6px; font-weight: 400; color: var(--ui-sub); }
+.st-agenda-day[data-today] h4 { color: var(--ui-accent); }
+.st-agenda-day ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.st-agenda-empty { margin: 0; padding: 4px 0 8px; font-size: 13px; color: var(--ui-sub); }
+.st-agenda-ev { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--ui-r-inner); background: var(--ui-accent-tint); color: var(--ui-ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.st-agenda-ev[data-dim] { opacity: 0.5; }
+.st-agenda-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-agenda-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-agenda-ev small { color: var(--ui-sub); }
+.st-agenda-ev:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.st-cal[data-narrow] .st-cal-grid { min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .st-daychip, .st-cal-ev { transition: none; } .st-daychip:active:not(:disabled) { transform: none; } }

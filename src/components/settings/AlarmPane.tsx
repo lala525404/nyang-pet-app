@@ -1,12 +1,21 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
-import { Switch } from '../ui';
+import { Segmented, Switch } from '../ui';
+import AlarmCalendar from './AlarmCalendar';
+import AlarmDetailFields from './AlarmDetailFields';
+import AlarmEditor from './AlarmEditor';
 import { formatTime } from '../../utils/settings';
-import { ALARM_ATTENDEES_MAX, ALARM_MEMO_MAX, ALARM_NAME_MAX } from '../../utils/alarmText';
+import { ALARM_NAME_MAX } from '../../utils/alarmText';
+import { MAX_ALARMS, isPastOneShot, parseYmd, repeatSummary, startOfDay } from '../../utils/alarmSchedule';
+import { SLOT_MIN } from '../../utils/alarmCalendar';
+import type { Alarm } from '../../utils/settings';
 import type { PaneProps } from './shared';
 
-const MAX_ALARMS = 5;
-const PRE_OPTIONS: [number, string][] = [[0, '사용 안 함'], [5, '5분 전'], [10, '10분 전'], [30, '30분 전']];
+const VIEW_KEY = 'alarmView';   // 마지막으로 본 보기(캘린더/목록)
+type View = 'calendar' | 'list';
+const VIEW_OPTIONS: { value: View; label: string }[] = [{ value: 'calendar', label: '캘린더' }, { value: 'list', label: '목록' }];
+const newId = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+const LIMIT_NOTE = `알람은 최대 ${MAX_ALARMS}개까지 만들 수 있어요. 지난 알람을 정리하거나 쓰지 않는 알람을 지워 주세요.`;
 
 // 기존 TimePreview 판정 그대로, 이모지만 뺐다
 function workStatus(workStart: string, workEnd: string, now: Date): string {
@@ -30,106 +39,151 @@ function workStatus(workStart: string, workEnd: string, now: Date): string {
 export default function AlarmPane({ settings: s, update }: PaneProps) {
   const alarms = s.alarms || [];
   const [now, setNow] = useState(new Date());
-  const [openId, setOpenId] = useState<string | null>(null);   // "자세히"가 펼쳐진 알람(한 번에 하나)
+  const [openId, setOpenId] = useState<string | null>(null);   // 목록에서 "자세히"가 펼쳐진 알람(한 번에 하나)
+  const [view, setViewState] = useState<View>(() => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'calendar'; } catch { return 'calendar'; } });
+  const [editing, setEditing] = useState<{ id: string; draft?: Alarm; anchor?: Date } | null>(null);   // 캘린더 편집 창(새 알람은 draft로 시작)
+  const [focus, setFocus] = useState<{ date: Date; n: number } | null>(null);                           // 캘린더를 그 날짜가 있는 주로 옮기기
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
+  const atLimit = alarms.length >= MAX_ALARMS;
+  const setView = (v: View) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* 저장이 막혀도 이번 실행에는 적용 */ } };
 
-  const setAlarm = (idx: number, change: Partial<(typeof alarms)[number]>) =>
-    update({ alarms: alarms.map((a, i) => (i === idx ? { ...a, ...change } : a)) });
-  const hasDetails = (a: (typeof alarms)[number]) => !!(a.endTime || a.attendees || a.memo || (a.preMinutes ?? 0) > 0);
-  // "알람 테스트": 펼쳐 둔 알람, 없으면 이름·설명이 있는 첫 알람의 내용으로 카드를 미리 본다. 아무것도 없으면 기본 카드.
+  const setAlarm = (idx: number, change: Partial<Alarm>) => update({ alarms: alarms.map((a, i) => (i === idx ? { ...a, ...change } : a)) });
+  const patchById = (id: string, change: Partial<Alarm>) => update({ alarms: alarms.map(a => (a.id === id ? { ...a, ...change } : a)) });
+  const jumpTo = (a: Alarm) => {
+    const r = a.repeat;
+    if (r?.kind === 'date') setFocus(f => ({ date: parseYmd(r.date), n: (f?.n ?? 0) + 1 }));
+    else if (r?.kind === 'week') setFocus(f => ({ date: parseYmd(r.weekStart), n: (f?.n ?? 0) + 1 }));
+  };
+  const cloneAlarm = (id: string): string | null => {
+    const i = alarms.findIndex(a => a.id === id); if (i < 0 || atLimit) return null;
+    const copy: Alarm = { ...alarms[i], id: newId(), skipDate: undefined };
+    update({ alarms: [...alarms.slice(0, i + 1), copy, ...alarms.slice(i + 1)] });
+    return copy.id;
+  };
+  const removeAlarm = (id: string) => { if (openId === id) setOpenId(null); update({ alarms: alarms.filter(a => a.id !== id) }); };
+  const clearPast = () => update({ alarms: alarms.filter(a => !isPastOneShot(a, now)) });
+
+  // 캘린더에서 빈 칸을 눌렀을 때: 그 요일·시각이 채워진 새 알람 폼. 처음 값을 바꾸는 순간 알람이 만들어지므로 잘못 눌러도 남지 않는다.
+  const startDraft = (day: Date, time: string) => {
+    if (atLimit) return;
+    const draft: Alarm = { id: newId(), time, enabled: true, repeat: { kind: 'weekly', days: [day.getDay()] } };
+    setEditing({ id: draft.id, draft, anchor: day });
+  };
+  const addFromToolbar = () => {
+    const t = new Date(now.getTime() + SLOT_MIN * 60000); const m = Math.floor(t.getMinutes() / SLOT_MIN) * SLOT_MIN;
+    startDraft(startOfDay(now), `${String(t.getHours()).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  };
+  const editingAlarm = editing ? (alarms.find(a => a.id === editing.id) ?? editing.draft ?? null) : null;
+  const editingIsNew = !!editing && !alarms.some(a => a.id === editing.id);
+  const patchEditing = (change: Partial<Alarm>) => {
+    if (!editing || !editingAlarm) return;
+    const next = { ...editingAlarm, ...change };
+    if (editingIsNew) { if (!atLimit) update({ alarms: [...alarms, next] }); } else patchById(editing.id, change);
+    if (change.repeat) jumpTo(next);
+  };
+
+  const hasDetails = (a: Alarm) => !!(a.endTime || a.attendees || a.memo || (a.preMinutes ?? 0) > 0 || a.repeat || a.skipDate);
+  // "알람 테스트": 펼쳐 둔 알람(없으면 이름·설명이 있는 첫 알람)의 내용으로 카드를 미리 본다. 아무것도 없으면 기본 카드.
   const testAlarm = () => {
     const target = alarms.find(a => a.id === openId) || alarms.find(a => a.name?.trim() || hasDetails(a));
     window.electronAPI?.testBreakTime('alarm', target ? { name: target.name, time: target.time, endTime: target.endTime, attendees: target.attendees, memo: target.memo } : undefined);
   };
 
+  const toolbar = (
+    <div className="st-card-foot">
+      <button type="button" className="ui-btn ui-btn--primary" disabled={atLimit}
+        onClick={view === 'calendar' ? addFromToolbar : () => { const id = newId(); update({ alarms: [...alarms, { id, time: '09:00', enabled: true }] }); setOpenId(null); }}>
+        <Plus className="ui-i" strokeWidth={1.5} aria-hidden />
+        <span>{atLimit ? `최대 ${MAX_ALARMS}개` : '알람 추가'}</span>
+      </button>
+      <button type="button" className="ui-btn" onClick={testAlarm}>알람 테스트</button>
+    </div>
+  );
+  const head = (
+    <div className="st-card-head st-alarm-head">
+      <h3 className="st-h">일반 알람 <span className="st-count">{alarms.length} / {MAX_ALARMS}</span></h3>
+      <Segmented<View> label="알람 보기" value={view} onChange={setView} options={VIEW_OPTIONS} />
+    </div>
+  );
+  const work = (
+    <article className="st-card st-work">
+      <h3 className="st-h">근무 시간</h3>
+      <div className="st-work-times">
+        <label className="st-field"><span className="st-field-label">출근</span>
+          <input type="time" className="ui-time" value={s.workStart} aria-label="출근 시간"
+            onChange={e => { if (e.target.value) update({ workStart: e.target.value }); }} />
+        </label>
+        <label className="st-field"><span className="st-field-label">퇴근</span>
+          <input type="time" className="ui-time" value={s.workEnd} aria-label="퇴근 시간"
+            onChange={e => { if (e.target.value) update({ workEnd: e.target.value }); }} />
+        </label>
+      </div>
+      <p className="ui-note">{workStatus(s.workStart, s.workEnd, now)}</p>
+    </article>
+  );
+
   return (
     <section className="st-pane">
-      <div className="st-two">
-        <article className="st-card">
-          <div className="st-card-head">
-            <h3 className="st-h">일반 알람</h3>
-            <span className="st-count">{alarms.length} / {MAX_ALARMS}</span>
-          </div>
-          <div className="st-list">
-            {alarms.map((alarm, idx) => {
-              const open = openId === alarm.id;
-              return (
-                <div key={alarm.id} className="st-li st-li--alarm">
-                  <div className="st-li-row">
-                    <input type="time" className="ui-time" value={alarm.time} aria-label={`알람 ${idx + 1} 시간`}
-                      onChange={e => { if (e.target.value) setAlarm(idx, { time: e.target.value }); }} />
-                    {/* 예전의 "알람 N" 글자 자리: 이름 입력 칸. 비워 두면 "알람 N"이 보이고 카드 제목은 "알람"이다 */}
-                    <input type="text" className="st-text st-li-name" value={alarm.name ?? ''} placeholder={`알람 ${idx + 1}`} maxLength={ALARM_NAME_MAX}
-                      aria-label={`알람 ${idx + 1} 이름`} onChange={e => setAlarm(idx, { name: e.target.value || undefined })} />
-                    <Switch checked={alarm.enabled} onChange={v => setAlarm(idx, { enabled: v })} label={`알람 ${idx + 1} 켜기`} />
-                    <button type="button" className="ui-iconbtn" aria-label={`알람 ${idx + 1} 삭제`}
-                      onClick={() => { if (openId === alarm.id) setOpenId(null); update({ alarms: alarms.filter((_, i) => i !== idx) }); }}>
-                      <Trash2 className="ui-i" strokeWidth={1.5} aria-hidden />
-                    </button>
-                  </div>
-                  <button type="button" className="st-more" aria-expanded={open} aria-controls={`alarm-detail-${alarm.id}`}
-                    onClick={() => setOpenId(open ? null : alarm.id)}>
-                    <ChevronDown className="ui-i" strokeWidth={1.5} aria-hidden data-open={open ? '' : undefined} />
-                    <span>자세히</span>
-                    {!open && hasDetails(alarm) && <span className="st-more-dot" aria-label="자세한 내용이 있어요" />}
-                  </button>
-                  {open && (
-                    <div className="st-detail" id={`alarm-detail-${alarm.id}`}>
-                      <label className="st-field"><span className="st-field-label">종료 시각 <small>(시간 범위로 보여요)</small></span>
-                        <span className="st-detail-time">
-                          <input type="time" className="ui-time" value={alarm.endTime ?? ''} aria-label={`알람 ${idx + 1} 종료 시각`}
-                            onChange={e => setAlarm(idx, { endTime: e.target.value || undefined })} />
-                          {alarm.endTime && <button type="button" className="ui-btn ui-btn--sm" onClick={() => setAlarm(idx, { endTime: undefined })}>지우기</button>}
-                        </span>
-                      </label>
-                      <label className="st-field"><span className="st-field-label">참석자 <small>(쉼표로 구분)</small></span>
-                        <input type="text" className="st-text" value={alarm.attendees ?? ''} placeholder="예: 김OO, 이OO" maxLength={ALARM_ATTENDEES_MAX}
-                          aria-label={`알람 ${idx + 1} 참석자`} onChange={e => setAlarm(idx, { attendees: e.target.value || undefined })} />
-                      </label>
-                      <label className="st-field"><span className="st-field-label">메모</span>
-                        <input type="text" className="st-text" value={alarm.memo ?? ''} placeholder="한 줄로 적어요" maxLength={ALARM_MEMO_MAX}
-                          aria-label={`알람 ${idx + 1} 메모`} onChange={e => setAlarm(idx, { memo: e.target.value || undefined })} />
-                      </label>
-                      <label className="st-field"><span className="st-field-label">미리 알림 <small>(이름이 있으면 "10분 뒤 · 이름 · 시각"으로 떠요)</small></span>
-                        <span className="ui-select">
-                          <select value={alarm.preMinutes ?? 0} aria-label={`알람 ${idx + 1} 미리 알림`} onChange={e => setAlarm(idx, { preMinutes: Number(e.target.value) || undefined })}>
-                            {PRE_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                          </select>
-                          <ChevronDown className="ui-i" strokeWidth={1.5} aria-hidden />
-                        </span>
-                      </label>
+      {view === 'calendar' ? (
+        <div className="st-cal-layout">
+          <article className="st-card st-cal-card">
+            {head}
+            <AlarmCalendar alarms={alarms} now={now} focus={focus} atLimit={atLimit} onCreate={startDraft} onEdit={(id) => setEditing({ id })} onClearPast={clearPast} />
+            {atLimit && <p className="ui-note st-limit" role="status">{LIMIT_NOTE}</p>}
+            {toolbar}
+          </article>
+          {work}
+        </div>
+      ) : (
+        <div className="st-two">
+          <article className="st-card">
+            {head}
+            <div className="st-list">
+              {alarms.map((alarm, idx) => {
+                const open = openId === alarm.id;
+                return (
+                  <div key={alarm.id} className="st-li st-li--alarm" data-past={isPastOneShot(alarm, now) ? '' : undefined}>
+                    <div className="st-li-row">
+                      <input type="time" className="ui-time" value={alarm.time} aria-label={`알람 ${idx + 1} 시간`}
+                        onChange={e => { if (e.target.value) setAlarm(idx, { time: e.target.value }); }} />
+                      {/* 예전의 "알람 N" 글자 자리: 이름 입력 칸. 비워 두면 "알람 N"이 보이고 카드 제목은 "알람"이다 */}
+                      <input type="text" className="st-text st-li-name" autoComplete="off" value={alarm.name ?? ''} placeholder={`알람 ${idx + 1}`} maxLength={ALARM_NAME_MAX}
+                        aria-label={`알람 ${idx + 1} 이름`} onChange={e => setAlarm(idx, { name: e.target.value || undefined })} />
+                      <Switch checked={alarm.enabled} onChange={v => setAlarm(idx, { enabled: v })} label={`알람 ${idx + 1} 켜기`} />
+                      <button type="button" className="ui-iconbtn" aria-label={`알람 ${idx + 1} 삭제`} onClick={() => removeAlarm(alarm.id)}>
+                        <Trash2 className="ui-i" strokeWidth={1.5} aria-hidden />
+                      </button>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {alarms.length === 0 && <p className="st-empty">알람이 없어요. 아래 버튼으로 추가해 보세요.</p>}
-          <div className="st-card-foot">
-            <button type="button" className="ui-btn ui-btn--primary" disabled={alarms.length >= MAX_ALARMS}
-              onClick={() => update({ alarms: [...alarms, { id: Date.now().toString(), time: '09:00', enabled: true }] })}>
-              <Plus className="ui-i" strokeWidth={1.5} aria-hidden />
-              <span>{alarms.length >= MAX_ALARMS ? '최대 5개' : '알람 추가'}</span>
-            </button>
-            <button type="button" className="ui-btn" onClick={testAlarm}>알람 테스트</button>
-          </div>
-        </article>
+                    <button type="button" className="st-more" aria-expanded={open} aria-controls={`alarm-detail-${alarm.id}`}
+                      onClick={() => setOpenId(open ? null : alarm.id)}>
+                      <ChevronDown className="ui-i" strokeWidth={1.5} aria-hidden data-open={open ? '' : undefined} />
+                      <span>자세히</span>
+                      {!open && hasDetails(alarm) && <span className="st-more-dot" aria-label="자세한 내용이 있어요" />}
+                      {alarm.repeat && <small className="st-more-sub">{isPastOneShot(alarm, now) ? '완료 · ' : ''}{repeatSummary(alarm)}</small>}
+                    </button>
+                    {open && (
+                      <div id={`alarm-detail-${alarm.id}`}>
+                        <AlarmDetailFields alarm={alarm} label={`알람 ${idx + 1}`} now={now} cloneDisabled={atLimit} onClone={() => { cloneAlarm(alarm.id); }}
+                          patch={(c) => { setAlarm(idx, c); if (c.repeat) jumpTo({ ...alarm, ...c }); }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {alarms.length === 0 && <p className="st-empty">알람이 없어요. 아래 버튼으로 추가해 보세요.</p>}
+            {atLimit && <p className="ui-note st-limit" role="status">{LIMIT_NOTE}</p>}
+            {toolbar}
+          </article>
+          {work}
+        </div>
+      )}
 
-        <article className="st-card st-work">
-          <h3 className="st-h">근무 시간</h3>
-          <div className="st-work-times">
-            <label className="st-field"><span className="st-field-label">출근</span>
-              <input type="time" className="ui-time" value={s.workStart} aria-label="출근 시간"
-                onChange={e => { if (e.target.value) update({ workStart: e.target.value }); }} />
-            </label>
-            <label className="st-field"><span className="st-field-label">퇴근</span>
-              <input type="time" className="ui-time" value={s.workEnd} aria-label="퇴근 시간"
-                onChange={e => { if (e.target.value) update({ workEnd: e.target.value }); }} />
-            </label>
-          </div>
-          <p className="ui-note">{workStatus(s.workStart, s.workEnd, now)}</p>
-        </article>
-      </div>
+      {editing && editingAlarm && (
+        <AlarmEditor alarm={editingAlarm} isNew={editingIsNew} anchorDate={editing.anchor} now={now} patch={patchEditing}
+          cloneDisabled={atLimit} onClone={() => { const id = cloneAlarm(editing.id); if (id) setEditing({ id }); }}
+          onDelete={() => { removeAlarm(editing.id); setEditing(null); }} onClose={() => setEditing(null)} />
+      )}
     </section>
   );
 }

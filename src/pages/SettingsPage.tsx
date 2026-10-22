@@ -23,7 +23,7 @@ type NavPage = 'home' | 'alarm' | 'help';
 
 const PAGES: Record<NavPage, { label: string; title: string; desc: string; icon: LucideIcon }> = {
   home: { label: '홈', title: '내 버디', desc: '버디를 고르고 움직임과 알림을 바꿔요. 바꾼 값은 바로 적용돼요.', icon: House },
-  alarm: { label: '알람', title: '알람', desc: '원하는 시간에 화면 가득 알람이 울려요! 최대 5개', icon: Bell },
+  alarm: { label: '알람', title: '알람', desc: '원하는 시간에 화면 가득 알람이 울려요! 요일마다 반복하거나 날짜를 정할 수 있고, 최대 50개예요.', icon: Bell },
   help: { label: '사용 방법', title: '사용 방법', desc: '버디와 함께하는 방법을 알아봐요', icon: CircleHelp },
 };
 
