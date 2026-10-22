@@ -6,6 +6,9 @@ import { usePhotoState } from '../hooks/usePhotoState';
 import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, cleanBubbleMessages, clampTo, clockText, readStoredSettings, isFreshWindow } from '../utils/settings';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
+import FocusClock from '../components/FocusClock';
+import { FOCUS_PAUSE_MS, FOCUS_TICK_MS, focusBounds, isOverPet, monitorRectAt, nextFocusTarget, stepToward } from '../utils/focusMode';
+import type { FocusModeState } from '../electron';
 
 // ── 시간대별 멘트 ─────────────────────────────────────────────────
 const TIME_MESSAGES: Record<string, string[]> = {
@@ -182,7 +185,7 @@ interface PhysicsState {
   rotate: number; vr: number; scale: number; targetScale: number; escaping: boolean;
 }
 
-function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: React.MutableRefObject<number>, areaRef: React.MutableRefObject<Rect>) {
+function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: React.MutableRefObject<number>, areaRef: React.MutableRefObject<Rect>, pausedRef: React.MutableRefObject<boolean>) {
   const stateRef = useRef<PhysicsState>({
     wx: 0, wy: 0, vx: 0, vy: 0, rotate: 0, vr: 0, scale: 1, targetScale: 1, escaping: false,
   });
@@ -239,7 +242,19 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
     triggerEvent();
 
     let lastTime = 0;
+    let wasPaused = false, pausedTimer: ReturnType<typeof setTimeout> | null = null;
     const tick = (now: number) => {
+      // 초집중 모드: 이 물리 루프는 쉰다(이동은 PetPage의 느린 루프가 맡는다). 쉬는 동안은 0.4초에 한 번만 깨어나 확인한다 → CPU 절약
+      if (pausedRef.current) {
+        if (!wasPaused) {
+          wasPaused = true;
+          const p = stateRef.current; p.vx = 0; p.vy = 0; p.vr = 0; p.rotate = 0; p.scale = 1; p.targetScale = 1; p.escaping = false;
+          setDisplayTransform({ rotate: 0, scale: 1 });
+        }
+        pausedTimer = setTimeout(() => { frameRef.current = requestAnimationFrame(tick); }, 400);
+        return;
+      }
+      wasPaused = false;
       // 30fps 제한 - 저사양 PC 성능 개선
       if (now - lastTime < 33) {
         frameRef.current = requestAnimationFrame(tick);
@@ -286,6 +301,7 @@ function useScreenMovement(speedRef: React.MutableRefObject<number>, zoneRef: Re
     frameRef.current = requestAnimationFrame(tick as FrameRequestCallback);
     return () => {
       cancelAnimationFrame(frameRef.current);
+      if (pausedTimer) clearTimeout(pausedTimer);
       if (escapingTimerRef.current) clearTimeout(escapingTimerRef.current);
     };
   }, []);
@@ -346,6 +362,9 @@ export default function PetPage() {
   const monitorRef = useRef(-1);
   const displaysRef = useRef<DisplaysInfo | null>(null);
   const areaRef = useRef<Rect>(computeArea(null, -1));
+  const [focus, setFocus] = useState<FocusModeState>({ enabled: false, seconds: false, anchor: null });   // 초집중 모드(메인이 소유)
+  const focusRef = useRef(focus);
+  const focusPausedRef = useRef(false);   // 켜져 있는 동안 기본 물리 루프를 쉬게 한다
   const zoneDropsRef = useRef<number[]>([]);   // 구역 밖 드롭 시각
   const zoneHintAtRef = useRef(0);             // 마지막 안내 시각 (메모리 기준)
   const [petSize, setPetSize] = useState(settings.size || 100);
@@ -362,8 +381,76 @@ export default function PetPage() {
     setPetSize(s);   // 창 크기는 고정이라 버디 크기만 바꾼다
   }, [settings.size]);
 
-  const { displayTransform, reset, triggerEscape, stateRef, draggingRef, setOnWallHit } = useScreenMovement(speedRef, zoneRef, areaRef);
+  const { displayTransform, reset, triggerEscape, stateRef, draggingRef, setOnWallHit } = useScreenMovement(speedRef, zoneRef, areaRef, focusPausedRef);
   const { rotate, scale } = displayTransform;
+
+  // ── 초집중 모드 ─────────────────────────────────────────────────────
+  // 상태는 메인이 소유한다(설정창·트레이·이 창 모두 메인을 거침). 켜면: 기준 위치 ± 몇십 px만 아주 천천히 움직이고, 말풍선·장난은 끄고, 시계를 보여 주고,
+  // 버디가 아닌 곳은 클릭이 통과한다. 알람은 이 모드와 상관없이 평소처럼 울린다(알림 카드·토스트는 메인이 따로 띄우므로 이 모드가 건드리지 않는다).
+  const focusSeenRef = useRef(false);
+  useEffect(() => {
+    const api = window.electronAPI;
+    const apply = (incoming: FocusModeState) => {
+      let next = incoming;
+      const prev = focusRef.current;
+      const first = !focusSeenRef.current; focusSeenRef.current = true;
+      focusRef.current = next; focusPausedRef.current = next.enabled;
+      if (next.enabled && (first || !prev.enabled)) {
+        const st = stateRef.current;
+        if (first && next.anchor) { st.wx = next.anchor.x; st.wy = next.anchor.y; api?.movePetWindow(next.anchor.x, next.anchor.y); }   // 앱을 다시 켰을 때: 저장된 자리로
+        else {   // 방금 켰을 때: 지금 있는 자리가 기준. 메인은 "위치만 바뀐 것"을 다시 알리지 않으므로 이 창의 상태에도 직접 반영한다
+          const anchor = { x: Math.round(st.wx), y: Math.round(st.wy) };
+          next = { ...next, anchor }; focusRef.current = next;
+          api?.reportFocusAnchor(anchor.x, anchor.y);
+        }
+        setBubble(null); setIdleBubble(null); setAmbushEmoji(null); setMood('normal'); setMotionClass(''); setSparkles([]); setParticles([]); isSleepingRef.current = false;   // 주의를 끄는 표시 정리
+      }
+      setFocus(next);
+    };
+    api?.getFocusMode?.().then(s => { if (s) apply(s); }).catch(() => {});
+    const off = api?.onFocusMode?.(s => { if (s) apply(s); });
+    return () => { if (typeof off === 'function') off(); };
+  }, [stateRef]);
+
+  // 느린 이동: 기준점 ± 범위(기준점이 있는 모니터 안) 안의 목표점으로 0.1초마다 최대 1px씩, 닿으면 잠깐 쉬었다가 새 목표점. 기본 물리 루프(30fps)는 쉰다.
+  useEffect(() => {
+    if (!focus.enabled) return;
+    const api = window.electronAPI;
+    const win = { w: PET_WINDOW_W, h: PET_WINDOW_H };
+    let target: { x: number; y: number } | null = null, restUntil = 0;
+    const timer = setInterval(() => {
+      const anchor = focusRef.current.anchor;
+      if (!anchor || draggingRef.current) return;
+      const st = stateRef.current, d = displaysRef.current;
+      const area = (d && monitorRectAt(d.monitors, anchor, win)) || areaRef.current;
+      const b = focusBounds(anchor, area, win);
+      const now = Date.now();
+      if (target && (target.x < b.minX || target.x > b.maxX || target.y < b.minY || target.y > b.maxY)) target = null;   // 기준점이 바뀌었으면 목표를 다시 잡는다
+      if (!target) { if (now < restUntil) return; target = nextFocusTarget(b); }
+      const step = stepToward({ x: st.wx, y: st.wy }, target);
+      const nx = Math.min(Math.max(step.x, b.minX), b.maxX), ny = Math.min(Math.max(step.y, b.minY), b.maxY);   // 범위 밖이면 범위 안으로 당긴다
+      if (nx === target.x && ny === target.y) { target = null; restUntil = now + FOCUS_PAUSE_MS[0] + Math.random() * (FOCUS_PAUSE_MS[1] - FOCUS_PAUSE_MS[0]); }
+      if (nx !== st.wx || ny !== st.wy) { st.wx = nx; st.wy = ny; api?.movePetWindow(nx, ny); }
+    }, FOCUS_TICK_MS);
+    return () => clearInterval(timer);
+  }, [focus.enabled, stateRef, draggingRef]);
+
+  // 클릭 통과: 메인이 버디 창의 클릭을 통과시키고 있어도 마우스 이동은 이 창으로 전달된다. 마우스가 버디 위일 때만 "받기"로 바꿔서 드래그·우클릭이 되게 한다.
+  useEffect(() => {
+    if (!focus.enabled) return;
+    const api = window.electronAPI;
+    let interactive = false;
+    const set = (v: boolean) => { if (v !== interactive) { interactive = v; api?.setPetInteractive(v); } };
+    const onMove = (e: MouseEvent) => {
+      if (isDragging.current) { set(true); return; }   // 드래그 중에는 계속 받는다
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('.cat-area');
+      set(isOverPet(el ? el.getBoundingClientRect() : null, e.clientX, e.clientY));
+    };
+    const onLeave = () => { if (!isDragging.current) set(false); };
+    window.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseleave', onLeave);
+    return () => { window.removeEventListener('mousemove', onMove); document.removeEventListener('mouseleave', onLeave); };
+  }, [focus.enabled]);
 
   const rand = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
@@ -449,7 +536,7 @@ export default function PetPage() {
   }, []);
 
   // 메인이 보내는 안내 말풍선(예: 온보딩 직후 "우클릭하면 설정을 열 수 있어요")
-  useEffect(() => window.electronAPI?.onShowBubble?.((text, ms) => showBubble(text, 'happy', false, ms)), [showBubble]);
+  useEffect(() => window.electronAPI?.onShowBubble?.((text, ms) => { if (!focusRef.current.enabled) showBubble(text, 'happy', false, ms); }), [showBubble]);   // 초집중 모드에서는 안내 말풍선도 끈다
 
   // ── 파티클 ────────────────────────────────────────────────────────
   const spawnParticles = useCallback((count = 8) => {
@@ -506,7 +593,7 @@ export default function PetPage() {
     const scheduleSparkle = () => {
       const delay = 15000 + Math.random() * 15000;
       return setTimeout(() => {
-        if (!stateRef.current.escaping && !isSleepingRef.current) {
+        if (!focusRef.current.enabled && !stateRef.current.escaping && !isSleepingRef.current) {   // 초집중 모드에서는 반짝임 없음
           spawnSparkles();
         }
         sparkleTimerRef.current = scheduleSparkle();
@@ -530,7 +617,7 @@ export default function PetPage() {
       mouseIdleTimerRef.current = setTimeout(() => {
         mouseMovedRef.current = false;
         // 마우스 30초 정지 → 낮잠
-        if (!isSleepingRef.current && !stateRef.current.escaping) {
+        if (!focusRef.current.enabled && !isSleepingRef.current && !stateRef.current.escaping) {   // 초집중 모드에서는 낮잠 연출 없음
           isSleepingRef.current = true;
           setMotionClass('motion-sleep');
           showBubble('z z z 💤', 'sleepy');
@@ -549,7 +636,7 @@ export default function PetPage() {
     const scheduleTeleport = () => {
       const delay = 40000 + Math.random() * 40000;
       return setTimeout(() => {
-        if (!stateRef.current.escaping && !isSleepingRef.current) {
+        if (!focusRef.current.enabled && !stateRef.current.escaping && !isSleepingRef.current) {   // 초집중 모드에서는 순간이동 없음
           // 연기 효과 후 반대편으로 이동
           setMotionClass('motion-teleport-out');
           setTimeout(async () => {
@@ -583,6 +670,7 @@ export default function PetPage() {
 
   // ── 도망 - 마우스가 버디 위에 2초 올려두면 도망 ────────────────────
   const handleMouseEnter = useCallback(() => {
+    if (focusRef.current.enabled) return;   // 초집중 모드에서는 도망가지 않는다
     if (mouseNearTimer.current) clearTimeout(mouseNearTimer.current);
     mouseNearTimer.current = setTimeout(() => {
       if (!stateRef.current.escaping) {
@@ -603,7 +691,14 @@ export default function PetPage() {
   // ── 부르기 ("여기 있어요!") ──────────────────────────────────────
   // 예전에는 6초마다 잔소리 말풍선이 떴다. 이제 주기적으로 뜨는 말풍선은 아래 말풍선 엔진(내 메시지·시계)이 맡는다.
   useEffect(() => {
-    const handleCallPet = () => { reset(); showBubble('여기 있어요! 🐾', 'happy'); };
+    const handleCallPet = () => {
+      reset();
+      if (focusRef.current.enabled) {   // 초집중 모드: 말풍선 없이, 불러온 자리를 새 기준 위치로 삼는다
+        setTimeout(() => window.electronAPI?.getPetPosition?.().then(p => { if (p) { stateRef.current.wx = p.x; stateRef.current.wy = p.y; focusRef.current = { ...focusRef.current, anchor: p }; window.electronAPI?.reportFocusAnchor(p.x, p.y); } }).catch(() => {}), 200);
+        return;
+      }
+      showBubble('여기 있어요! 🐾', 'happy');
+    };
     window.addEventListener('call-pet', handleCallPet);
     return () => {
       window.removeEventListener('call-pet', handleCallPet);
@@ -669,7 +764,7 @@ export default function PetPage() {
       const paused = alertRef.current || toastActiveRef.current;
       if (!paused) elapsed += dt;
       let kind: 'message' | 'clock' | null = null, idx = -1, text = '';
-      if (!paused && cur.bubbleEnabled !== false) {
+      if (!paused && cur.bubbleEnabled !== false && !focusRef.current.enabled) {   // 초집중 모드에서는 내 메시지·시계 말풍선 없음(시계는 따로 표시)
         if (msgs.length && (show >= gap || elapsed % gap < show)) {
           kind = 'message'; idx = Math.floor(elapsed / gap) % msgs.length; text = msgs[idx];
         } else if (cur.bubbleClock !== false) {
@@ -694,7 +789,7 @@ export default function PetPage() {
 
     const timer = setInterval(() => {
       const s = settingsRef.current;
-      if (!s.distractEmoji) { elapsed = 0; return; }
+      if (!s.distractEmoji || focusRef.current.enabled) { elapsed = 0; return; }   // 초집중 모드에서는 졸림 방지 이모지·말풍선 없음
       if (stateRef.current.escaping) return;
 
       elapsed += CHECK_INTERVAL;
@@ -790,7 +885,8 @@ export default function PetPage() {
         getPos().then((pos) => {
           if (pos) {
             stateRef.current.wx = pos.x; stateRef.current.wy = pos.y;
-            noteZoneDrop(pos);
+            if (focusRef.current.enabled) { focusRef.current = { ...focusRef.current, anchor: pos }; window.electronAPI?.reportFocusAnchor(pos.x, pos.y); }   // 옮겨 둔 자리가 새 기준 위치
+            else noteZoneDrop(pos);
           }
         }).catch(() => {}).finally(release);
       }
@@ -808,6 +904,7 @@ export default function PetPage() {
   const handleCatClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (didDrag.current) { didDrag.current = false; return; }
+    if (focusRef.current.enabled) return;   // 초집중 모드에서는 반응 말풍선·파티클 없음
     const now = Date.now();
     const isDoubleClick = now - lastClickTime.current < 400;
     lastClickTime.current = now;
@@ -837,7 +934,7 @@ export default function PetPage() {
     : null;
 
   return (
-    <div className="pet-root">
+    <div className="pet-root" data-focus={focus.enabled ? '' : undefined}>
       {toast && (
         <div className="pet-toast" role="status" key={toast.id}>
           <Bell className="pet-toast-icon" strokeWidth={1.5} aria-hidden />
@@ -891,6 +988,7 @@ export default function PetPage() {
             )}
           </div>
         </div>
+        {focus.enabled && !alertActive && <FocusClock seconds={focus.seconds} />}
       </div>
     </div>
   );

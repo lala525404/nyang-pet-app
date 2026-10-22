@@ -8,6 +8,7 @@ import { getAnimal } from '../../data/animals';
 import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, cleanBubbleMessages, clampTo, formatInterval, formatTime } from '../../utils/settings';
 import { usePhotoState } from '../../hooks/usePhotoState';
 import { useLoginItem } from '../../hooks/useLoginItem';
+import { useFocusMode } from '../../hooks/useFocusMode';
 import type { PetSettings } from '../../utils/settings';
 import { MODE_NAME } from './shared';
 import type { Monitor, PaneProps } from './shared';
@@ -201,6 +202,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const login = useLoginItem();
+  const focus = useFocusMode();   // 초집중 모드(메인이 소유·저장: 트레이에서 바꿔도 같이 바뀐다)
   useEffect(() => { if (openKey === 'login') login.refresh(); }, [openKey, login.refresh]);   // 토글을 열 때마다 OS의 실제 상태를 다시 읽는다
   const [bubbleAdv, setBubbleAdv] = useState(false);   // 말풍선 팝오버의 "고급" 펼침
   const closePop = (key: string) => () => setOpenKey(cur => (cur === key ? null : cur));
@@ -236,12 +238,20 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
     : [bubbleCount ? `메시지 ${bubbleCount}개` : '', bubbleClock ? '시계' : ''].filter(Boolean).join(' · ') || '없음';
   const chips: { id: string; label: string; value: string; body: ReactNode }[] = [
     {
-      id: 'mode', label: '모드', value: MODE_NAME[s.buddyMode] || 'Buddy',
+      id: 'mode', label: '모드', value: focus.state?.enabled ? `초집중 · ${MODE_NAME[s.buddyMode] || 'Buddy'}` : MODE_NAME[s.buddyMode] || 'Buddy',
       body: (
         <>
           <Segmented label="모드" value={s.buddyMode} onChange={v => { if (v in MODE_PRESETS) applyMode(v as 'chill' | 'buddy' | 'chaos'); }}
             options={[{ value: 'chill', label: 'Chill' }, { value: 'buddy', label: 'Buddy' }, { value: 'chaos', label: 'Chaos' }]} />
           <p className="ui-note"><strong>{MODE_COPY[s.buddyMode]?.[0]}</strong> {MODE_COPY[s.buddyMode]?.[1]}</p>
+          {/* 초집중 모드: 한자리에서 조금만 움직이고 시계만 보여 준다. 알람은 평소처럼 울린다. 기본 꺼짐, 시계 초 표시도 기본 꺼짐. */}
+          {focus.state && (
+            <>
+              <div className="st-row"><span>초집중 모드</span><Switch checked={focus.state.enabled} onChange={v => focus.set({ enabled: v })} label="초집중 모드" /></div>
+              <p className="ui-note">한자리에서 조금만 움직이고 시계만 보여요. 알람은 그대로 울려요</p>
+              <div className="st-row"><span>시계에 초 표시</span><Switch checked={focus.state.seconds} onChange={v => focus.set({ seconds: v })} label="시계에 초 표시" /></div>
+            </>
+          )}
         </>
       ),
     },

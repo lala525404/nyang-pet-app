@@ -43,6 +43,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('settings-changed', handler);
     return () => ipcRenderer.removeListener('settings-changed', handler);
   },
+  // ★ 초집중 모드: 상태는 메인이 소유한다(설정창·트레이·버디 창 모두 메인을 거친다)
+  getFocusMode:     () => ipcRenderer.invoke('focus-get'),
+  setFocusMode:     (change) => ipcRenderer.invoke('focus-set', change),
+  reportFocusAnchor:(x, y) => ipcRenderer.send('focus-anchor', { x, y }),
+  setPetInteractive:(v) => ipcRenderer.send('pet-interactive', v),
+  onFocusMode:      (cb) => {
+    const handler = (_e, state) => cb(state);
+    ipcRenderer.on('focus-state', handler);
+    return () => ipcRenderer.removeListener('focus-state', handler);
+  },
   // ★ 컴퓨터를 켜면 자동 실행: 상태는 저장하지 않고 항상 OS에서 읽는다
   getLoginItem:     () => ipcRenderer.invoke('login-item-get'),
   setLoginItem:     (enabled) => ipcRenderer.invoke('login-item-set', enabled),

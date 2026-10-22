@@ -99,7 +99,7 @@ t('자동 실행 직후에도 "놓친 알람 10분 창"이 그대로: 첫 확인
   assert.deepStrictEqual(A.createScheduler().check(settings, d(9, 11, 0)), [], '11분 뒤에 켜지면 건너뜀');
   assert.strictEqual(A.MISSED_WINDOW_MIN, 10);
   // 자동 실행 경로가 스케줄러 시작을 막지 않는다: 알람 복원·체커 시작은 창 생성(조용한 시작 분기)보다 앞
-  assert.match(read('main.cjs'), /restoreAlarms\(\);[^\n]*\r?\n\s*app\.on\('activate'/);
+  assert.match(read('main.cjs'), /restoreAlarms\(\);[^\n]*\r?\n(\s*focusState = [^\n]*\r?\n)?\s*app\.on\('activate'/);
 });
 
 console.log(`\n${n}개 통과`);

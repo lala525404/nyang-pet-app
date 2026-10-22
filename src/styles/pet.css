@@ -228,3 +228,14 @@ html, body, #root {
   .pet-toast { animation: pet-toast-fade 150ms linear both; }
   @keyframes pet-toast-fade { from { opacity: 0; } to { opacity: 1; } }
 }
+
+/* 초집중 모드: 말풍선 자리를 접고 버디 아래에 작은 시계. 글자는 반투명, 색은 라이트/다크 테마를 따라간다. 마우스는 통과한다(버디만 드래그·우클릭). */
+.pet-root[data-focus] .bubble-slot { display: none; }
+.pet-root[data-focus] .cat-emoji { animation: none; }   /* 상시 둥실 애니메이션(60fps 합성)을 멈춘다: 느린 이동만 남겨 CPU·GPU를 아낀다 */
+.focus-clock {
+  margin-top: 2px; padding: 2px 10px; border-radius: 999px;
+  font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 12px; line-height: 1.35; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: var(--ui-ink); opacity: 0.72;
+  background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
+  pointer-events: none; user-select: none;
+}

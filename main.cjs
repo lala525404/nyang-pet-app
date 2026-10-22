@@ -17,6 +17,9 @@ let petWindow = null;
 let yarWindow = null;
 let tray = null;
 let updater = null;       // 자동 업데이트(initUpdater에서 만든다)
+let focusState = { enabled: false, seconds: false, anchor: null };   // 초집중 모드 상태(시작할 때 파일에서 읽는다)
+let petInteractive = false;   // 초집중 모드에서 마우스가 버디 위인지(버디 창이 알려 준다)
+let yarDesired = 0;           // 설정이 원하는 야르 간격(분). 초집중 모드 중에는 멈추지만 값은 기억한다
 let silentUntil = 0;       // 로그인 자동 실행으로 켜졌으면, 이 시각 전의 맥 'activate'(실행 직후에도 오는 이벤트)로는 설정창을 띄우지 않는다
 const SILENT_ACTIVATE_MS = 5000;
 // 버디 창은 말풍선이 들어갈 크기로 고정한다. 말풍선이 뜨고 질 때 창 크기를 바꾸면 버디가 화면에서 25·40px씩 튀었다.
@@ -262,6 +265,7 @@ function createPetWindow() {
   });
   petWindow.setAlwaysOnTop(alwaysOnTopFlag, 'screen-saver');
   petWindow.loadURL(getPageURL(freshInstall ? '/pet?fresh=1' : '/pet'));
+  applyPetMouse();   // 초집중 모드로 시작하면 처음부터 클릭 통과
   petWindow.on('closed', () => { petWindow = null; stopAlwaysOnTopKeepAlive(); });
   resumeAlwaysOnTopKeepAlive();
 }
@@ -357,7 +361,7 @@ function createTray() {
   nativeTheme.on('updated', refreshTrayIcon);
   tray.setToolTip('최애를 풀어놨습니다');
 
-  const contextMenu = Menu.buildFromTemplate([
+  const buildTrayMenu = () => Menu.buildFromTemplate([
     {
       label: '⚙️ 설정 열기',
       click: () => createSettingsWindow(),
@@ -389,12 +393,18 @@ function createTray() {
     },
     { type: 'separator' },
     {
+      label: focusMode.trayLabel(focusState.enabled),   // 초집중 모드 켜기/끄기(상태에 따라 글자가 바뀐다)
+      click: () => updateFocus({ enabled: !focusState.enabled }),
+    },
+    { type: 'separator' },
+    {
       label: '⏻ 앱 종료',
       click: () => requestQuit(),
     },
   ]);
 
-  tray.setContextMenu(contextMenu);
+  trayMenuBuilder = buildTrayMenu;
+  tray.setContextMenu(buildTrayMenu());
   // 트레이 더블클릭 → 설정창
   tray.on('double-click', () => createSettingsWindow());
   // 트레이 클릭 (Windows) → 설정창
@@ -462,6 +472,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     freshInstall = !fs.existsSync(flagsFile());
     restoreAlarms();   // 저장된 알람 설정으로 바로 시작(창 IPC를 기다리지 않는다)
+    focusState = focusMode.loadFocus(focusFile());   // 초집중 모드 상태 복원(자동 실행의 조용한 시작에서도 같은 상태로 시작)
     app.on('activate', () => {
       if (Date.now() < silentUntil) return;   // 로그인 자동 실행 직후의 activate는 무시(조용히 시작)
       if (!settingsWindow || settingsWindow.isDestroyed()) createSettingsWindow();
@@ -489,6 +500,33 @@ app.on('before-quit', (e) => {
   e.preventDefault();
   requestQuit();
 });
+
+// ★ 초집중 모드: 펫이 한자리에서 조금만 움직이고 시계만 띄워 두는 모드(알람은 평소처럼 울린다: 알람 코드는 이 상태를 보지 않는다).
+//  상태는 메인이 소유하고 userData/focus-mode.json에 저장한다(설정창·트레이·버디 창이 모두 여기를 거치므로 서로 덮어쓰지 않는다). 판단 로직은 focus-mode.cjs(단위 테스트됨).
+const focusMode = require('./focus-mode.cjs');
+const focusFile = () => path.join(app.getPath('userData'), 'focus-mode.json');
+let trayMenuBuilder = null;          // 초집중 켜기/끄기 글자가 바뀌면 트레이 메뉴를 다시 만든다
+function rebuildTrayMenu() { if (tray && trayMenuBuilder) { try { tray.setContextMenu(trayMenuBuilder()); } catch {} } }
+// 클릭 통과: 모드가 켜져 있고 마우스가 버디 위가 아니면 버디 창의 클릭이 아래 창으로 통과한다(mouse move는 계속 받아 버디 위인지 알아낸다)
+function applyPetMouse() {
+  if (petWindow && !petWindow.isDestroyed()) { try { petWindow.setIgnoreMouseEvents(focusMode.ignoreMouse(focusState, petInteractive), { forward: true }); } catch {} }
+}
+function applyYar() { setYarMinutes(focusMode.effectiveYarMinutes(focusState, yarDesired)); }   // 모드 중에는 야르 타임을 멈추고, 끄면 원래 간격으로 돌아간다
+function broadcastFocus() {
+  for (const w of [settingsWindow, petWindow]) if (w && !w.isDestroyed()) { try { w.webContents.send('focus-state', { ...focusState }); } catch {} }
+}
+function updateFocus(change) {
+  const r = focusMode.applyFocusChange(focusState, change);
+  if (!r.changed) return { ...focusState };
+  focusState = r.state; focusMode.saveFocus(focusFile(), focusState);
+  if (r.enabledChanged) { petInteractive = false; applyPetMouse(); applyYar(); rebuildTrayMenu(); }
+  if (!r.onlyAnchor) broadcastFocus();   // 기준 위치만 바뀐 것은 버디 창이 스스로 알린 것이라 다시 알리지 않는다
+  return { ...focusState };
+}
+ipcMain.handle('focus-get', () => ({ ...focusState }));
+ipcMain.handle('focus-set', (_e, change) => updateFocus({ enabled: change && change.enabled, seconds: change && change.seconds }));
+ipcMain.on('focus-anchor', (_e, p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) updateFocus({ anchor: { x: p.x, y: p.y } }); });
+ipcMain.on('pet-interactive', (_e, v) => { const next = v === true; if (next === petInteractive) return; petInteractive = next; applyPetMouse(); });
 
 // ★ 컴퓨터를 켜면 자동 실행(로그인 항목). 판단 로직은 login-item.cjs(단위 테스트됨). 상태는 저장하지 않고 항상 OS에서 읽는다.
 const loginItem = require('./login-item.cjs');
@@ -682,7 +720,8 @@ ipcMain.handle('get-pet-position', () => {
   return { x, y };
 });
 ipcMain.on('set-yar-timer', (_e, intervalMinutes) => {
-  setYarMinutes(intervalMinutes);
+  yarDesired = intervalMinutes > 0 ? intervalMinutes : 0;
+  applyYar();
 });
 
 // ─── 사진 교체 ────────────────────────────────────────────────────────────────
@@ -741,7 +780,8 @@ ipcMain.on('sync-settings', (_e, settings) => {
   // 버디 창이 2초 폴링을 기다리지 않고 바로 새 설정을 읽게 한다
   if (petWindow && !petWindow.isDestroyed()) { try { petWindow.webContents.send('settings-changed'); } catch {} }
   // 야르타임 설정 동기화
-  setYarMinutes(settings.yarEnabled && settings.yarInterval > 0 ? settings.yarInterval : 0);
+  yarDesired = settings.yarEnabled && settings.yarInterval > 0 ? settings.yarInterval : 0;
+  applyYar();
   if (typeof settings.alwaysOnTop === 'boolean' && settings.alwaysOnTop !== alwaysOnTopFlag) {
     setPetAlwaysOnTop(settings.alwaysOnTop);
   }

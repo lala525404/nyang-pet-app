@@ -12,6 +12,9 @@ export interface UpdateState {
 // 컴퓨터를 켜면 자동 실행(OS의 실제 상태). supported가 false면 note에 이유가 있다
 export interface LoginItemState { supported: boolean; enabled: boolean; reason: string | null; note: string }
 
+// 초집중 모드 상태(메인이 소유·저장): 기준 위치(anchor)는 버디 창이 알린다
+export interface FocusModeState { enabled: boolean; seconds: boolean; anchor: { x: number; y: number } | null }
+
 interface ElectronAPI {
   quitApp: () => void;
   openSettings: () => void;
@@ -43,6 +46,11 @@ interface ElectronAPI {
   onShowToast: (cb: (msg: string, ms?: number) => void) => () => void;
   getAllDisplays: () => Promise<{ all: { minX: number; minY: number; width: number; height: number }; monitors: { id: number; displayId: number; isPrimary: boolean; label: string; bounds: { x: number; y: number; width: number; height: number } }[] }>;
   getPetPosition: () => Promise<{x:number,y:number}|null>;
+  getFocusMode: () => Promise<FocusModeState>;
+  setFocusMode: (change: { enabled?: boolean; seconds?: boolean }) => Promise<FocusModeState>;
+  reportFocusAnchor: (x: number, y: number) => void;
+  setPetInteractive: (interactive: boolean) => void;
+  onFocusMode: (cb: (state: FocusModeState) => void) => () => void;
   getLoginItem: () => Promise<LoginItemState>;
   setLoginItem: (enabled: boolean) => Promise<LoginItemState>;
   getUpdateState: () => Promise<UpdateState>;
