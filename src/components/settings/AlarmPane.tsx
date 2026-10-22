@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { Switch } from '../ui';
+import AlarmAccordion from './AlarmAccordion';
 import AlarmCalendar from './AlarmCalendar';
 import AlarmDetailFields from './AlarmDetailFields';
 import AlarmEditor from './AlarmEditor';
 import { formatTime } from '../../utils/settings';
 import { ALARM_NAME_MAX } from '../../utils/alarmText';
 import { MAX_ALARMS, isPastOneShot, parseYmd, repeatSummary } from '../../utils/alarmSchedule';
+import { openAfterAdd, openAfterRemove, openIfExists, toggleOpen } from '../../utils/alarmList';
 import type { Alarm } from '../../utils/settings';
 import type { PaneProps } from './shared';
 
@@ -37,9 +39,19 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
   const [now, setNow] = useState(new Date());
   const [openId, setOpenId] = useState<string | null>(null);   // 목록에서 "자세히"가 펼쳐진 알람(한 번에 하나)
   const [editing, setEditing] = useState<{ id: string; draft?: Alarm; anchor?: Date } | null>(null);   // 캘린더 편집 창(새 알람은 draft로 시작)
-  const [focus, setFocus] = useState<{ date: Date; n: number } | null>(null);                           // 캘린더를 그 날짜가 있는 주로 옮기기
+  const [focus, setFocus] = useState<{ date: Date; n: number } | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);   // 방금 추가·복제한 알람: 펼친 뒤 이름 칸에 포커스                           // 캘린더를 그 날짜가 있는 주로 옮기기
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
   const atLimit = alarms.length >= MAX_ALARMS;
+  const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  useEffect(() => { setOpenId(o => openIfExists(o, alarms.map(a => a.id))); }, [alarms]);
+  useEffect(() => {
+    if (!focusId) return;
+    const t = setTimeout(() => { const el = document.getElementById(`alarm-name-${focusId}`); if (el) { (el as HTMLInputElement).focus(); } setFocusId(null); }, reduce() ? 0 : 60);
+    return () => clearTimeout(t);
+  }, [focusId, alarms]);
+  // 펼침 전환이 끝나면 그 항목이 화면 밖으로 밀렸을 때만 보이는 위치로 스크롤한다(움직임 줄이기에서는 즉시)
+  const scrollRowIntoView = (id: string) => document.getElementById(`alarm-row-${id}`)?.scrollIntoView({ block: 'nearest', behavior: reduce() ? 'auto' : 'smooth' });
 
   const setAlarm = (idx: number, change: Partial<Alarm>) => update({ alarms: alarms.map((a, i) => (i === idx ? { ...a, ...change } : a)) });
   const patchById = (id: string, change: Partial<Alarm>) => update({ alarms: alarms.map(a => (a.id === id ? { ...a, ...change } : a)) });
@@ -48,13 +60,15 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
     if (r?.kind === 'date') setFocus(f => ({ date: parseYmd(r.date), n: (f?.n ?? 0) + 1 }));
     else if (r?.kind === 'week') setFocus(f => ({ date: parseYmd(r.weekStart), n: (f?.n ?? 0) + 1 }));
   };
-  const cloneAlarm = (id: string): string | null => {
+  // 복제: 목록에서 누르면 복제본이 펼쳐지고 이름 칸에 포커스가 간다. 편집 창에서 복제하면 목록의 펼침 상태는 건드리지 않는다(둘은 서로 독립).
+  const cloneAlarm = (id: string, fromList = true): string | null => {
     const i = alarms.findIndex(a => a.id === id); if (i < 0 || atLimit) return null;
     const copy: Alarm = { ...alarms[i], id: newId(), skipDate: undefined };
     update({ alarms: [...alarms.slice(0, i + 1), copy, ...alarms.slice(i + 1)] });
+    if (fromList) { setOpenId(o => openAfterAdd(o, copy.id)); setFocusId(copy.id); }
     return copy.id;
   };
-  const removeAlarm = (id: string) => { if (openId === id) setOpenId(null); update({ alarms: alarms.filter(a => a.id !== id) }); };
+  const removeAlarm = (id: string) => { setOpenId(o => openAfterRemove(o, id)); update({ alarms: alarms.filter(a => a.id !== id) }); };
   const clearPast = () => update({ alarms: alarms.filter(a => !isPastOneShot(a, now)) });
 
   // 캘린더에서 빈 칸을 눌렀을 때: 그 요일·시각이 채워진 새 알람 폼. 처음 값을 바꾸는 순간 알람이 만들어지므로 잘못 눌러도 남지 않는다.
@@ -82,7 +96,7 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
   const toolbar = (
     <div className="st-card-foot">
       <button type="button" className="ui-btn ui-btn--primary" disabled={atLimit}
-        onClick={() => { update({ alarms: [...alarms, { id: newId(), time: '09:00', enabled: true }] }); setOpenId(null); }}>
+        onClick={() => { const id = newId(); update({ alarms: [...alarms, { id, time: '09:00', enabled: true }] }); setOpenId(o => openAfterAdd(o, id)); setFocusId(id); }}>
         <Plus className="ui-i" strokeWidth={1.5} aria-hidden />
         <span>{atLimit ? `최대 ${MAX_ALARMS}개` : '알람 추가'}</span>
       </button>
@@ -120,12 +134,12 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
             {alarms.map((alarm, idx) => {
               const open = openId === alarm.id;
               return (
-                <div key={alarm.id} className="st-li st-li--alarm" data-past={isPastOneShot(alarm, now) ? '' : undefined}>
+                <div key={alarm.id} id={`alarm-row-${alarm.id}`} className="st-li st-li--alarm" data-past={isPastOneShot(alarm, now) ? '' : undefined}>
                   <div className="st-li-row">
                     <input type="time" className="ui-time" value={alarm.time} aria-label={`알람 ${idx + 1} 시간`}
                       onChange={e => { if (e.target.value) setAlarm(idx, { time: e.target.value }); }} />
                     {/* 예전의 "알람 N" 글자 자리: 이름 입력 칸. 비워 두면 "알람 N"이 보이고 카드 제목은 "알람"이다 */}
-                    <input type="text" className="st-text st-li-name" autoComplete="off" value={alarm.name ?? ''} placeholder={`알람 ${idx + 1}`} maxLength={ALARM_NAME_MAX}
+                    <input type="text" id={`alarm-name-${alarm.id}`} className="st-text st-li-name" autoComplete="off" value={alarm.name ?? ''} placeholder={`알람 ${idx + 1}`} maxLength={ALARM_NAME_MAX}
                       aria-label={`알람 ${idx + 1} 이름`} onChange={e => setAlarm(idx, { name: e.target.value || undefined })} />
                     <Switch checked={alarm.enabled} onChange={v => setAlarm(idx, { enabled: v })} label={`알람 ${idx + 1} 켜기`} />
                     <button type="button" className="ui-iconbtn" aria-label={`알람 ${idx + 1} 삭제`} onClick={() => removeAlarm(alarm.id)}>
@@ -133,18 +147,16 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
                     </button>
                   </div>
                   <button type="button" className="st-more" aria-expanded={open} aria-controls={`alarm-detail-${alarm.id}`}
-                    onClick={() => setOpenId(open ? null : alarm.id)}>
+                    onClick={() => setOpenId(o => toggleOpen(o, alarm.id))}>
                     <ChevronDown className="ui-i" strokeWidth={1.5} aria-hidden data-open={open ? '' : undefined} />
                     <span>자세히</span>
                     {!open && hasDetails(alarm) && <span className="st-more-dot" aria-label="자세한 내용이 있어요" />}
                     {alarm.repeat && <small className="st-more-sub">{isPastOneShot(alarm, now) ? '완료 · ' : ''}{repeatSummary(alarm)}</small>}
                   </button>
-                  {open && (
-                    <div id={`alarm-detail-${alarm.id}`}>
-                      <AlarmDetailFields alarm={alarm} label={`알람 ${idx + 1}`} now={now} cloneDisabled={atLimit} onClone={() => { cloneAlarm(alarm.id); }}
-                        patch={(c) => { setAlarm(idx, c); if (c.repeat) jumpTo({ ...alarm, ...c }); }} />
-                    </div>
-                  )}
+                  <AlarmAccordion open={open} id={`alarm-detail-${alarm.id}`} onOpened={() => scrollRowIntoView(alarm.id)}>
+                    <AlarmDetailFields alarm={alarm} label={`알람 ${idx + 1}`} now={now} cloneDisabled={atLimit} onClone={() => { cloneAlarm(alarm.id); }}
+                      patch={(c) => { setAlarm(idx, c); if (c.repeat) jumpTo({ ...alarm, ...c }); }} />
+                  </AlarmAccordion>
                 </div>
               );
             })}
@@ -164,7 +176,7 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
 
       {editing && editingAlarm && (
         <AlarmEditor alarm={editingAlarm} isNew={editingIsNew} anchorDate={editing.anchor} now={now} patch={patchEditing}
-          cloneDisabled={atLimit} onClone={() => { const id = cloneAlarm(editing.id); if (id) setEditing({ id }); }}
+          cloneDisabled={atLimit} onClone={() => { const id = cloneAlarm(editing.id, false); if (id) setEditing({ id }); }}
           onDelete={() => { removeAlarm(editing.id); setEditing(null); }} onClose={() => setEditing(null)} />
       )}
     </section>

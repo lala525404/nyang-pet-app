@@ -365,4 +365,35 @@ t('알람 탭 화면 연결(정적 확인): 설정(목록) 아래에 캘린더 �
   assert.match(css, /\.st-cal-sheet\s*\{/); assert.match(css, /\.st-cal-gutter\[data-zone="pm"\], \.st-cal-cell\[data-zone="pm"\] \{ border-top: 2px/); assert.match(css, /\.st-cal-block:hover \.st-cal-tip/);
   for (const gone of ['.st-cal-axis', '.st-cal-col', '.st-cal-ev ', '.st-cal-fold', '--cal-hour']) assert.ok(!css.includes(gone), `옛 시간 축 스타일 제거: ${gone}`);
 });
+const L = load('src/utils/alarmList.ts');
+t('"자세히" 펼침은 한 번에 하나: 열면 다른 항목은 접히고, 같은 항목을 다시 누르면 접힌다, 시작은 모두 접힘', () => {
+  let open = null;                                               // 설정창을 열었을 때: 모두 접힘(저장하지 않음)
+  open = L.toggleOpen(open, 'a'); assert.strictEqual(open, 'a');
+  open = L.toggleOpen(open, 'b'); assert.strictEqual(open, 'b');   // b를 열면 열려 있던 a는 자동으로 접힌다
+  open = L.toggleOpen(open, 'b'); assert.strictEqual(open, null);  // 열린 것을 다시 누르면 접힘
+  open = L.toggleOpen(open, 'a'); open = L.toggleOpen(open, 'c'); open = L.toggleOpen(open, 'a'); assert.strictEqual(open, 'a');   // 항상 최대 하나
+});
+t('새 알람(추가·복제)은 자동으로 펼쳐지고 나머지는 접힌다, 지우면 접힌다, 없는 알람이 열려 있으면 접는다', () => {
+  assert.strictEqual(L.openAfterAdd('a', 'new'), 'new'); assert.strictEqual(L.openAfterAdd(null, 'new'), 'new');
+  assert.strictEqual(L.openAfterRemove('a', 'a'), null); assert.strictEqual(L.openAfterRemove('a', 'b'), 'a'); assert.strictEqual(L.openAfterRemove(null, 'b'), null);
+  assert.strictEqual(L.openIfExists('a', ['a', 'b']), 'a'); assert.strictEqual(L.openIfExists('z', ['a', 'b']), null); assert.strictEqual(L.openIfExists(null, ['a']), null);
+});
+t('알람 목록 화면 연결(정적 확인): 접이식 영역, 새 알람 포커스, aria-expanded, 저장 안 함, 모달과 독립, 움직임 줄이기, 줄이 줄어들지 않음', () => {
+  const pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmPane.tsx'), 'utf8'), acc = fs.readFileSync(path.join(root, 'src/components/settings/AlarmAccordion.tsx'), 'utf8'), css = fs.readFileSync(path.join(root, 'src/styles/settings.css'), 'utf8');
+  assert.match(pane, /useState<string \| null>\(null\);\s*\/\/ 목록에서 "자세히"가 펼쳐진 알람\(한 번에 하나\)/);   // 시작은 모두 접힘
+  assert.match(pane, /setOpenId\(o => toggleOpen\(o, alarm\.id\)\)/); assert.match(pane, /aria-expanded=\{open\}/); assert.match(pane, /<AlarmAccordion open=\{open\}/);
+  assert.match(pane, /setOpenId\(o => openAfterAdd\(o, id\)\); setFocusId\(id\)/); assert.match(pane, /alarm-name-\$\{focusId\}/);                     // 새 알람: 펼침 + 이름 칸 포커스
+  assert.match(pane, /cloneAlarm\(editing\.id, false\)/);                                                                                         // 편집 창 복제는 목록 펼침을 건드리지 않음
+  assert.ok(!/localStorage[^\n]*(open|펼침)/i.test(pane), '펼침 상태는 저장하지 않는다');
+  assert.match(acc, /prefers-reduced-motion/); assert.match(acc, /DURATION_MS = 240/); assert.match(acc, /setAttribute\('inert'/); assert.match(acc, /if \(!present\) return null/);
+  assert.match(css, /\.st-acc\s*\{[^}]*grid-template-rows: 0fr/); assert.match(css, /\.st-acc\[data-open\]\s*\{[^}]*1fr/); assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.st-acc \{ transition: none; \} \}/);
+  assert.match(css, /\.st-li--alarm \{ flex: 0 0 auto;/);   // 목록 높이를 제한해도 줄이 줄어들어 내용이 겹치지 않는다
+});
+t('폼 규격(정적 확인): 모든 입력 칸이 같은 높이·좌우 여백, 요일 칩은 같은 크기의 원, 프리셋은 같은 높이', () => {
+  const ui = fs.readFileSync(path.join(root, 'src/styles/ui.css'), 'utf8'), tok = fs.readFileSync(path.join(root, 'src/styles/tokens.css'), 'utf8'), css = fs.readFileSync(path.join(root, 'src/styles/settings.css'), 'utf8');
+  assert.match(tok, /--ui-field-h: 44px/); assert.match(tok, /--ui-field-px: 14px/); assert.match(tok, /--ui-chip-h: 40px/); assert.match(tok, /--ui-gap-field: 16px/); assert.match(tok, /--ui-gap-label: 6px/);
+  assert.match(ui, /:where\(\.ui-time, \.st-text, \.st-msg-input, \.ui-select select\)\s*\{[^}]*height: var\(--ui-field-h\)[^}]*padding-block: 0; padding-inline: var\(--ui-field-px\)/);
+  assert.ok(!/^\.st-text \{/m.test(css) && !/^\.st-msg-input \{/m.test(css), '입력 칸 개별 높이·여백 정의는 공통 규격으로 일원화');
+  assert.match(css, /\.st-daychip--day \{ width: var\(--ui-chip-h\); border-radius: 50%; \}/); assert.match(css, /\.st-daychip \{[^}]*height: var\(--ui-chip-h\)/); assert.match(css, /grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
+});
 console.log(`\n${n}개 통과`);

@@ -82,8 +82,8 @@ export default function AlarmDetailFields({ alarm, label, patch, now, anchorDate
         ) : (
           <>
             {kind === 'weekly' && (
-              <div className="st-dayrow" role="group" aria-label={`${label} 요일 프리셋`}>
-                {DAY_PRESETS.map(p => <button key={p.label} type="button" className="st-daychip" aria-pressed={sameSet(days, p.days)} onClick={() => setRepeat({ kind: 'weekly', days: p.days })}>{p.label}</button>)}
+              <div className="st-dayrow st-dayrow--presets" role="group" aria-label={`${label} 요일 프리셋`}>
+                {DAY_PRESETS.map(p => <button key={p.label} type="button" className="st-daychip st-daychip--preset" aria-pressed={sameSet(days, p.days)} onClick={() => setRepeat({ kind: 'weekly', days: p.days })}>{p.label}</button>)}
               </div>
             )}
             <div className="st-dayrow" role="group" aria-label={`${label} 요일`}>
