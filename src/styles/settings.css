@@ -347,6 +347,11 @@ html[data-theme="dark"] .st-cal-dayhead[data-today] b { background: #2563EB; }  
 .st-cal-cell { position: relative; display: flex; flex-direction: column; gap: 4px; min-height: 64px; padding: 6px 4px 28px; border-left: 1px solid var(--ui-line); cursor: cell; }
 .st-cal-cell[data-has] { background: color-mix(in srgb, var(--ui-ink) 3%, transparent); }
 .st-cal-cell[data-today] { background: color-mix(in srgb, var(--ui-accent) 7%, transparent); }
+/* 지난 날짜: 새 알람을 만들 수 없는 칸은 빗금으로 흐리게(이미 있는 알람 블록은 글자 대비를 그대로 두고 눌러서 수정할 수 있다) */
+.st-cal-cell[data-pastday] { cursor: not-allowed; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ui-ink) 6%, transparent) 0 6px, transparent 6px 12px); }
+.st-cal-cell[data-pastday] .st-cal-block { cursor: pointer; }
+.st-agenda-day[data-pastday] > header .ui-iconbtn { opacity: 0.4; cursor: not-allowed; }
+.st-cal-notice { margin: 0; padding: 6px 12px; border-radius: var(--ui-r-pill); background: var(--ui-item); color: var(--ui-ink); font-size: 13px; font-weight: 600; }
 .st-cal-cell[data-cursor] { box-shadow: inset 0 0 0 2px var(--ui-accent); }
 .st-cal-add { position: absolute; left: 4px; right: 4px; bottom: 4px; display: grid; place-items: center; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-sub); opacity: 0; cursor: pointer; transition: opacity 120ms var(--ui-ease-out); }
 .st-cal-add .ui-i { width: 14px; height: 14px; }

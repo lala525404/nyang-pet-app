@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { dayLabel, defaultTimeFor, stackDay, tooltipInfo, upcomingOneShots, weekDates, weekRangeLabel, weekdayLabel } from '../../utils/alarmCalendar';
+import { PAST_DAY_NOTICE, dayLabel, defaultTimeFor, isPastDay, stackDay, tooltipInfo, upcomingOneShots, weekDates, weekRangeLabel, weekdayLabel } from '../../utils/alarmCalendar';
 import { WEEKDAY_LABELS, addDays, isPastOneShot, mondayOf, repeatSummary, startOfDay, ymd } from '../../utils/alarmSchedule';
 import { alarmTitle } from '../../utils/alarmText';
 import { formatTime } from '../../utils/settings';
@@ -34,6 +34,8 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
   const [focused, setFocused] = useState(false);
   const [cursor, setCursor] = useState<{ col: number; zone: Zone }>(() => ({ col: (now.getDay() + 6) % 7, zone: now.getHours() < 12 ? 'am' : 'pm' }));
   const [announce, setAnnounce] = useState('');
+  const [notice, setNotice] = useState('');   // 눈에 보이는 짧은 안내(지난 날짜 칸을 눌렀을 때)
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const dates = useMemo(() => weekDates(weekStart), [weekStart]);
@@ -59,10 +61,20 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
   }, []);
 
   const goWeek = useCallback((delta: number | 'today') => { setWeekStart(w => (delta === 'today' ? mondayOf(new Date()) : addDays(w, delta * 7))); }, []);
-  const create = (col: number, zone: Zone) => { if (atLimit) { setAnnounce('알람이 가득 찼어요'); return; } onCreate(dates[col], defaultTimeFor(zone)); };
+  useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
+  const showNotice = (msg: string) => {
+    setNotice(msg); setAnnounce(msg);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(''), 2400);
+  };
+  const create = (col: number, zone: Zone) => {
+    if (isPastDay(dates[col], now)) { showNotice(PAST_DAY_NOTICE); return; }   // 지난 날짜에는 만들지 않는다(오늘 이후는 그대로)
+    if (atLimit) { setAnnounce('알람이 가득 찼어요'); return; }
+    onCreate(dates[col], defaultTimeFor(zone));
+  };
   const describeCursor = (col: number, zone: Zone) => {
     const d = dates[col]; const list = stacks[col][zone];
-    return `${d.getMonth() + 1}월 ${d.getDate()}일 ${weekdayLabel(d)}요일 ${ZONE_LABEL[zone]}${list.length ? `, 알람 ${list.length}개: ${list.map(e => alarmTitle(e.alarm)).join(', ')}` : ', 비어 있음. Enter로 알람 만들기'}`;
+    return `${d.getMonth() + 1}월 ${d.getDate()}일 ${weekdayLabel(d)}요일 ${ZONE_LABEL[zone]}${list.length ? `, 알람 ${list.length}개: ${list.map(e => alarmTitle(e.alarm)).join(', ')}` : isPastDay(d, now) ? ', 지난 날짜라 알람을 만들 수 없음' : ', 비어 있음. Enter로 알람 만들기'}`;
   };
   const moveCursor = (col: number, zone: Zone) => { const c = Math.max(0, Math.min(6, col)); setCursor({ col: c, zone }); setAnnounce(describeCursor(c, zone)); };
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -98,16 +110,18 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
   };
   const renderCell = (col: number, zone: Zone) => {
     const d = dates[col]; const st = stacks[col]; const list = st[zone];
-    const isToday = ymd(d) === ymd(today);
+    const isToday = ymd(d) === ymd(today); const past = isPastDay(d, now);
     const items: React.ReactNode[] = list.map(ev => renderBlock(ev, d, col));
     if (st.nowAt && st.nowAt.zone === zone) items.splice(st.nowAt.index, 0, <div key="now" className="st-cal-now" aria-hidden><span>지금</span></div>);
     return (
-      <div key={`${zone}${col}`} className="st-cal-cell" data-zone={zone} data-today={isToday ? '' : undefined} data-has={list.length ? '' : undefined} data-cursor={focused && cursor.col === col && cursor.zone === zone ? '' : undefined}
+      <div key={`${zone}${col}`} className="st-cal-cell" data-zone={zone} data-today={isToday ? '' : undefined} data-pastday={past ? '' : undefined} data-has={list.length ? '' : undefined} data-cursor={focused && cursor.col === col && cursor.zone === zone ? '' : undefined}
         onClick={(e) => { if (!(e.target as HTMLElement).closest('.st-cal-block, .st-cal-add')) { setCursor({ col, zone }); create(col, zone); } }}>
         {items}
-        <button type="button" className="st-cal-add" tabIndex={-1} disabled={atLimit} aria-label={`${weekdayLabel(d)}요일 ${ZONE_LABEL[zone]} 알람 추가`} onClick={() => create(col, zone)}>
-          <Plus className="ui-i" strokeWidth={1.5} aria-hidden />
-        </button>
+        {!past && (
+          <button type="button" className="st-cal-add" tabIndex={-1} disabled={atLimit} aria-label={`${weekdayLabel(d)}요일 ${ZONE_LABEL[zone]} 알람 추가`} onClick={() => create(col, zone)}>
+            <Plus className="ui-i" strokeWidth={1.5} aria-hidden />
+          </button>
+        )}
       </div>
     );
   };
@@ -122,6 +136,7 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
         </div>
         <h3 className="st-cal-title">{title} <small>{weekRangeLabel(weekStart)}</small></h3>
         <div className="st-cal-tools">
+          {notice && <p className="st-cal-notice" aria-hidden>{notice}</p>}
           {pastCount > 0 && <button type="button" className="ui-btn ui-btn--sm" onClick={onClearPast}>지난 알람 정리 ({pastCount})</button>}
         </div>
       </div>
@@ -136,10 +151,10 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
           {dates.map((d, i) => {
             const all = [...stacks[i].am, ...stacks[i].pm];
             return (
-              <section key={i} className="st-agenda-day" data-today={ymd(d) === ymd(today) ? '' : undefined} aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)}`}>
+              <section key={i} className="st-agenda-day" data-today={ymd(d) === ymd(today) ? '' : undefined} data-pastday={isPastDay(d, now) ? '' : undefined} aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)}`}>
                 <header>
                   <h4>{weekdayLabel(d)} <small>{dayLabel(d)}</small></h4>
-                  <button type="button" className="ui-iconbtn" aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)} 알람 추가`} disabled={atLimit} onClick={() => create(i, 'am')}><Plus className="ui-i" strokeWidth={1.5} aria-hidden /></button>
+                  <button type="button" className="ui-iconbtn" aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)} 알람 추가`} aria-disabled={isPastDay(d, now) || undefined} disabled={atLimit && !isPastDay(d, now)} onClick={() => create(i, 'am')}><Plus className="ui-i" strokeWidth={1.5} aria-hidden /></button>
                 </header>
                 {all.length === 0 ? <p className="st-agenda-empty">알람 없음</p> : (
                   <ul>

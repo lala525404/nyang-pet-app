@@ -408,4 +408,24 @@ t('캘린더 빈 칸은 그 날짜 하루짜리 알람, "매주 반복" 토글�
   assert.ok(S.occursOn({ repeat: { kind: 'weekly', days: [day.getDay()] } }, other));
   assert.strictEqual(`${CAL.defaultTimeFor('am')}/${CAL.defaultTimeFor('pm')}`, '09:00/14:00');   // 기본 시각 유지
 });
+t('지난 날짜 칸에는 새 알람을 만들 수 없다: 날짜만 비교(오늘은 시각이 지나도 가능), 어제까지만 막는다', () => {
+  const now = new Date(2026, 9, 22, 23, 59, 59);   // 오늘 밤 늦게
+  assert.strictEqual(CAL.isPastDay(new Date(2026, 9, 21), now), true);                    // 어제
+  assert.strictEqual(CAL.isPastDay(new Date(2026, 9, 21, 23, 59), now), true);            // 어제 밤
+  assert.strictEqual(CAL.isPastDay(new Date(2026, 9, 22), now), false);                   // 오늘 00:00(이미 지난 시각이어도 오늘 칸은 만들 수 있다)
+  assert.strictEqual(CAL.isPastDay(new Date(2026, 9, 22, 23, 0), now), false);
+  assert.strictEqual(CAL.isPastDay(new Date(2026, 9, 23), now), false);                   // 내일
+  assert.strictEqual(CAL.isPastDay(new Date(2026, 9, 22), new Date(2026, 9, 22, 0, 0, 0)), false);   // 자정 직후에도 오늘은 오늘
+  assert.strictEqual(CAL.isPastDay(new Date(2026, 9, 22), new Date(2026, 9, 23, 0, 0, 0)), true);    // 자정이 지나면 어제가 된다
+  assert.strictEqual(CAL.isPastDay(new Date(2025, 11, 31), new Date(2026, 0, 1)), true);             // 해가 바뀌어도
+  assert.strictEqual(CAL.PAST_DAY_NOTICE, '지난 날짜에는 알람을 만들 수 없어요');
+});
+t('지난 날짜 칸 화면 연결(정적 확인): 만들기 전에 막고 안내만 보이며, 오늘 이후·기존 블록은 그대로', () => {
+  const cal = fs.readFileSync(path.join(root, 'src/components/settings/AlarmCalendar.tsx'), 'utf8'), css = fs.readFileSync(path.join(root, 'src/styles/settings.css'), 'utf8');
+  assert.match(cal, /const create = \(col: number, zone: Zone\) => \{\s*if \(isPastDay\(dates\[col\], now\)\) \{ showNotice\(PAST_DAY_NOTICE\); return; \}/);   // 가득 참 확인보다 먼저
+  assert.match(cal, /data-pastday=\{past \? '' : undefined\}/); assert.match(cal, /\{!past && \(\s*<button type="button" className="st-cal-add"/);   // 지난 칸은 + 버튼이 없다
+  assert.match(cal, /<p className="st-cal-notice" aria-hidden>\{notice\}<\/p>/); assert.match(cal, /setTimeout\(\(\) => setNotice\(''\), 2400\)/);
+  assert.match(cal, /onEdit\(a\.id\)/);                                                                                       // 기존 알람 블록은 지난 날짜에서도 눌러 수정
+  assert.match(css, /\.st-cal-cell\[data-pastday\] \{[^}]*not-allowed[^}]*repeating-linear-gradient/); assert.match(css, /\.st-cal-cell\[data-pastday\] \.st-cal-block \{ cursor: pointer; \}/);
+});
 console.log(`\n${n}개 통과`);

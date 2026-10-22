@@ -1,5 +1,5 @@
 import type { Alarm } from './settings';
-import { addDays, isPastOneShot, isSkipped, mondayOf, occursOn, parseYmd, repeatSummary, toMin, ymd, WEEKDAY_LABELS } from './alarmSchedule';
+import { addDays, isPastOneShot, isSkipped, mondayOf, occursOn, parseYmd, repeatSummary, startOfDay, toMin, ymd, WEEKDAY_LABELS } from './alarmSchedule';
 import { alarmTitle, formatAttendees, formatRange } from './alarmText';
 import { formatTime } from './settings';
 
@@ -12,6 +12,10 @@ export const DEFAULT_PM_TIME = '14:00';    // 오후 칸
 export type Zone = 'am' | 'pm';
 export const zoneOf = (startMin: number): Zone => (startMin < NOON_MIN ? 'am' : 'pm');
 export const defaultTimeFor = (zone: Zone): string => (zone === 'am' ? DEFAULT_AM_TIME : DEFAULT_PM_TIME);
+
+// 오늘보다 이전 날짜인지(날짜만 비교, 시각은 보지 않는다). 지난 날짜의 빈 칸에는 새 알람을 만들 수 없다. 오늘은 지났어도 만들 수 있다.
+export const PAST_DAY_NOTICE = '지난 날짜에는 알람을 만들 수 없어요';
+export const isPastDay = (day: Date, now: Date): boolean => startOfDay(day).getTime() < startOfDay(now).getTime();
 
 export const weekDates = (weekStart: Date): Date[] => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));   // 월~일
 export const weekStartOf = (d: Date): Date => mondayOf(d);
