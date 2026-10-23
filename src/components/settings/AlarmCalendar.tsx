@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { holidayName, holidayShort } from '../../data/holidays';   // 공휴일 표시(내장 데이터, 표시만 — 알람 동작에는 영향 없음)
 import { PAST_DAY_NOTICE, dayLabel, defaultTimeFor, isPastDay, stackDay, tooltipInfo, upcomingOneShots, weekDates, weekRangeLabel, weekdayLabel } from '../../utils/alarmCalendar';
 import { WEEKDAY_LABELS, addDays, isPastOneShot, mondayOf, repeatSummary, startOfDay, ymd } from '../../utils/alarmSchedule';
 import { alarmTitle } from '../../utils/alarmText';
@@ -153,7 +154,7 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
             return (
               <section key={i} className="st-agenda-day" data-today={ymd(d) === ymd(today) ? '' : undefined} data-pastday={isPastDay(d, now) ? '' : undefined} aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)}`}>
                 <header>
-                  <h4>{weekdayLabel(d)} <small>{dayLabel(d)}</small></h4>
+                  <h4>{weekdayLabel(d)} <small>{dayLabel(d)}</small>{holidayName(d) && <span className="st-agenda-hol">{holidayShort(holidayName(d) as string)}</span>}</h4>
                   <button type="button" className="ui-iconbtn" aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)} 알람 추가`} aria-disabled={isPastDay(d, now) || undefined} disabled={atLimit && !isPastDay(d, now)} onClick={() => create(i, 'am')}><Plus className="ui-i" strokeWidth={1.5} aria-hidden /></button>
                 </header>
                 {all.length === 0 ? <p className="st-agenda-empty">알람 없음</p> : (
@@ -180,9 +181,10 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
             onKeyDown={onKeyDown} onFocus={(e) => { if (e.target === e.currentTarget) { setFocused(true); setAnnounce(describeCursor(cursor.col, cursor.zone)); } }} onBlur={(e) => { if (e.target === e.currentTarget) setFocused(false); }}>
             <div className="st-cal-corner" aria-hidden />
             {dates.map((d, i) => (
-              <div key={i} className="st-cal-dayhead" data-today={ymd(d) === ymd(today) ? '' : undefined} data-empty={stacks[i].count === 0 ? '' : undefined}
-                aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)}${ymd(d) === ymd(today) ? ' 오늘' : ''}, 알람 ${stacks[i].count}개`}>
+              <div key={i} className="st-cal-dayhead" data-today={ymd(d) === ymd(today) ? '' : undefined} data-empty={stacks[i].count === 0 ? '' : undefined} data-holiday={holidayName(d) ? '' : undefined} title={holidayName(d) ?? undefined}
+                aria-label={`${weekdayLabel(d)}요일 ${dayLabel(d)}${ymd(d) === ymd(today) ? ' 오늘' : ''}${holidayName(d) ? `, ${holidayName(d)}` : ''}, 알람 ${stacks[i].count}개`}>
                 <span>{weekdayLabel(d)}</span><b>{d.getDate()}</b>
+                {holidayName(d) && <i className="st-cal-hol" aria-hidden>{holidayShort(holidayName(d) as string)}</i>}
                 {stacks[i].count > 0 && <em className="st-cal-count" aria-hidden>{stacks[i].count}</em>}
               </div>
             ))}
