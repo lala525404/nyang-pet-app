@@ -7,6 +7,7 @@ import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, cleanBubbleMessages, clampTo, cloc
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
 import FocusClock from '../components/FocusClock';
+import FocusLeaveLeft from '../components/FocusLeaveLeft';
 import { FOCUS_PAUSE_MS, FOCUS_TICK_MS, focusBounds, isOverPet, monitorRectAt, nextFocusTarget, stepToward } from '../utils/focusMode';
 import type { FocusModeState } from '../electron';
 import type { WeatherSnapshot } from '../utils/weatherHello';
@@ -1035,6 +1036,7 @@ export default function PetPage() {
           </div>
         </div>
         {focus.enabled && !alertActive && <FocusClock seconds={focus.seconds} />}
+        {focus.enabled && !alertActive && <FocusLeaveLeft workStart={settings.workStart} leaveTime={settings.leaveTime} />}
       </div>
     </div>
   );

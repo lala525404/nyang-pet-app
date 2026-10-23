@@ -239,3 +239,11 @@ html, body, #root {
   background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
   pointer-events: none; user-select: none;
 }
+/* 시계 바로 아래 한 줄 더: "퇴근까지 2시간 15분". 시계와 같은 알약 모양에 조금 더 작게 */
+.focus-leave {
+  margin: 2px 0 6px; padding: 1px 10px; border-radius: 999px;   /* 아래 6px: 버디 창 아래 가장자리에 붙지 않게 */
+  font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 11px; line-height: 1.35; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: var(--ui-ink); opacity: 0.72;
+  background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
+  pointer-events: none; user-select: none;
+}
