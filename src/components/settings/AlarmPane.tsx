@@ -94,12 +94,12 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
   const work = (
     <div className="st-notices-col">
       <NoticeCard id="lunch" icon={<Utensils className="ui-i" strokeWidth={1.5} aria-hidden />} title="점심 알림" enabled={s.lunchEnabled}
-        time={s.lunchTime} pre={s.lunchPreAlertMinutes || 5} testLabel="점심 테스트"
-        onEnabled={v => update({ lunchEnabled: v })} onPre={v => update({ lunchPreAlertMinutes: v })}
+        time={s.lunchTime} pre={s.lunchPreAlertMinutes || 5} preEnabled={s.lunchPreAlertEnabled === true} testLabel="점심 테스트"
+        onEnabled={v => update({ lunchEnabled: v })} onPre={v => update({ lunchPreAlertMinutes: v })} onPreEnabled={v => update({ lunchPreAlertEnabled: v })}
         onTest={() => window.electronAPI?.testBreakTime('lunch')} />
       <NoticeCard id="leave" icon={<LogOut className="ui-i" strokeWidth={1.5} aria-hidden />} title="퇴근 알림" enabled={s.leaveEnabled}
-        time={s.leaveTime} pre={s.leavePreAlertMinutes || 5} testLabel="퇴근 테스트"
-        onEnabled={v => update({ leaveEnabled: v })} onPre={v => update({ leavePreAlertMinutes: v })}
+        time={s.leaveTime} pre={s.leavePreAlertMinutes || 5} preEnabled={s.leavePreAlertEnabled === true} testLabel="퇴근 테스트"
+        onEnabled={v => update({ leaveEnabled: v })} onPre={v => update({ leavePreAlertMinutes: v })} onPreEnabled={v => update({ leavePreAlertEnabled: v })}
         onTest={() => window.electronAPI?.testBreakTime('leave')} />
     </div>
   );

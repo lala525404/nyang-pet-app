@@ -11,7 +11,7 @@ const toasts = (acts) => acts.filter(a => a.type === 'toast').map(a => `${a.kind
 const merge = (...ins) => ins.reduce((cur, i) => A.mergeAlarmSettings(cur, i).settings, {});
 
 t('기본값: 모두 꺼짐, 기본 시각 12:00/18:00, 미리 알림 5분 — 아무것도 안 울린다', () => {
-  assert.deepStrictEqual({ ...A.DEFAULTS }, { lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00', lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, alarms: [] });
+  assert.deepStrictEqual({ ...A.DEFAULTS }, { lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00', lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchPreAlertEnabled: false, leavePreAlertEnabled: false, alarms: [] });
   const fired = new Set();
   for (const hm of ['11:55', '12:00', '17:55', '18:00']) assert.deepStrictEqual(A.dueActions({}, at(hm), fired), []);
 });
@@ -50,6 +50,35 @@ t('다음 날에는 같은 시각에 다시 울린다, 지난 날짜 기록은 �
   A.dueActions(s, at('12:00', 22), fired); assert.strictEqual(fired.size, 1);
   assert.deepStrictEqual(cards(A.dueActions(s, at('12:00', 23), fired)), ['lunch']);
   assert.strictEqual(fired.size, 1); assert.ok([...fired][0].startsWith(at('12:00', 23).toDateString()));
+});
+t('미리 알림 켬/끔: 끄면 토스트만 없고 정각 카드는 그대로, 분 값은 남아 다시 켜면 그대로, 점심·퇴근은 따로, 키가 없는 예전 설정은 켜짐', () => {
+  const fired = new Set(); let s = merge({ lunchEnabled: true, lunchTime: '12:00', leaveEnabled: true, leaveTime: '18:00', leavePreAlertMinutes: 10 });
+  assert.deepStrictEqual(toasts(A.dueActions(s, at('11:55'), fired)), ['lunch5'], '키가 없으면 켜짐');
+  s = merge(s, { lunchPreAlertEnabled: false });
+  assert.deepStrictEqual(A.dueActions(s, at('11:55'), new Set()), [], '점심 미리 알림을 끄면 토스트 없음');
+  assert.deepStrictEqual(cards(A.dueActions(s, at('12:00'), new Set())), ['lunch'], '정각 카드는 그대로');
+  assert.deepStrictEqual(toasts(A.dueActions(s, at('17:50'), new Set())), ['leave10'], '퇴근 미리 알림은 따로 켜져 있다');
+  s = merge(s, { leavePreAlertEnabled: false });
+  assert.deepStrictEqual(A.dueActions(s, at('17:50'), new Set()), []); assert.deepStrictEqual(cards(A.dueActions(s, at('18:00'), new Set())), ['leave']);
+  s = merge(s, { lunchPreAlertEnabled: true });
+  assert.deepStrictEqual(toasts(A.dueActions(s, at('11:55'), new Set())), ['lunch5'], '다시 켜면 분 값 그대로');
+  assert.strictEqual(merge({}, { lunchPreAlertEnabled: 'x' }).lunchPreAlertEnabled, undefined, 'boolean이 아니면 무시');
+  const ui = fs.readFileSync(path.join(root, 'src/components/settings/NoticeCard.tsx'), 'utf8'), pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmPane.tsx'), 'utf8');
+  assert.ok(ui.includes('<Segmented') && ui.includes("'끔'") && ui.includes("'켬'") && /\{preEnabled && \(/.test(ui), '[미리 알림] [끔 | 켬] 한 줄, 켰을 때만 같은 줄에 분 조절');
+  assert.ok(!/AlarmAccordion|aria-expanded|preOpen|ChevronDown/.test(ui) && !/preOpen|onPreToggle/.test(pane), '미리 알림은 접지 않는다(아코디언 없음) — 알람 목록의 "자세히" 아코디언(openId)과 상태가 섞이지 않는다');
+  assert.strictEqual((ui.match(/className="st-notice-pre"/g) || []).length, 1, '점심·퇴근 카드가 같은 컴포넌트(같은 구성)');
+  assert.strictEqual((pane.match(/<NoticeCard /g) || []).length, 2);
+  const css = fs.readFileSync(path.join(root, 'src/styles/settings.css'), 'utf8');
+  assert.match(css, /\.st-notice-pre \{[^}]*flex-wrap: nowrap/, '한 줄(줄바꿈 없음)'); assert.match(css, /\.st-notice-pre \.st-step \{ width: 40px; height: 40px; \}/);
+  assert.ok(!/\}\.st-/.test(css), 'CSS 규칙이 한 줄에 붙어 있지 않다');
+  assert.strictEqual((ui.match(/<Switch /g) || []).length, 1, '스위치는 카드 머리의 알림 켜기 하나뿐(미리 알림은 세그먼트라 위계가 겹치지 않는다)');
+  for (const k of ['lunchPreAlertEnabled', 'leavePreAlertEnabled']) assert.ok(pane.includes(k), k);
+  const sm = ts.transpileModule(fs.readFileSync(path.join(root, 'src/utils/settings.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const mm = { exports: {} }; new Function('module', 'exports', 'require', 'localStorage', 'window', sm)(mm, mm.exports, () => ({ seedFreshTheme() {} }), { getItem: () => null, setItem() {} }, { location: { hash: '' } });
+  const old = mm.exports.migrateSettings({ lunchEnabled: true, lunchPreAlertMinutes: 10 }).settings;   // 이미 저장된 설정: 예전처럼 미리 알림이 있었으니 켜짐으로
+  assert.deepStrictEqual([old.lunchPreAlertEnabled, old.leavePreAlertEnabled, old.lunchPreAlertMinutes], [true, true, 10]);
+  const kept = mm.exports.migrateSettings({ lunchPreAlertEnabled: false, leavePreAlertEnabled: true }).settings; assert.deepStrictEqual([kept.lunchPreAlertEnabled, kept.leavePreAlertEnabled], [false, true], '이미 고른 값은 바꾸지 않는다');
+  assert.strictEqual(mm.exports.DEFAULT_SETTINGS.lunchPreAlertEnabled, false); assert.strictEqual(mm.exports.DEFAULT_SETTINGS.leavePreAlertEnabled, false);   // 새 설치의 기본은 꺼짐
 });
 t('미리 알림 토스트: 시각-분 전에 한 번, 분을 바꾸면 바뀐 시각에 다시', () => {
   const fired = new Set(); let s = merge({ leaveEnabled: true, leaveTime: '18:00', leavePreAlertMinutes: 5 });
@@ -469,6 +498,15 @@ t('v1.4.1 홈/알람 탭 정리(정적 확인): 홈은 근무 시작·점심·�
   assert.ok(!/type="time"/.test(notice), '알림 카드는 시각 입력을 두지 않는다(시각은 홈 한 곳에서만 바꾼다)');
   assert.ok(/getTimeCategory\(cur\.workStart, cur\.leaveTime\)/.test(pet) && !/cur\.workEnd/.test(pet), '버디 시간대 말풍선도 퇴근 시간(leaveTime) 하나를 쓴다');
   assert.ok(!/id: 'login'/.test(home), '자동 실행은 칩 목록 밖');
+  // 홈 칩은 어떤 버디든 항상 8개(2열 4줄): 조건부 칩(사진 교체·모양·자동 실행)이 없다. 사진 교체는 사진 관리 화면으로.
+  const chipIds = [...home.matchAll(/^\s{6}id: '([a-z]+)', label:/gm)].map(m => m[1]);
+  assert.deepStrictEqual(chipIds, ['mode', 'size', 'zone', 'display', 'speed', 'yar', 'distract', 'bubble'], '칩 8개 고정');
+  assert.ok(!/\.\.\.\(.*\? \[\{/.test(home.slice(home.indexOf('const chips'), home.indexOf('const bobSeconds'))), '칩 목록에 조건부 항목이 없다');
+  assert.ok(home.includes("data-dots={custom && images.length >= 2 ? '' : undefined}") && /\.st-side\[data-dots\] \.st-stage \{ min-height: 180px; \}/.test(read('src/styles/settings.css')), '사진 점 줄이 생겨도 홈 카드 높이가 동물 펫과 같다(작은 창에서 안 잘림)');
+  const animalModal = read('src/components/settings/AnimalModal.tsx');
+  assert.ok(animalModal.includes('imageRotateEnabled') && animalModal.includes('imageRotateInterval') && animalModal.includes('<p className="st-lab">사진 교체</p>') && animalModal.includes('activeCount >= 2'), '사진 교체는 사진 관리 화면에서, 2장 이상일 때만');
+  assert.ok(animalModal.indexOf('버디 모양') < animalModal.indexOf('사진 교체</p>'), '모양 줄 바로 아래');
+  assert.ok(/imageRotateInterval: 60, imageRotateEnabled: true/.test(read('src/utils/settings.ts')), '사진 교체 저장 키·기본값 그대로');
   // 모양(customShape)은 사진 버디에만 적용된다(CatEmoji의 customImage 분기 안에서만). 홈 칩에서 빼고 사진 올리기(자르기)·사진 관리에서 고른다. 저장 키·기본값('round')은 그대로.
   const catEmoji = read('src/components/CatEmoji.tsx'), animal = read('src/components/settings/AnimalModal.tsx'), crop = read('src/components/CropModal.tsx');
   assert.ok(!/id: 'shape'|label="버디 모양"|label: '모양'/.test(home), '홈 설정 칸에는 모양이 없다(미리보기는 저장된 모양을 그대로 따른다)');

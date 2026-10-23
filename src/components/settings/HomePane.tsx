@@ -190,7 +190,6 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
     return parts.length ? parts.join(' · ') : '전체 화면';
   })();
 
-  const rotateEnabled = s.imageRotateEnabled !== false;
   // 말풍선: 내 메시지(최대 5개)를 순서대로, 빈 간격에는 시계. 둘 다 없으면 말풍선이 뜨지 않는다.
   const bubbleOn = s.bubbleEnabled !== false;
   const bubbleClock = s.bubbleClock !== false;
@@ -341,23 +340,8 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
       ),
     },
     // 버디 모양(원형/사각형)은 사진 버디에만 적용되므로 홈 칩에서 뺐다. 사진 올리기(자르기 화면)와 사진 관리(AnimalModal)에서 고른다.
-    // 사진이 2장 이상일 때만 보인다. 켜기/끄기와 주기, 기존 imageRotateInterval 키를 그대로 쓴다.
-    ...(s.useCustomMode && images.length >= 2 ? [{
-      id: 'rotate', label: '사진 교체',
-      value: rotateEnabled ? `${formatInterval(s.imageRotateInterval)}마다 · ${images.length}장` : '끔',
-      body: (
-        <>
-          <div className="st-row"><span>사진 교체 사용</span><Switch checked={rotateEnabled} onChange={v => patch({ imageRotateEnabled: v })} label="사진 교체 사용" /></div>
-          {rotateEnabled && (
-            <>
-              <div className="st-row"><span>주기</span><span className="ui-val">{formatInterval(s.imageRotateInterval)}마다</span></div>
-              <RangeInput min={30} max={1800} step={30} value={s.imageRotateInterval} onChange={v => patch({ imageRotateInterval: v })} label="사진 교체 주기" />
-            </>
-          )}
-          <p className="ui-note">{rotateEnabled ? '버디와 미리보기가 같은 순서로 사진을 번갈아 보여줘요.' : '꺼 두면 대표 사진만 보여줘요.'}</p>
-        </>
-      ),
-    }] : []),
+    // 사진 교체(켜기/끄기·주기)도 사진 버디에서만 쓰이므로 홈 칩에서 뺐다(사진 유무에 따라 칩 수가 달라져 마지막 칸이 혼자 남던 문제). 사진 관리(AnimalModal)에서 고른다. 저장 키(imageRotateEnabled·imageRotateInterval)는 그대로.
+    // 그래서 홈 칩은 어떤 버디든 항상 8개(2열 4줄)다.
   ];
 
   const bobSeconds = (2.8 - s.moveSpeed * 0.22).toFixed(2);
@@ -378,13 +362,13 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
             ))}
           </div>
         </div>
-        <div className="st-side">
+        <div className="st-side" data-dots={custom && images.length >= 2 ? '' : undefined}>
           <div className="st-stage" data-hidden={!s.petVisible}>
             <span className="st-stage-cap">실시간 미리보기</span>
             {!s.petVisible && <span className="st-stage-state">버디를 숨겨 둔 상태예요</span>}
             <div className="st-pet" style={{ '--s': size / 100 } as CSSProperties}>
               <div className="st-pet-bob" style={{ '--bob': `${bobSeconds}s` } as CSSProperties}>
-                <CatEmoji emoji={animal.emoji} size={156} forceImage customImage={custom ? images[shown] : null} customShape={s.customShape} />
+                <CatEmoji emoji={animal.emoji} size={custom && images.length >= 2 ? 128 : 156} forceImage customImage={custom ? images[shown] : null} customShape={s.customShape} />
               </div>
             </div>
           </div>

@@ -10,6 +10,7 @@ const DEFAULTS = Object.freeze({
   lunchEnabled: false, leaveEnabled: false,
   lunchTime: '12:00', leaveTime: '18:00',
   lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5,
+  lunchPreAlertEnabled: false, leavePreAlertEnabled: false,   // 미리 알림 켬/끔: 새 설치는 꺼짐. 끄면 분 값은 그대로 두고 토스트만 안 띄운다. 키가 아예 없는 예전 저장값은 켜짐으로 읽는다(아래 resolveAlarmSettings, 예전 동작 유지)
   alarms: [],
 });
 // 마이그레이션 전(v1.0.9) 설정이 쓰던 키. 새 키가 없을 때만 대신 쓴다.
@@ -82,6 +83,7 @@ const validators = {
   lunchEnabled: (v) => typeof v === 'boolean', leaveEnabled: (v) => typeof v === 'boolean', breakTimeEnabled: (v) => typeof v === 'boolean',
   lunchTime: isTime, leaveTime: isTime,
   lunchPreAlertMinutes: (v) => Number.isFinite(v) && v >= 0, leavePreAlertMinutes: (v) => Number.isFinite(v) && v >= 0, preAlertMinutes: (v) => Number.isFinite(v) && v >= 0,
+  lunchPreAlertEnabled: (v) => typeof v === 'boolean', leavePreAlertEnabled: (v) => typeof v === 'boolean',
   alarms: (v) => Array.isArray(v),
 };
 
@@ -112,6 +114,7 @@ function resolveAlarmSettings(s) {
     lunchTime: pick('lunchTime'), leaveTime: pick('leaveTime'),
     lunchPre: (s.lunchPreAlertMinutes || legacyPre || DEFAULTS.lunchPreAlertMinutes),
     leavePre: (s.leavePreAlertMinutes || legacyPre || DEFAULTS.leavePreAlertMinutes),
+    lunchPreOn: s.lunchPreAlertEnabled !== false, leavePreOn: s.leavePreAlertEnabled !== false,
     alarms: Array.isArray(s.alarms) ? s.alarms : [],
   };
 }
@@ -135,10 +138,10 @@ function dueActions(settings, now, fired, opts = {}) {
   for (const k of fired) if (!k.startsWith(date + '|')) fired.delete(k);   // 지난 날짜 기록은 비운다
   const once = (key) => { if (fired.has(key)) return false; fired.add(key); return true; };
   if (!late) {
-    for (const [kind, on, time, pre] of [['lunch', r.lunchOn, r.lunchTime, r.lunchPre], ['leave', r.leaveOn, r.leaveTime, r.leavePre]]) {
+    for (const [kind, on, time, pre, preOn] of [['lunch', r.lunchOn, r.lunchTime, r.lunchPre, r.lunchPreOn], ['leave', r.leaveOn, r.leaveTime, r.leavePre, r.leavePreOn]]) {
       if (!on || !time) continue;
       if (cur === time && once(`${date}|${kind}|${time}`)) out.push({ type: 'card', card: kind });
-      if (cur === getPreAlertTime(time, pre) && once(`${date}|pre-${kind}|${time}|${pre}`)) out.push({ type: 'toast', kind, minutes: pre });
+      if (preOn && cur === getPreAlertTime(time, pre) && once(`${date}|pre-${kind}|${time}|${pre}`)) out.push({ type: 'toast', kind, minutes: pre });
     }
   }
   for (const a of r.alarms) {

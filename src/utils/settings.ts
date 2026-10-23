@@ -50,6 +50,8 @@ export interface PetSettings {
   leaveTime: string;
   lunchPreAlertMinutes: number;
   leavePreAlertMinutes: number;
+  lunchPreAlertEnabled: boolean;
+  leavePreAlertEnabled: boolean;
   alarms: Alarm[];
   // 점심·퇴근 분리 전 키. 예전 버전으로 돌아가도 값이 남도록 지우지 않고, 마이그레이션 원본으로만 쓴다.
   breakTimeEnabled: boolean;
@@ -64,7 +66,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, introEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
-  lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, alarms: [],
+  lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchPreAlertEnabled: false, leavePreAlertEnabled: false, alarms: [],
   breakTimeEnabled: false, preAlertMinutes: 5,
 };
 
@@ -90,6 +92,9 @@ export function migrateSettings(raw: Record<string, unknown>): { settings: Recor
   fill('leaveEnabled', enabled);
   fill('lunchPreAlertMinutes', pre);
   fill('leavePreAlertMinutes', pre);
+  // 미리 알림 켬/끔(v1.4.1): 새 설치의 기본은 꺼짐이지만, 이미 저장된 설정은 예전처럼 항상 미리 알림이 있었으므로 켜짐으로 채워 동작을 바꾸지 않는다.
+  fill('lunchPreAlertEnabled', true);
+  fill('leavePreAlertEnabled', true);
   return { settings: s, changed };
 }
 

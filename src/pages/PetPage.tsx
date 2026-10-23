@@ -103,6 +103,8 @@ interface Settings {
   leaveTime: string;
   lunchPreAlertMinutes: number;
   leavePreAlertMinutes: number;
+  lunchPreAlertEnabled: boolean;
+  leavePreAlertEnabled: boolean;
   alarms: { id: string; time: string; enabled: boolean }[];
 }
 
@@ -114,7 +116,7 @@ const DEFAULT_SETTINGS: Settings = {
   useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
-  lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, alarms: [],
+  lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchPreAlertEnabled: false, leavePreAlertEnabled: false, alarms: [],
 };
 
 // 새 설치(메인이 알려 줌)이고 저장값이 없는 동안은 하트가 기본 버디

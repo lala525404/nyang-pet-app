@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Plus, X } from 'lucide-react';
 import CatEmoji, { customShapeRadius } from '../CatEmoji';
-import { RangeInput, Segmented, Switch, useDialog } from '../ui';
+import { RangeInput, Segmented, useDialog } from '../ui';
 import { formatInterval, makeRepresentative } from '../../utils/settings';
 import { ANIMALS } from '../../data/animals';
 import type { PaneProps } from './shared';
@@ -78,26 +78,29 @@ export default function AnimalModal({ settings: s, update, patch, onClose, onPic
                 </div>
               ))}
             </div>
+            {activeCount === 1 && <p className="ui-note">사진을 더 올리면 번갈아 보여줄 수 있어요.</p>}
+            {activeCount >= 2 && <p className="ui-note">대표 사진은 점심·퇴근·알람 알림 카드에 나와요.</p>}
+            <p className="ui-note">PNG / JPG / WEBP / SVG · 자동으로 정사각형 512px 이하로 저장 · 최대 5MB</p>
+            {/* 사진 버디 설정 두 줄: 같은 모양(라벨 + 선택). 사진 교체는 사진이 2장 이상일 때만 의미가 있어 그때만 보인다(저장 키는 imageRotateEnabled·imageRotateInterval 그대로) */}
             <div className="st-stack">
               <p className="st-lab">버디 모양</p>
               <Segmented label="버디 모양" value={s.customShape} onChange={v => patch({ customShape: v })}
                 options={[{ value: 'round', label: '원형' }, { value: 'rounded', label: '사각형' }]} />
             </div>
-            {activeCount === 1 && <p className="ui-note">사진을 더 올리면 번갈아 보여줄 수 있어요.</p>}
-            {activeCount >= 2 && <p className="ui-note">대표 사진은 점심·퇴근·알람 알림 카드에 나와요.</p>}
-            <p className="ui-note">PNG / JPG / WEBP / SVG · 자동으로 정사각형 512px 이하로 저장 · 최대 5MB</p>
             {activeCount >= 2 && (
-              <>
-                <div className="st-row"><span>사진 교체 사용</span><Switch checked={rotateEnabled} onChange={v => patch({ imageRotateEnabled: v })} label="사진 교체 사용" /></div>
-                {rotateEnabled && (
+              <div className="st-stack">
+                <p className="st-lab">사진 교체</p>
+                <Segmented<'off' | 'on'> label="사진 교체" value={rotateEnabled ? 'on' : 'off'} onChange={v => patch({ imageRotateEnabled: v === 'on' })}
+                  options={[{ value: 'off', label: '끔' }, { value: 'on', label: '켬' }]} />
+                {rotateEnabled ? (
                   <div className="ui-range-row">
                     <label className="ui-end" htmlFor="rotate-interval">교체 주기</label>
                     <RangeInput id="rotate-interval" min={30} max={1800} step={30} value={s.imageRotateInterval}
                       onChange={v => patch({ imageRotateInterval: v })} />
-                    <span className="ui-val">{formatInterval(s.imageRotateInterval)}</span>
+                    <span className="ui-val">{formatInterval(s.imageRotateInterval)}마다</span>
                   </div>
-                )}
-              </>
+                ) : <p className="ui-note">꺼 두면 대표 사진만 보여줘요.</p>}
+              </div>
             )}
           </div>
         )}
