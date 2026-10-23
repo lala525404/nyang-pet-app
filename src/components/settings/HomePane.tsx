@@ -10,6 +10,7 @@ import { usePhotoState } from '../../hooks/usePhotoState';
 import { useLoginItem } from '../../hooks/useLoginItem';
 import { useFocusMode } from '../../hooks/useFocusMode';
 import { MODE_NAME } from './shared';
+import WeatherCityRow, { WEATHER_CREDIT } from './WeatherCityRow';
 import type { Monitor, PaneProps } from './shared';
 
 const ZONE_NAMES = ['', '좌상단', '우상단', '좌하단', '우하단'];
@@ -320,6 +321,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
           <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
             메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
           </button>
+          <WeatherCityRow settings={s} patch={patch} />
           {/* 자주 쓰는 항목만 먼저 보이고, 표시 시간·간격은 "고급"을 눌러야 펼쳐진다. 높이는 부드럽게 바뀐다. */}
           {bubbleOn && (
             <div className="st-adv" data-open={bubbleAdv ? '' : undefined}>
@@ -336,6 +338,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
               </div>
             </div>
           )}
+          <p className="ui-note">{WEATHER_CREDIT}</p>
         </>
       ),
     },

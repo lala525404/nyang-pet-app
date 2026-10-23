@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-state', handler);
     return () => ipcRenderer.removeListener('update-state', handler);
   },
+  // ★ 날씨 안부: 요청은 메인만 보낸다(좌표만 전달). 동의 전에는 null
+  getWeather:       (lat, lon) => ipcRenderer.invoke('weather-get', { lat, lon }),
   getPhotoState:    () => ipcRenderer.invoke('get-photo-state'),
   onPhotoState:     (cb) => {
     const handler = (_e, state) => cb(state);

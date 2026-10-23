@@ -16,6 +16,10 @@ export interface LoginItemState { supported: boolean; enabled: boolean; reason: 
 // 초집중 모드 상태(메인이 소유·저장): 기준 위치(anchor)는 버디 창이 알린다
 export interface FocusModeState { enabled: boolean; seconds: boolean; anchor: { x: number; y: number } | null }
 
+// 날씨(메인의 weather.cjs가 Open-Meteo 응답을 정리한 값). hours[].at은 그 시간의 시각(ms)
+export interface WeatherHour { at: number; temp: number; feels: number; pop: number | null; code: number; wind: number | null }
+export interface WeatherData { temp: number; feels: number; code: number; wind: number | null; hours: WeatherHour[] }
+
 interface ElectronAPI {
   quitApp: () => void;
   openSettings: () => void;
@@ -41,6 +45,7 @@ interface ElectronAPI {
   getAlertState: () => Promise<boolean>;
   onAlertState: (cb: (active: boolean) => void) => () => void;
   onSettingsChanged: (cb: () => void) => () => void;
+  getWeather: (lat: number, lon: number) => Promise<{ data: WeatherData; stale: boolean; at: number } | null>;
   getPhotoState: () => Promise<{ index: number; count: number; intervalSec: number }>;
   onPhotoState: (cb: (state: { index: number; count: number; intervalSec: number }) => void) => () => void;
   onShowBubble: (cb: (text: string, ms?: number) => void) => () => void;

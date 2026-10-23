@@ -427,3 +427,15 @@ html[data-theme="dark"] .st-cal-dayhead[data-today] b { background: #2563EB; }  
 .st-acc[data-open] { grid-template-rows: 1fr; opacity: 1; }
 .st-acc-inner { min-height: 0; overflow: hidden; padding-inline: 4px; margin-inline: -4px; }   /* 좌우 4px: 입력 칸의 포커스 링이 잘리지 않게 */
 @media (prefers-reduced-motion: reduce) { .st-acc { transition: none; } }
+
+/* 말풍선 팝오버의 "날씨 안부: 동네" 한 줄: 기존 st-row(44px)·st-actions·입력 칸 규격을 그대로 쓰고, 후보는 한 줄짜리 버튼 목록 */
+.st-weather { display: flex; flex-direction: column; gap: 8px; }
+.st-weather-line { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.st-weather-label { flex: none; white-space: nowrap; }
+.st-weather-saved { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.st-weather-saved strong { font-weight: 600; }
+.st-weather-line .st-text { flex: 1 1 0; min-width: 0; }
+.st-weather-line .ui-btn--sm { flex: none; padding: 0 12px; }
+.st-places { display: flex; flex-direction: column; gap: 4px; }
+.st-place { width: 100%; min-height: 36px; justify-content: flex-start; text-align: left; font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 36px; }
+.st-weather-dialog { width: min(380px, 100%); }

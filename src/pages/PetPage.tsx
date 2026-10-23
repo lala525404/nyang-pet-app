@@ -9,6 +9,10 @@ import { getAnimal } from '../data/animals';
 import FocusClock from '../components/FocusClock';
 import { FOCUS_PAUSE_MS, FOCUS_TICK_MS, focusBounds, isOverPet, monitorRectAt, nextFocusTarget, stepToward } from '../utils/focusMode';
 import type { FocusModeState } from '../electron';
+import type { WeatherSnapshot } from '../utils/weatherHello';
+import { helloCandidates, isHelloSlot, pickHello } from '../utils/weatherHello';
+import type { HelloKind } from '../data/weatherHello';
+import { cityById } from '../data/cities';
 
 // ── 시간대별 멘트 ─────────────────────────────────────────────────
 const TIME_MESSAGES: Record<string, string[]> = {
@@ -87,6 +91,8 @@ interface Settings {
   bubbleShowSec: number;
   bubbleGapSec: number;
   bubbleClock: boolean;
+  weatherCityId: string;
+  weatherConsent: boolean;
   useCustomMode: boolean;
   customShape: CustomShape;
   moveSpeed: number;
@@ -112,7 +118,7 @@ const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
   distractInterval: 30, imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, weatherCityId: '', weatherConsent: false,
   useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
@@ -749,10 +755,37 @@ export default function PetPage() {
     return () => { if (typeof off === 'function') off(); };
   }, []);
 
+  // ★ 날씨 안부: 동네와 동의가 모두 있을 때만 메인에게 값을 부탁한다(요청은 메인이 하고 30분 캐시·실패 처리를 맡는다).
+  // 여기서는 1분마다 값의 나이만 확인하고, 없거나 25분이 지났을 때만 다시 부탁한다. 실패하면 조용히 비워 두고 다음 확인 때 다시 본다(안부가 안 나올 뿐).
+  const weatherRef = useRef<WeatherSnapshot | null>(null);
+  const weatherCityRef = useRef('');
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const cur = settingsRef.current, city = cityById(cur.weatherCityId);
+      if (!cur.weatherConsent || !city) { weatherRef.current = null; weatherCityRef.current = ''; return; }
+      if (weatherCityRef.current !== city.id) { weatherRef.current = null; weatherCityRef.current = city.id; }   // 동네가 바뀌면 이전 값은 버린다
+      const w = weatherRef.current;
+      if (w && Date.now() - w.at < 25 * 60 * 1000) return;
+      try {
+        const r = await window.electronAPI?.getWeather?.(city.lat, city.lon);
+        if (cancelled || !r) return;
+        if (settingsRef.current.weatherCityId !== city.id || !settingsRef.current.weatherConsent) return;   // 기다리는 사이 동네·동의가 바뀌었으면 버린다
+        weatherRef.current = { data: r.data, at: r.at };
+      } catch { /* 조용히 건너뜀 */ }
+    };
+    void load();
+    const timer = setInterval(() => { void load(); }, 60 * 1000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [settings.weatherCityId, settings.weatherConsent]);
+
   // ★ 말풍선 엔진: 내 메시지를 순서대로 하나씩(표시 시간·주기 설정), 빈 간격에는 시계. 알림 중에는 시간이 멈췄다가 이어서 진행한다.
+  // 날씨 안부는 새 종류가 아니라 이 "차례" 중에 가끔 끼는 문구다: 한 차례(주기)마다 한 번 정하고(약 4번에 1번, 연속 금지), 그 차례의 내 메시지 자리에 대신 보인다(없으면 시계 자리).
   useEffect(() => {
     let elapsed = 0, last = Date.now(), sig = '';
     let curKind: 'message' | 'clock' | null = null, curIdx = -1, curText = '', key = 0;
+    let slot = -1, slotHello: { kind: HelloKind; text: string } | null = null, msgCursor = -1;
+    const lastHello: { kind: HelloKind | null; text: string | null } = { kind: null, text: null };
     const tick = () => {
       const now = Date.now();
       const dt = Math.min(now - last, 1500);   // 절전 복귀처럼 큰 간격은 잘라서 메시지를 한꺼번에 건너뛰지 않는다
@@ -762,13 +795,24 @@ export default function PetPage() {
       const show = clampTo(cur.bubbleShowSec, BUBBLE_SHOW_RANGE, 5) * 1000;
       const gap = clampTo(cur.bubbleGapSec, BUBBLE_GAP_RANGE, 30) * 1000;
       const nextSig = `${show}/${gap}/${msgs.length}`;
-      if (nextSig !== sig) { sig = nextSig; elapsed = 0; }   // 표시 시간·주기·메시지 수가 바뀌면 처음부터 다시 돈다
+      if (nextSig !== sig) { sig = nextSig; elapsed = 0; slot = -1; slotHello = null; msgCursor = -1; }   // 표시 시간·주기·메시지 수가 바뀌면 처음부터 다시 돈다
       const paused = alertRef.current || toastActiveRef.current;
       if (!paused) elapsed += dt;
+      const active = !paused && cur.bubbleEnabled !== false && !focusRef.current.enabled;   // 초집중 모드에서는 내 메시지·시계 말풍선 없음(시계는 따로 표시)
+      const nowSlot = Math.floor(elapsed / gap);
+      if (nowSlot !== slot) {   // 새 차례: 날씨 안부 차례인지 정한다(후보가 없으면 안부는 없다)
+        slot = nowSlot;
+        const cands = active && weatherRef.current ? helloCandidates(weatherRef.current, now, { lunch: cur.lunchEnabled ? cur.lunchTime : null, leave: cur.leaveEnabled ? cur.leaveTime : null }) : [];
+        slotHello = cands.length && isHelloSlot(slotHello !== null) ? pickHello(cands, lastHello) : null;
+        if (slotHello) { lastHello.kind = slotHello.kind; lastHello.text = slotHello.text; } else msgCursor++;
+      }
       let kind: 'message' | 'clock' | null = null, idx = -1, text = '';
-      if (!paused && cur.bubbleEnabled !== false && !focusRef.current.enabled) {   // 초집중 모드에서는 내 메시지·시계 말풍선 없음(시계는 따로 표시)
-        if (msgs.length && (show >= gap || elapsed % gap < show)) {
-          kind = 'message'; idx = Math.floor(elapsed / gap) % msgs.length; text = msgs[idx];
+      if (active) {
+        const inShow = show >= gap || elapsed % gap < show;
+        if (slotHello && inShow && weatherRef.current) {
+          kind = 'message'; idx = 100000 + slot; text = slotHello.text;
+        } else if (msgs.length && inShow) {
+          kind = 'message'; idx = Math.max(0, msgCursor) % msgs.length; text = msgs[idx];
         } else if (cur.bubbleClock !== false) {
           kind = 'clock'; text = clockText();
         }

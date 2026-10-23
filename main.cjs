@@ -773,8 +773,20 @@ function configurePhotoRotation(settings) {
 
 ipcMain.handle('get-photo-state', () => photoState());
 
+// ★ 날씨 안부(Open-Meteo): 네트워크 호출은 여기(메인)에서만 한다. 판단 로직은 weather.cjs(단위 테스트됨).
+// 동의(weatherConsent)와 동네가 모두 있다고 설정 동기화가 알려 주기 전에는 어떤 요청도 보내지 않는다. 모두 비동기라 알람 1초 타이머를 막지 않는다.
+const weather = require('./weather.cjs');
+const weatherService = weather.createWeatherService({ fetch: (url, opts) => (require('electron').net && require('electron').net.fetch ? require('electron').net.fetch(url, opts) : fetch(url, opts)) });
+ipcMain.handle('weather-get', async (_e, req) => {
+  try {
+    if (!req || typeof req !== 'object') return null;
+    return await weatherService.get(req.lat, req.lon);
+  } catch { return null; }
+});
+
 // ★ 앱 시작시 설정 동기화 - PetPage에서 설정 로드 후 호출
 ipcMain.on('sync-settings', (_e, settings) => {
+  if (settings && typeof settings.weatherConsent === 'boolean') weatherService.setConsent(settings.weatherConsent && typeof settings.weatherCityId === 'string' && settings.weatherCityId !== '');
   configurePhotoRotation(settings);
   // 버디 창이 2초 폴링을 기다리지 않고 바로 새 설정을 읽게 한다
   if (petWindow && !petWindow.isDestroyed()) { try { petWindow.webContents.send('settings-changed'); } catch {} }
