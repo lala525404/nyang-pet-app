@@ -321,7 +321,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
         <>
           <div className="st-row"><span>말풍선 사용</span><Switch checked={bubbleOn} onChange={v => patch({ bubbleEnabled: v })} label="말풍선 사용" /></div>
           <div className="st-row"><span>시계 표시</span><Switch checked={bubbleClock} onChange={v => patch({ bubbleClock: v })} label="시계 표시" disabled={!bubbleOn} /></div>
-          <p className="ui-note">{!bubbleOn ? '켜면 내 메시지와 시계가 말풍선으로 떠요.' : bubbleClock ? '메시지가 없는 동안에는 현재 시간을 보여줘요.' : '메시지가 없는 동안에는 말풍선이 숨겨져요.'}</p>
+          <p className="ui-note">{!bubbleOn ? '켜면 기본 문구와 내 메시지, 시계가 말풍선으로 떠요.' : bubbleClock ? '기본 문구와 내 메시지, 시계가 번갈아 떠요.' : '시계는 끄고, 기본 문구와 내 메시지만 떠요.'}</p>
           <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
             메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
           </button>

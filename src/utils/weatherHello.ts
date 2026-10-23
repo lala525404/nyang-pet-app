@@ -6,7 +6,6 @@ import type { HelloKind } from '../data/weatherHello';
 // 화면과 분리한 순수 계산이라 단위 테스트한다(tests/weather-unit.cjs). 조건이 맞는 종류만 후보가 되고, 하나도 없으면 안부는 나오지 않는다.
 
 // ── 조절 값(상수) ──────────────────────────────────────────────────────────
-export const HELLO_SHARE = 0.25;                      // 평소 말풍선 중 날씨 안부가 섞이는 비중(대략 4번에 1번)
 export const FEELS_GAP_C = 3;                         // 체감이 기온과 이만큼 이상 다르면 체감도 같이 말한다
 export const COLD_C = 5;                              // 이 체감 온도 이하면 "추울 것 같아요"
 export const HOT_C = 28;                              // 이 체감 온도 이상이면 "더울 것 같아요"
@@ -90,7 +89,8 @@ export function helloCandidates(w: WeatherSnapshot | null, nowMs: number, times:
 const NOW_WEIGHT = 0.4;
 
 // 후보 중 하나를 고른다: 직전과 같은 종류는 피하고(다른 후보가 있을 때), 같은 문구도 피한다. 후보가 없으면 null.
-export function pickHello(cands: HelloCandidate[], last: { kind: HelloKind | null; text: string | null }, rand: () => number = Math.random): { kind: HelloKind; text: string } | null {
+// textOf를 주면 문구는 그 함수가 고른다(셔플 백: 한 바퀴를 다 돌 때까지 같은 문구를 반복하지 않는다).
+export function pickHello(cands: HelloCandidate[], last: { kind: HelloKind | null; text: string | null }, rand: () => number = Math.random, textOf?: (c: HelloCandidate) => string | null): { kind: HelloKind; text: string } | null {
   if (!cands.length) return null;
   let pool = cands.filter(c => c.kind !== last.kind);
   if (!pool.length) pool = cands;
@@ -98,13 +98,9 @@ export function pickHello(cands: HelloCandidate[], last: { kind: HelloKind | nul
   let r = rand() * weights.reduce((a, b) => a + b, 0), idx = 0;
   for (; idx < pool.length - 1; idx++) { r -= weights[idx]; if (r < 0) break; }
   const c = pool[idx];
+  const bagged = textOf ? textOf(c) : null;
+  if (bagged) return { kind: c.kind, text: bagged };
   const texts = c.texts.filter(t => t !== last.text);
   const list = texts.length ? texts : c.texts;
   return { kind: c.kind, text: list[Math.min(list.length - 1, Math.floor(rand() * list.length))] };
-}
-
-// 평소 말풍선 한 자리가 날씨 안부 차례인지. 연속 금지라서(직전이 날씨였으면 아니다) 직전이 날씨가 아닐 때 s/(1-s) 확률로 뽑으면
-// 전체 비중이 정확히 s(HELLO_SHARE)가 된다: 25%면 3번에 1번 → 장기적으로 4번에 1번.
-export function isHelloSlot(prevWasHello: boolean, rand: () => number = Math.random): boolean {
-  return !prevWasHello && rand() < HELLO_SHARE / (1 - HELLO_SHARE);
 }

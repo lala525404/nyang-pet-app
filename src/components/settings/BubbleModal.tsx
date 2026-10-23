@@ -71,8 +71,8 @@ export default function BubbleModal({ settings: s, patch, onClose, suspended }: 
           </button>
           <p className="ui-note">
             {empty
-              ? (clockOn ? '메시지가 없으면 시계만 보여요.' : '메시지가 없고 시계도 꺼져 있으면 말풍선이 뜨지 않아요.')
-              : `메시지가 없는 동안에는 ${clockOn ? '현재 시간을 보여줘요.' : '말풍선이 숨겨져요.'}`}
+              ? (clockOn ? '메시지가 없으면 기본 문구와 시계가 번갈아 떠요.' : '메시지가 없으면 기본 문구만 떠요.')
+              : `내 메시지는 기본 문구${clockOn ? ', 시계' : ''}와 번갈아 떠요.`}
           </p>
         </div>
 

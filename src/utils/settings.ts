@@ -33,7 +33,7 @@ export interface PetSettings {
   bubbleMessages: string[];   // 내 메시지 최대 5개, 각 20자 이하. 순서대로 하나씩 돌린다
   bubbleShowSec: number;      // 한 번 보여주는 시간(초)
   bubbleGapSec: number;       // 메시지가 나오는 주기(초, 한 메시지가 나오고 다음 메시지가 나올 때까지)
-  bubbleClock: boolean;       // 메시지가 없는 동안 현재 시간 표시
+  bubbleClock: boolean;       // 말풍선 차례에 시계 포함(기본 문구·날씨 안부·내 메시지와 번갈아)
   weatherCityId: string;      // 날씨 안부 동네(시·군·구 id, src/data/cities.ts). 비어 있으면 날씨 안부 없음
   weatherConsent: boolean;    // 날씨 서비스(Open-Meteo)로 동네 좌표를 보내는 데 동의했는지. 동네를 고르며 [좋아요]를 눌러야 true
   introEnabled: boolean;      // 설정창 시작 인트로 보기(새 버전 첫 설정창에서만 한 번). 예전 설정에는 없으므로 기본값(켬)이 쓰인다

@@ -253,19 +253,14 @@ t('고르기: 직전과 같은 종류·같은 문구가 연속하지 않는다(5
   const one = H.helloCandidates(mkSnap({ temp: 15, feels: 15 }), NOW); const l2 = { kind: null, text: null }; let pv = null;
   for (let i = 0; i < 300; i++) { const p = H.pickHello(one, l2, rand); if (pv) assert.notStrictEqual(p.text, pv.text); pv = p; l2.text = p.text; l2.kind = p.kind; }
 });
-t('롤링 비중: 연속 금지를 지키며 전체의 약 25%(4번에 1번), 연속 금지', () => {
-  assert.strictEqual(H.HELLO_SHARE, 0.25);
-  let seed = 99; const rand = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
-  let prev = false, hello = 0; const N = 40000; for (let i = 0; i < N; i++) { const h = H.isHelloSlot(prev, rand); assert.ok(!(h && prev), '연속 금지'); if (h) hello++; prev = h; }
-  assert.ok(Math.abs(hello / N - 0.25) < 0.02, `비중 ${hello / N}`);
-});
+// 롤링 비중·연속 금지·셔플 백은 tests/bubble-roll-unit.cjs에서 확인한다(날씨 안부 몫은 20%로 바뀌었다).
 
 // ── 엔진 연결·설정 호환(정적 확인) ──────────────────────────────────────────
 t('엔진: 날씨 안부는 기존 말풍선 경로(idleBubble kind message)로만, 새 종류·우선순위·보호 없음, 초집중·알람 중에는 건너뜀', () => {
   const pet = read('src/pages/PetPage.tsx'); const eng = pet.slice(pet.indexOf('★ 말풍선 엔진'), pet.indexOf('// ★ 졸림방지'));
-  assert.ok(/helloCandidates\(weatherRef\.current, now/.test(eng) && /isHelloSlot\(/.test(eng) && /pickHello\(cands, lastHello\)/.test(eng));
+  assert.ok(/helloCandidates\(weatherRef\.current, now/.test(eng) && /pickRollKind\(/.test(eng) && /pickHello\(cands, lastHello, Math\.random/.test(eng));
   assert.ok(/const active = !paused && cur\.bubbleEnabled !== false && !focusRef\.current\.enabled/.test(eng), '알림·토스트 중(paused)·초집중·말풍선 끔에서는 안부 후보 자체를 만들지 않는다');
-  assert.ok(/const cands = active && weatherRef\.current \?/.test(eng));
+  assert.ok(/if \(active && !picked\)/.test(eng) && /const cands = weatherRef\.current \?/.test(eng), '활성일 때만 종류를 뽑는다');
   assert.ok(/kind: 'message' \| 'clock'/.test(pet) && !/'weather'/.test(pet.replace(/\/\/.*$/gm, '')), "새 말풍선 종류('weather') 없음");
   assert.ok(/\{ lunch: cur\.lunchTime, leave: cur\.leaveTime \}/.test(eng) && !/lunchEnabled|leaveEnabled/.test(eng), '점심·퇴근 시간은 홈의 시간 설정값을 알람 켜짐과 상관없이 따른다');
   assert.ok(/bubbleShowSec/.test(eng) && /bubbleGapSec/.test(eng), '표시 시간·간격은 기존 설정 그대로');

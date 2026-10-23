@@ -11,7 +11,10 @@ import FocusLeaveLeft from '../components/FocusLeaveLeft';
 import { FOCUS_PAUSE_MS, FOCUS_TICK_MS, focusBounds, isOverPet, monitorRectAt, nextFocusTarget, stepToward } from '../utils/focusMode';
 import type { FocusModeState } from '../electron';
 import type { WeatherSnapshot } from '../utils/weatherHello';
-import { helloCandidates, isHelloSlot, pickHello } from '../utils/weatherHello';
+import { helloCandidates, pickHello } from '../utils/weatherHello';
+import { createShuffleBag, pickRollKind } from '../utils/bubbleRoll';
+import type { RollKind, ShuffleBag } from '../utils/bubbleRoll';
+import { newPhrasesFor } from '../data/bubblePhrases';
 import type { HelloKind } from '../data/weatherHello';
 import { cityById } from '../data/cities';
 
@@ -736,6 +739,14 @@ export default function PetPage() {
     const timeMsgs = TIME_MESSAGES[getTimeCategory(cur.workStart, cur.leaveTime)] || TIME_MESSAGES.work;
     return rand([...animalRef.current.nags, ...timeMsgs, ...special]);
   }, []);
+  // ★ 평소 말풍선의 기본 문구 후보: 기존 문구(위와 같은 구성) + 업무메이트 새 문구(시간대별). 셔플 백이 한 바퀴 돌 때까지 반복 없이 고른다.
+  const getPhrasePool = useCallback((): string[] => {
+    const cur = settingsRef.current;
+    const special = getSpecialMessages();
+    const cat = getTimeCategory(cur.workStart, cur.leaveTime);
+    const legacy = isCustomModeRef.current ? [...CUSTOM_NAGS, ...special] : [...animalRef.current.nags, ...(TIME_MESSAGES[cat] || TIME_MESSAGES.work), ...special];
+    return [...legacy, ...newPhrasesFor(cat)];
+  }, []);
   // 졸림 방지 말풍선: 내 메시지가 있으면 그걸 순서대로, 없으면 기존 문구
   const ownMessageIdxRef = useRef(0);
   const pickOwnMessage = useCallback((): string | null => {
@@ -780,13 +791,15 @@ export default function PetPage() {
     return () => { cancelled = true; clearInterval(timer); };
   }, [settings.weatherCityId, settings.weatherConsent]);
 
-  // ★ 말풍선 엔진: 내 메시지를 순서대로 하나씩(표시 시간·주기 설정), 빈 간격에는 시계. 알림 중에는 시간이 멈췄다가 이어서 진행한다.
-  // 날씨 안부는 새 종류가 아니라 이 "차례" 중에 가끔 끼는 문구다: 한 차례(주기)마다 한 번 정하고(약 4번에 1번, 연속 금지), 그 차례의 내 메시지 자리에 대신 보인다(없으면 시계 자리).
+  // ★ 말풍선 엔진: 한 차례(말풍선 주기)마다 종류를 뽑는다 — 기본 문구 · 시계 · 날씨 안부 · 내 메시지(비중과 연속 금지는 utils/bubbleRoll.ts).
+  // 기본 문구·날씨 안부·내 메시지는 표시 시간만 보이고, 시계 차례는 그 차례 내내 시계가 보인다. 알림 중에는 시간이 멈췄다가 이어서 진행한다.
+  // 내 메시지는 순서대로 하나씩, 문구는 셔플 백(한 바퀴 돌 때까지 반복 없음). 날씨 안부는 새 종류의 말풍선이 아니라 같은 말풍선 모양(message)으로 보인다.
   useEffect(() => {
     let elapsed = 0, last = Date.now(), sig = '';
     let curKind: 'message' | 'clock' | null = null, curIdx = -1, curText = '', key = 0;
-    let slot = -1, slotHello: { kind: HelloKind; text: string } | null = null, msgCursor = -1;
+    let slot = -1, slotKind: RollKind = 'phrase', slotText = '', picked = false, lastRoll: RollKind | null = null, msgCursor = -1;
     const lastHello: { kind: HelloKind | null; text: string | null } = { kind: null, text: null };
+    const phraseBag = createShuffleBag(), helloBags = new Map<string, ShuffleBag>();   // 문구는 셔플 백: 한 바퀴를 다 돌 때까지 같은 문구를 반복하지 않는다
     const tick = () => {
       const now = Date.now();
       const dt = Math.min(now - last, 1500);   // 절전 복귀처럼 큰 간격은 잘라서 메시지를 한꺼번에 건너뛰지 않는다
@@ -796,26 +809,32 @@ export default function PetPage() {
       const show = clampTo(cur.bubbleShowSec, BUBBLE_SHOW_RANGE, 5) * 1000;
       const gap = clampTo(cur.bubbleGapSec, BUBBLE_GAP_RANGE, 30) * 1000;
       const nextSig = `${show}/${gap}/${msgs.length}`;
-      if (nextSig !== sig) { sig = nextSig; elapsed = 0; slot = -1; slotHello = null; msgCursor = -1; }   // 표시 시간·주기·메시지 수가 바뀌면 처음부터 다시 돈다
+      if (nextSig !== sig) { sig = nextSig; elapsed = 0; slot = -1; picked = false; msgCursor = -1; }   // 표시 시간·주기·메시지 수가 바뀌면 처음부터 다시 돈다
       const paused = alertRef.current || toastActiveRef.current;
       if (!paused) elapsed += dt;
       const active = !paused && cur.bubbleEnabled !== false && !focusRef.current.enabled;   // 초집중 모드에서는 내 메시지·시계 말풍선 없음(시계는 따로 표시)
       const nowSlot = Math.floor(elapsed / gap);
-      if (nowSlot !== slot) {   // 새 차례: 날씨 안부 차례인지 정한다(후보가 없으면 안부는 없다)
-        slot = nowSlot;
-        const cands = active && weatherRef.current ? helloCandidates(weatherRef.current, now, { lunch: cur.lunchTime, leave: cur.leaveTime }) : [];
-        slotHello = cands.length && isHelloSlot(slotHello !== null) ? pickHello(cands, lastHello) : null;
-        if (slotHello) { lastHello.kind = slotHello.kind; lastHello.text = slotHello.text; } else msgCursor++;
+      if (nowSlot !== slot) { slot = nowSlot; picked = false; }   // 새 차례
+      if (active && !picked) {   // 이 차례에 보일 종류를 정한다(알림·초집중 중에는 정하지 않고, 끝난 뒤 이어서 정한다)
+        const cands = weatherRef.current ? helloCandidates(weatherRef.current, now, { lunch: cur.lunchTime, leave: cur.leaveTime }) : [];
+        slotKind = pickRollKind({ clock: cur.bubbleClock !== false, hello: cands.length > 0, message: msgs.length > 0 }, lastRoll);
+        slotText = '';
+        if (slotKind === 'hello') {
+          const h = pickHello(cands, lastHello, Math.random, (c) => { let bag = helloBags.get(c.kind); if (!bag) { bag = createShuffleBag(); helloBags.set(c.kind, bag); } return bag.next(c.texts); });
+          if (h) { lastHello.kind = h.kind; lastHello.text = h.text; slotText = h.text; } else slotKind = 'phrase';
+        } else if (slotKind === 'message') msgCursor++;
+        if (slotKind === 'phrase') slotText = phraseBag.next(getPhrasePool()) ?? '';
+        lastRoll = slotKind; picked = true;
       }
       let kind: 'message' | 'clock' | null = null, idx = -1, text = '';
-      if (active) {
+      if (active && picked) {
         const inShow = show >= gap || elapsed % gap < show;
-        if (slotHello && inShow && weatherRef.current) {
-          kind = 'message'; idx = 100000 + slot; text = slotHello.text;
-        } else if (msgs.length && inShow) {
-          kind = 'message'; idx = Math.max(0, msgCursor) % msgs.length; text = msgs[idx];
-        } else if (cur.bubbleClock !== false) {
+        if (slotKind === 'clock') {   // 시계 차례: 이 차례 내내 시계(예전의 "빈 간격에는 시계"와 같은 모습)
           kind = 'clock'; text = clockText();
+        } else if (inShow && slotKind === 'message' && msgs.length) {
+          kind = 'message'; idx = Math.max(0, msgCursor) % msgs.length; text = msgs[idx];
+        } else if (inShow && slotText) {   // 기본 문구·날씨 안부: 표시 시간만 보이고, 나머지 간격은 말풍선이 없다
+          kind = 'message'; idx = 100000 + slot; text = slotText;
         }
       }
       if (kind === curKind && idx === curIdx && text === curText) return;
