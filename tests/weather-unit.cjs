@@ -189,7 +189,19 @@ t('점심·퇴근 예보: 추움·더움·비(확률 60%/비 코드)·눈·바�
   assert.strictEqual(H.forecastKind({ at: 0, temp: 0, feels: 0, pop: 90, code: 3, wind: 20 }), 'Rain');
   assert.strictEqual(H.forecastKind({ at: 0, temp: 0, feels: 0, pop: 0, code: 3, wind: 20 }), 'Wind');
   assert.strictEqual(H.forecastKind({ at: 0, temp: 0, feels: 0, pop: 0, code: 3, wind: 1 }), 'Cold');
-  assert.deepStrictEqual(kinds(mkSnap({}, (i) => (i === 8? { feels: 0 } : {})), { lunch: null, leave: null }), ['now'], '점심·퇴근이 꺼져 있으면 예보 없음');
+  // 알람 켜짐 여부와 상관없이 홈의 시간 설정값이 기준: 설정이 없으면(비어 있으면) 기본값 점심 12:00·퇴근 17:00이 아니라 18:00 — 8시간 규칙은 그대로 적용된다
+  assert.strictEqual(H.DEFAULT_LUNCH_TIME, '12:00'); assert.strictEqual(H.DEFAULT_LEAVE_TIME, '18:00');
+  const coldAt = (idx) => mkSnap({}, (i) => (i === idx ? { feels: 0 } : {}));
+  assert.ok(kinds(coldAt(3), {}).includes('lunchCold'), '설정이 없으면 점심 12:00 기본값(지금 09:00 → 3시간 뒤)');
+  for (const empty of [null, undefined, '', 'abc', '25:99']) assert.ok(kinds(coldAt(3), { lunch: empty, leave: empty }).includes('lunchCold'), `비어 있거나 틀리면 기본값: ${empty}`);
+  assert.ok(!kinds(coldAt(9), {}).includes('leaveCold'), '기본 퇴근 18:00은 지금(09:00)부터 9시간 뒤라 8시간 규칙으로 제외');
+  const late = new Date(2026, 9, 23, 12, 30).getTime(); const s3 = { at: late, data: { temp: 12, feels: 12, code: 3, wind: 2, hours: Array.from({ length: 12 }, (_, i) => ({ at: new Date(2026, 9, 23, 12 + i, 0).getTime(), temp: 5, feels: i === 6 ? 0 : 12, pop: 0, code: 3, wind: 2 })) } };
+  assert.ok(kinds(s3, {}, late).includes('leaveCold'), '기본 퇴근 18:00(5.5시간 뒤)은 예보'); assert.ok(!kinds(s3, {}, late).includes('lunchCold'), '점심 12:00은 이미 지남');
+  // 사용자가 시간을 바꾸면 그 시간 기준으로 문구가 바뀐다(퇴근 19:00 → 7시간 뒤 예보 시각이 달라진다)
+  assert.ok(!kinds(s3, { leave: '19:00' }, late).includes('leaveCold'), '퇴근 19:00으로 바꾸면 18시 예보가 아니라 19시 값을 본다');
+  const s4 = { at: late, data: { ...s3.data, hours: s3.data.hours.map((h, i) => ({ ...h, feels: i === 7 ? 0 : 12 })) } };
+  assert.ok(kinds(s4, { leave: '19:00' }, late).includes('leaveCold'), '바뀐 퇴근 시간(19:00)의 예보로 "퇴근할 땐 …" 문구'); assert.ok(!kinds(s4, {}, late).includes('leaveCold'));
+  assert.ok(kinds(s4, { leave: '19:00', lunch: '14:00' }, late).includes('leaveCold') && !kinds(s4, { lunch: '14:00' }, late).includes('lunchCold'), '점심 14:00으로 바꾸면 그 시간 값(추위 없음)');
 });
 t('점심·퇴근 예보: 이미 지난 시간 제외, 정각이면 지난 것으로 보고, 8시간 넘게 남으면 제외, 8시간 이내만', () => {
   const cold = () => ({ feels: 0 });
@@ -255,7 +267,7 @@ t('엔진: 날씨 안부는 기존 말풍선 경로(idleBubble kind message)로�
   assert.ok(/const active = !paused && cur\.bubbleEnabled !== false && !focusRef\.current\.enabled/.test(eng), '알림·토스트 중(paused)·초집중·말풍선 끔에서는 안부 후보 자체를 만들지 않는다');
   assert.ok(/const cands = active && weatherRef\.current \?/.test(eng));
   assert.ok(/kind: 'message' \| 'clock'/.test(pet) && !/'weather'/.test(pet.replace(/\/\/.*$/gm, '')), "새 말풍선 종류('weather') 없음");
-  assert.ok(/lunch: cur\.lunchEnabled \? cur\.lunchTime : null, leave: cur\.leaveEnabled \? cur\.leaveTime : null/.test(eng), '점심·퇴근 시간은 홈 설정(켜진 것)을 따른다');
+  assert.ok(/\{ lunch: cur\.lunchTime, leave: cur\.leaveTime \}/.test(eng) && !/lunchEnabled|leaveEnabled/.test(eng), '점심·퇴근 시간은 홈의 시간 설정값을 알람 켜짐과 상관없이 따른다');
   assert.ok(/bubbleShowSec/.test(eng) && /bubbleGapSec/.test(eng), '표시 시간·간격은 기존 설정 그대로');
   assert.ok(!/priority|protect|LEVEL/i.test(read('src/utils/weatherHello.ts')), '우선순위·보호 없음');
 });

@@ -239,11 +239,16 @@ html, body, #root {
   background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
   pointer-events: none; user-select: none;
 }
-/* 시계 바로 아래 한 줄 더: "퇴근까지 2시간 15분". 시계와 같은 알약 모양에 조금 더 작게 */
+/* 시계 바로 아래 한 덩어리: 하루 진행바 + "퇴근까지 2시간 15분". 시계와 같은 알약 모양에 조금 더 작게 */
 .focus-leave {
-  margin: 2px 0 6px; padding: 1px 10px; border-radius: 999px;   /* 아래 6px: 버디 창 아래 가장자리에 붙지 않게 */
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  margin: 2px 0 6px; padding: 3px 12px 2px; border-radius: 12px;   /* 아래 6px: 버디 창 아래 가장자리에 붙지 않게 */
   font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 11px; line-height: 1.35; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;
   color: var(--ui-ink); opacity: 0.72;
   background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
   pointer-events: none; user-select: none;
 }
+/* 진행바: 분마다 폭만 바뀌고, 바뀔 때만 CSS transition으로 부드럽게(애니메이션 루프 없음) */
+.focus-leave-track { width: 96px; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--ui-ink) 18%, transparent); overflow: hidden; }
+.focus-leave-fill { height: 100%; border-radius: 999px; background: var(--ui-ink); transition: width 800ms var(--ui-ease-out, ease-out); }
+@media (prefers-reduced-motion: reduce) { .focus-leave-fill { transition: none; } }

@@ -803,7 +803,7 @@ export default function PetPage() {
       const nowSlot = Math.floor(elapsed / gap);
       if (nowSlot !== slot) {   // 새 차례: 날씨 안부 차례인지 정한다(후보가 없으면 안부는 없다)
         slot = nowSlot;
-        const cands = active && weatherRef.current ? helloCandidates(weatherRef.current, now, { lunch: cur.lunchEnabled ? cur.lunchTime : null, leave: cur.leaveEnabled ? cur.leaveTime : null }) : [];
+        const cands = active && weatherRef.current ? helloCandidates(weatherRef.current, now, { lunch: cur.lunchTime, leave: cur.leaveTime }) : [];
         slotHello = cands.length && isHelloSlot(slotHello !== null) ? pickHello(cands, lastHello) : null;
         if (slotHello) { lastHello.kind = slotHello.kind; lastHello.text = slotHello.text; } else msgCursor++;
       }

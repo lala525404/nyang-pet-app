@@ -25,11 +25,26 @@ t('퇴근 시각 정각: "퇴근 시간이에요 🎉", 지난 뒤 59분까지�
   assert.strictEqual(text(19, 0), null); assert.strictEqual(text(23, 0), null);
   assert.strictEqual(L.LEAVE_NOW_TEXT, '퇴근 시간이에요 🎉'); assert.strictEqual(L.AFTER_LEAVE_SHOW_MIN, 60);
 });
-t('설정이 없거나 비어 있거나 형식이 틀리면 표시하지 않는다', () => {
-  for (const bad of [undefined, null, '', '  ', 'abc', '25:00', '18:60', '1800', '18:0', 7]) assert.strictEqual(L.leaveLeftText(at(15, 0), '09:00', bad), null, String(bad));
-  assert.strictEqual(L.leaveLeftText(at(15, 0), undefined, '18:00'), '퇴근까지 3시간', '근무 시작이 없어도 오늘 퇴근 시간까지는 계산');
-  assert.strictEqual(L.leaveLeftText(at(15, 0), '', '18:00'), '퇴근까지 3시간'); assert.strictEqual(L.leaveLeftText(at(15, 0), 'xx', '18:00'), '퇴근까지 3시간');
-  assert.strictEqual(L.leaveLeftText(at(15, 0), '09:00', '9:30'), null, '9:30 형식은 오전 퇴근으로 이미 지남');
+t('설정이 없거나 비어 있거나 형식이 틀리면 기본값(근무 시작 09:00, 퇴근 18:00)을 쓴다', () => {
+  assert.strictEqual(L.DEFAULT_WORK_START, '09:00'); assert.strictEqual(L.DEFAULT_LEAVE, '18:00');
+  for (const bad of [undefined, null, '', '  ', 'abc', '25:00', '18:60', '1800', '18:0', 7]) { assert.strictEqual(L.leaveLeftText(at(15, 0), '09:00', bad), '퇴근까지 3시간', String(bad)); assert.strictEqual(L.leaveLeftText(at(15, 0), bad, '18:00'), '퇴근까지 3시간', String(bad)); }
+  assert.strictEqual(L.leaveLeftText(at(15, 0), undefined, undefined), '퇴근까지 3시간'); assert.strictEqual(L.dayRatio(at(13, 30), '', ''), 0.5, '둘 다 비면 09:00~18:00');
+  assert.strictEqual(L.leaveLeftText(at(15, 0), '09:00', '9:30'), null, '9:30 퇴근은 이미 지났고 한 시간도 넘음');
+});
+t('진행바 퍼센트: 시작 전 0, 시작 정각 0, 중간, 퇴근 정각 100, 퇴근 후 100(가득), 59분 뒤까지만 보이고 그 뒤 숨김', () => {
+  const pct = (h, m, s = '09:00', e = '18:00') => Math.round(L.dayRatio(at(h, m), s, e) * 1000) / 10;
+  assert.strictEqual(pct(7, 0), 0); assert.strictEqual(pct(8, 59), 0); assert.strictEqual(pct(9, 0), 0);
+  assert.strictEqual(pct(9, 54), 10); assert.strictEqual(pct(13, 30), 50); assert.strictEqual(pct(15, 45), 75); assert.strictEqual(pct(17, 59), 99.8);
+  assert.strictEqual(pct(18, 0), 100); assert.strictEqual(pct(18, 30), 100); assert.strictEqual(pct(23, 0), 100);
+  assert.deepStrictEqual(L.leaveView(at(15, 45), '09:00', '18:00'), { text: '퇴근까지 2시간 15분', ratio: 0.75 });
+  assert.deepStrictEqual(L.leaveView(at(18, 0), '09:00', '18:00'), { text: '퇴근 시간이에요 🎉', ratio: 1 });
+  assert.deepStrictEqual(L.leaveView(at(18, 59), '09:00', '18:00'), { text: '퇴근 시간이에요 🎉', ratio: 1 }); assert.strictEqual(L.leaveView(at(19, 0), '09:00', '18:00'), null);
+  assert.deepStrictEqual(L.leaveView(at(7, 0), '09:00', '18:00'), { text: '퇴근까지 11시간', ratio: 0 }, '시작 전: 0%와 남은 시간');
+  assert.strictEqual(pct(10, 30, '10:30', '19:30'), 0); assert.strictEqual(pct(15, 0, '10:30', '19:30'), 50, '사용자가 바꾼 시간 기준');
+  // 야간 근무(22:00~06:00): 자정을 넘어도 이어서 채운다
+  assert.strictEqual(pct(22, 0, '22:00', '06:00'), 0); assert.strictEqual(pct(2, 0, '22:00', '06:00'), 50); assert.strictEqual(pct(0, 0, '22:00', '06:00'), 25); assert.strictEqual(pct(5, 30, '22:00', '06:00'), 93.8);
+  assert.strictEqual(pct(6, 0, '22:00', '06:00'), 100); assert.strictEqual(pct(6, 30, '22:00', '06:00'), 100); assert.strictEqual(L.leaveView(at(7, 0), '22:00', '06:00'), null); assert.strictEqual(pct(12, 0, '22:00', '06:00'), 100, '퇴근 후(숨김 상태)에는 가득');
+  for (let h = 0; h < 24; h++) for (let m = 0; m < 60; m += 7) { const r = L.dayRatio(at(h, m), '09:00', '18:00'); assert.ok(r >= 0 && r <= 1); }
 });
 t('자정 근처: 퇴근 23:50이면 23:49에 1분 남음, 야간 근무(22:00~06:00)는 자정을 넘겨도 계속 계산', () => {
   assert.strictEqual(text(23, 49, '23:50', '09:00'), '퇴근까지 1분'); assert.strictEqual(text(23, 50, '23:50', '09:00'), '퇴근 시간이에요 🎉');
@@ -67,7 +82,8 @@ t('화면 연결(정적): 초집중 모드가 켜져 있고 알림이 없을 때
   const pet = read('src/pages/PetPage.tsx'), comp = read('src/components/FocusLeaveLeft.tsx');
   assert.ok(/\{focus\.enabled && !alertActive && <FocusLeaveLeft workStart=\{settings\.workStart\} leaveTime=\{settings\.leaveTime\} \/>\}/.test(pet), '초집중 켜짐 + 알림 없음일 때만');
   assert.ok(/useEffect\(\(\) => startMinuteTicker\(setNow\), \[\]\)/.test(comp), '마운트 때 시작하고 정리 함수(stop)를 돌려준다');
-  assert.ok(/if \(!text\) return null/.test(comp)); assert.ok(!/setInterval/.test(comp + read('src/utils/minuteTicker.ts')), 'setInterval 없음(분 경계 타이머 하나)');
+  assert.ok(/if \(!v\) return null/.test(comp) && /leaveView\(now, workStart, leaveTime\)/.test(comp) && /width: `\$\{\(v\.ratio \* 100\)/.test(comp), '진행바 폭은 비율로, 숨길 때는 전부 숨김'); assert.ok(!/requestAnimationFrame/.test(comp + read('src/utils/minuteTicker.ts')), 'rAF 반복 없음');
+  assert.ok(/transition: width/.test(read('src/styles/pet.css')) && /\.focus-leave \{[^}]*margin: 2px 0 6px/.test(read('src/styles/pet.css')), 'CSS transition, 창 아래 끝에서 6px 위 유지'); assert.ok(!/setInterval/.test(comp + read('src/utils/minuteTicker.ts')), 'setInterval 없음(분 경계 타이머 하나)');
   assert.ok(/pointer-events: none/.test(read('src/styles/pet.css').slice(read('src/styles/pet.css').indexOf('.focus-leave'))));
   const home = read('src/components/settings/HomePane.tsx'); assert.strictEqual([...home.matchAll(/^\s+id: '([a-z]+)', label:/gm)].length, 8, '홈 칩 8개');
   assert.ok(!/leave-left|leaveLeft|FocusLeaveLeft/.test(home + read('src/utils/settings.ts')), '새 설정 스위치·키 없음');

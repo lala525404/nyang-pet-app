@@ -23,7 +23,10 @@ const SNOW_CODES = (c: number) => (c >= 71 && c <= 77) || c === 85 || c === 86;
 const CLEAR_CODES = (c: number) => c === 0 || c === 1;
 
 export interface WeatherSnapshot { data: WeatherData; at: number }   // at: 값을 받은 시각(ms)
-export interface HelloTimes { lunch?: string | null; leave?: string | null }   // "HH:MM", 꺼져 있거나 없으면 null
+// 점심·퇴근 시간은 홈의 시간 설정값("HH:MM")을 그대로 쓴다(알람이 켜져 있는지와 상관없다). 비어 있거나 형식이 틀리면 앱의 기본값을 쓴다.
+export interface HelloTimes { lunch?: string | null; leave?: string | null }
+export const DEFAULT_LUNCH_TIME = '12:00';   // 앱 기본 점심 시간(PetPage·settings의 lunchTime 기본값과 같다)
+export const DEFAULT_LEAVE_TIME = '18:00';   // 앱 기본 퇴근 시간(leaveTime 기본값)
 export interface HelloCandidate { kind: HelloKind; texts: string[] }
 
 const formatDeg = (n: number): string => { const r = Math.round(n); return r < 0 ? `영하 ${-r}도` : `${r}도`; };
@@ -59,10 +62,10 @@ export function helloCandidates(w: WeatherSnapshot | null, nowMs: number, times:
   if (!w) return [];
   const d = w.data, age = nowMs - w.at, now = new Date(nowMs), out: HelloCandidate[] = [];
   if (age < 0) return [];
-  // 시간이 들어간 예보: 점심·퇴근(설정된 것만), 아직 안 지났고 8시간 이내, 값이 너무 오래되지 않았을 때만
+  // 시간이 들어간 예보: 점심·퇴근(홈 설정값, 비면 기본값), 아직 안 지났고 8시간 이내, 값이 너무 오래되지 않았을 때만
   if (age <= FORECAST_MAX_AGE_MS) {
     for (const [name, hm] of [['lunch', times.lunch], ['leave', times.leave]] as const) {
-      const t = todayAt(now, hm);
+      const t = todayAt(now, hm) ?? todayAt(now, name === 'lunch' ? DEFAULT_LUNCH_TIME : DEFAULT_LEAVE_TIME);
       if (t === null || t <= nowMs || t - nowMs > FORECAST_AHEAD_MS) continue;
       const h = hourAt(d.hours, t); if (!h) continue;
       const k = forecastKind(h); if (!k) continue;
