@@ -13,7 +13,7 @@ import { BIRTH_SNOOZE_DAYS, isSnoozed, readTalkState, snoozedUntil, writeTalkSta
 import type { SettingsPatch, ShowKind, TalkCtx } from '../utils/talk';
 import DayProgressBar from '../components/DayProgressBar';
 import PetTalk, { PetBirthAsk } from '../components/PetTalk';
-import { LEVEL, PROTECT_TAIL_MS, admit, answerBusy as answerBusyFn, answerMs, hoverKeeps, holdStep, isProtected as isProtectedFn, tailFor } from '../utils/bubblePriority';
+import { LEVEL, PROTECT_TAIL_MS, admit, answerBusy as answerBusyFn, answerMs, hoverExtends, holdStep, inConversation as inConversationFn, isProtected as isProtectedFn, tailFor } from '../utils/bubblePriority';
 import type { ActiveBubble, BubbleLevel, ProtectState } from '../utils/bubblePriority';
 import { cityById } from '../data/cities';
 import { eveningText, morningText, weatherLines } from '../utils/weatherText';
@@ -376,7 +376,9 @@ export default function PetPage() {
   const weatherPageRef = useRef(0);                       // 날씨 말풍선에서 지금 보여주는 줄(펫을 누르면 최고/최저 → 강수 확률 순)
   const mixRef = useRef<{ slot: number; kind: BubbleKind | null; last: BubbleKind | null }>({ slot: -1, kind: null, last: null });   // 빈 시간 말풍선 자동 섞기 상태(이번 주기에 고른 종류, 직전 종류)
   const lastPhraseRef = useRef<string | null>(null);      // 직전에 보여 준 한마디(연속 중복 방지)
-  const forceRef = useRef<{ kind: 'fortune' | 'weather'; until: number } | null>(null);   // 펫에게 물어서 지금 보여 주는 운세·날씨
+  const forceRef = useRef<{ kind: 'fortune' | 'weather'; until: number; since: number } | null>(null);   // 펫에게 물어서 지금 보여 주는 운세·날씨(since: 이 줄을 보여 주기 시작한 시각)
+  // 대화 답변(2순위) 한 줄을 붙잡는다: 글자 수에 비례한 시간(5~12초). 마우스 올림 연장은 since부터 총 20초를 넘지 않는다.
+  const setForce = (kind: 'fortune' | 'weather', text: string) => { const t = Date.now(); forceRef.current = { kind, until: t + answerMs(text), since: t }; holdRef.current = true; };
   const singleClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);   // 더블클릭인지 기다리는 한 번 클릭 처리
   const birthAskRequestRef = useRef<() => void>(() => {});   // 운세 말풍선이 나왔을 때 생일 묻기를 요청(엔진이 부른다)
   const [talk, setTalk] = useState<null | 'menu' | 'weather' | 'birth'>(null);   // 펫에게 말 걸기 창(열려 있는 동안만 입력을 받는다)
@@ -386,7 +388,8 @@ export default function PetPage() {
   const protectUntilRef = useRef(0);                           // 답변·안내가 사라진 뒤 보호가 끝나는 시각(답변 20초, 날씨 안내 10초)
   const talkOpenRef = useRef(false);                           // 말 걸기 창이 열려 있음
   const hoverRef = useRef({ over: false, leftAt: 0 });         // 마우스가 펫·답변 말풍선 위에 있음 / 벗어난 시각
-  const holdRef = useRef(false);                               // 보호 중이면 물리 이동 루프가 위치를 고정한다(제자리 바운스만)
+  const quietUntilRef = useRef(0);                             // 대화를 직접 끝낸 직후 평소 말풍선을 잠깐 쉬는 시각
+  const holdRef = useRef(false);                              // 보호 중이면 물리 이동 루프가 위치를 고정한다(제자리 바운스만)
   const [holding, setHolding] = useState(false);               // 제자리 바운스 모션(CSS)용
   const protectState = (): ProtectState => ({ talkOpen: talkOpenRef.current, forceUntil: forceRef.current?.until ?? 0, active: activeBubbleRef.current, protectUntil: protectUntilRef.current });
   const isProt = () => isProtectedFn(protectState(), Date.now());
@@ -597,7 +600,7 @@ export default function PetPage() {
     setBubbleStyle(colorize ? rand(BUBBLE_COLORS) : null);
     const finish = () => {
       const t = Date.now();
-      if (level === LEVEL.ANSWER && hoverKeeps(hoverRef.current.over, hoverRef.current.leftAt, t)) {
+      if (level === LEVEL.ANSWER && hoverExtends(now, hoverRef.current.over, hoverRef.current.leftAt, t)) {   // 마우스 올림 연장(총 20초 한도)
         if (activeBubbleRef.current) activeBubbleRef.current.until = t + 400;
         bubbleTimerRef.current = setTimeout(finish, 400);
         return;
@@ -845,11 +848,11 @@ export default function PetPage() {
       if (!paused) elapsed += dt;
       let kind: IdleKind | null = null, idx = -1, text = '';
       // 펫에게 물어서 지금 보여 주는 운세·날씨(대화 답변, 2순위): 마우스가 펫·말풍선 위에 있으면 계속 붙잡고, 끝나면 보호 시간(20초)으로 넘어간다
-      if (forceRef.current && hoverKeeps(hoverRef.current.over, hoverRef.current.leftAt, now)) forceRef.current.until = Math.max(forceRef.current.until, now + 400);
+      if (forceRef.current && hoverExtends(forceRef.current.since, hoverRef.current.over, hoverRef.current.leftAt, now)) forceRef.current.until = Math.max(forceRef.current.until, now + 400);   // 마우스 올림 연장(총 20초 한도)
       if (forceRef.current && now >= forceRef.current.until) { forceRef.current = null; protectUntilRef.current = Math.max(protectUntilRef.current, now + PROTECT_TAIL_MS[2]); }
       const force = forceRef.current;
       const lowBlocked = isProtectedFn({ talkOpen: talkOpenRef.current, forceUntil: 0, active: activeBubbleRef.current, protectUntil: protectUntilRef.current }, now);   // 답변·안내가 떠 있거나 사라진 뒤 보호 시간
-      if (!paused && !focusRef.current.enabled && (force || (cur.bubbleEnabled !== false && !lowBlocked))) {   // 초집중 모드에서는 말풍선이 뜨지 않는다(시계·진행 바는 따로 표시). 답변은 "말풍선 사용"을 꺼도 보여 준다
+      if (!paused && !focusRef.current.enabled && (force || (cur.bubbleEnabled !== false && !lowBlocked && now >= quietUntilRef.current))) {   // 초집중 모드에서는 말풍선이 뜨지 않는다(시계·진행 바는 따로 표시). 답변은 "말풍선 사용"을 꺼도 보여 준다
         const d = new Date();
         const phase = elapsed % gap, winStart = msgs.length ? show : 0;
         const inIdleWindow = show >= gap || (phase >= winStart && phase < winStart + show);   // 메시지가 있으면 메시지 다음 차례, 없으면 매 주기의 첫 표시 시간
@@ -998,13 +1001,13 @@ export default function PetPage() {
     const msg = '날씨를 아직 못 가져왔어요. 잠시 뒤에 다시 물어봐 줄래요?';
     if (!w) { showBubble(msg, 'normal', false, answerMs(msg), LEVEL.ANSWER); return; }
     // 대화 답변(2순위): 낮은 순위 말풍선을 바로 치우고, 줄마다 글자 수에 비례한 시간(7~15초) 동안 붙잡는다
-    dropBubble(); weatherPageRef.current = 0; forceRef.current = { kind: 'weather', until: Date.now() + answerMs(weatherLines(w.data, new Date())[0]) }; holdRef.current = true;
+    dropBubble(); weatherPageRef.current = 0; setForce('weather', weatherLines(w.data, new Date())[0]);
   }, [showBubble]);
   // 물어서 보여 주는 말풍선이 떠 있던 반응·낮잠 말풍선에 가려지지 않게 먼저 치운다
   const dropBubble = () => { if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current); activeBubbleRef.current = null; setBubble(null); setBubbleStyle(null); setMood('normal'); };
   const showFortuneNow = useCallback(() => {
     dropBubble(); fortunePageRef.current = 0;
-    forceRef.current = { kind: 'fortune', until: Date.now() + answerMs(fortuneFor(new Date(), undefined, settingsRef.current.fortuneBirth).pages[0]) }; holdRef.current = true;
+    setForce('fortune', fortuneFor(new Date(), undefined, settingsRef.current.fortuneBirth).pages[0]);
   }, []);
   const showPhraseNow = useCallback(() => { lastPhraseRef.current = randomPhrase(lastPhraseRef.current); showBubble(lastPhraseRef.current, 'happy', false, answerMs(lastPhraseRef.current), LEVEL.ANSWER); }, [showBubble]);
   const talkShow = useCallback((what: ShowKind) => { if (what === 'weather') void showWeatherNow(); else if (what === 'fortune') showFortuneNow(); else showPhraseNow(); }, [showWeatherNow, showFortuneNow, showPhraseNow]);
@@ -1013,6 +1016,36 @@ export default function PetPage() {
     showBubble(text, 'happy', false, then ? 3500 : answerMs(text), LEVEL.ANSWER);
     if (then) setTimeout(() => talkShow(then), 3700);
   }, [showBubble, talkShow]);
+
+  // 대화 상태를 즉시 끝낸다(꼬리 없이): 말 걸기 창·답변/안내 말풍선·붙잡은 운세·날씨·보호 시간을 모두 치우고 제자리 모션을 끝내 이동과 4순위 말풍선을 바로 재개한다.
+  // 자동 닫힘·펫/빈 곳 더블클릭·창 blur·Esc·닫기가 이 함수로 온다. 답변이 자연스럽게 사라진 경우에는 이 함수가 아니라 showBubble/엔진의 짧은 꼬리(5초/3초)가 적용된다.
+  const endConversation = useCallback(() => {
+    forceRef.current = null; protectUntilRef.current = 0;
+    const a = activeBubbleRef.current;
+    if (a && a.level <= LEVEL.BRIEFING) { if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current); activeBubbleRef.current = null; setBubble(null); setBubbleStyle(null); setMood('normal'); }
+    talkOpenRef.current = false; setTalk(null); setBirthAsk(false);
+    holdRef.current = false; setHolding(false); window.electronAPI?.setPetProtect?.(false);
+    // 떠 있던 운세·날씨 줄(자동 섞기의 같은 칸)이 그대로 남아 보이지 않게 정리하고, 잠깐(1.5초) 쉬었다가 평소 말풍선을 재개한다
+    mixRef.current = { slot: -1, kind: null, last: mixRef.current.last }; fortunePageRef.current = 0; weatherPageRef.current = 0;
+    setIdleBubble(null); quietUntilRef.current = Date.now() + 1500;
+  }, []);
+  // 펫 창 안의 빈 곳(펫·말풍선·말 걸기 창이 아닌 곳)을 더블클릭하면 대화 상태 종료. 창 밖(바탕화면·다른 앱)은 이 앱이 감지할 수 없다.
+  useEffect(() => {
+    const onDbl = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      if (el && el.closest && el.closest('.cat-area, .pet-talk, .bubble, .pet-toast')) return;
+      if (inConversationFn(protectState(), Date.now())) endConversation();
+    };
+    document.addEventListener('dblclick', onDbl);
+    return () => document.removeEventListener('dblclick', onDbl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endConversation]);
+  // 말 걸기 창이 열려 있을 때 포커스가 펫 창 밖으로 나가면(다른 앱·바탕화면 클릭) 대화 상태 종료
+  useEffect(() => {
+    if (!talk) return;
+    window.addEventListener('blur', endConversation);
+    return () => window.removeEventListener('blur', endConversation);
+  }, [talk, endConversation]);
 
   // 운세 말풍선이 나왔을 때 생일이 없으면 한 번 묻는다. "다음에요"(또는 25초 무응답·닫기)는 7일 동안 다시 묻지 않는다.
   birthAskRequestRef.current = () => {
@@ -1170,7 +1203,8 @@ export default function PetPage() {
     const isDoubleClick = now - lastClickTime.current < DOUBLE_CLICK_MS;
     lastClickTime.current = isDoubleClick ? 0 : now;
     if (singleClickTimerRef.current) { clearTimeout(singleClickTimerRef.current); singleClickTimerRef.current = null; }   // 두 번째 클릭이 오면 첫 클릭의 반응은 취소
-    if (isDoubleClick) { openTalk('menu'); return; }
+    // 펫 더블클릭: 대화 상태(말 걸기 창 열림·답변 표시·보호 꼬리 중)면 끝내고, 아니면 말 걸기를 연다
+    if (isDoubleClick) { if (inConversationFn(protectState(), Date.now())) endConversation(); else openTalk('menu'); return; }
     // 한 번 클릭은 더블클릭인지 기다린 뒤(짧은 지연) 처리한다: 더블클릭의 첫 클릭이 반응 말풍선을 띄워 운세·날씨 말풍선을 덮지 않게
     singleClickTimerRef.current = setTimeout(() => {
       singleClickTimerRef.current = null;
@@ -1180,12 +1214,12 @@ export default function PetPage() {
       if (!bubble && !alertActive && !toast && idleBubble?.kind === 'fortune') {
         const pages = fortuneFor(d, undefined, settingsRef.current.fortuneBirth).pages;
         fortunePageRef.current += 1;
-        forceRef.current = { kind: 'fortune', until: t + answerMs(pages[fortunePageRef.current % pages.length]) }; holdRef.current = true;
+        setForce('fortune', pages[fortunePageRef.current % pages.length]);
         return;
       }
       if (!bubble && !alertActive && !toast && idleBubble?.kind === 'weather' && weatherRef.current) {
         const lines = weatherLines(weatherRef.current.data, d);
-        if (weatherPageRef.current < lines.length - 1) { weatherPageRef.current += 1; forceRef.current = { kind: 'weather', until: t + answerMs(lines[weatherPageRef.current]) }; holdRef.current = true; return; }
+        if (weatherPageRef.current < lines.length - 1) { weatherPageRef.current += 1; setForce('weather', lines[weatherPageRef.current]); return; }
         weatherPageRef.current = 0; forceRef.current = null;   // 마지막 줄 다음 클릭은 평소 반응으로(남은 보호 시간 동안은 4순위라 말풍선이 뜨지 않는다)
         protectUntilRef.current = Math.max(protectUntilRef.current, t + PROTECT_TAIL_MS[2]);
       }
@@ -1220,7 +1254,7 @@ export default function PetPage() {
           <span>{toast.msg.replace(/(오전|오후) (?=\d)/g, '$1\u00A0')}</span>
         </div>
       )}
-      {talk && <PetTalk ctx={talkCtx()} start={talk} onApply={saveOwned} onSay={talkSay} onShow={talkShow} onClose={() => setTalk(null)} />}
+      {talk && <PetTalk ctx={talkCtx()} start={talk} onApply={saveOwned} onSay={talkSay} onShow={talkShow} onClose={() => setTalk(null)} onCancel={endConversation} />}
       {birthAsk && !talk && <PetBirthAsk onYes={() => { setBirthAsk(false); setTalk('birth'); }} onLater={birthLater} />}
       <div className="pet-container">
         <div className="bubble-slot" style={{ marginBottom: `${-8 + (petSize - 100) * 0.3}px` }}>

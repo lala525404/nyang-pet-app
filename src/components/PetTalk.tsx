@@ -3,6 +3,7 @@ import { searchPlaces } from '../utils/citySearch';
 import type { PlaceHit } from '../utils/citySearch';
 import { BIRTH_RETRY_TEXT, CONSENT_DETAIL, CONSENT_PATCH, CONSENT_TEXT, CREDIT, GREETING, NOT_FOUND_TEXT, afterConsent, applyCity, birthStep, cityStep, interpret, memoryLine, parseBirthText, stepForWeather } from '../utils/talk';
 import type { SettingsPatch, ShowKind, TalkCtx, TalkStep } from '../utils/talk';
+import { talkIdleExpired } from '../utils/bubblePriority';
 
 // 펫에게 말 걸기 창(더블클릭·트레이 메뉴로 연다): 인사 + 버튼 + 입력칸. 입력은 단어 규칙으로 해석하고(외부 호출 없음) 결과는 펫 말풍선으로 보여준 뒤 창을 닫는다.
 // 사용자가 직접 연 경우에만 열리므로 입력칸에 포커스를 준다. Esc로 닫는다. 대화 내용은 저장하지 않는다.
@@ -21,7 +22,8 @@ export interface PetTalkProps {
   onApply: (patch: SettingsPatch) => void;                  // 설정 저장(날씨·생일·빼기)
   onSay: (text: string, then?: ShowKind) => void;           // 펫 말풍선으로 말하기(then이 있으면 잠시 뒤 이어서 보여 준다)
   onShow: (what: ShowKind) => void;                         // 지금 날씨 / 오늘 운세 / 한마디 보여 주기
-  onClose: () => void;
+  onClose: () => void;                                      // 답변을 보여 주고 창만 닫는다(대화 보호는 답변이 이어 간다)
+  onCancel: () => void;                                     // Esc·닫기(×)·자동 닫힘: 대화 상태를 끝낸다(이동·말풍선 즉시 재개)
 }
 
 const patchToCtx = (c: TalkCtx, p: SettingsPatch): TalkCtx => ({
@@ -30,7 +32,7 @@ const patchToCtx = (c: TalkCtx, p: SettingsPatch): TalkCtx => ({
   weatherCityId: p.weatherCityId ?? c.weatherCityId, fortuneBirth: p.fortuneBirth ?? c.fortuneBirth, offKinds: p.bubbleOffKinds ?? c.offKinds,
 });
 
-export default function PetTalk({ ctx: initialCtx, start = 'menu', onApply, onSay, onShow, onClose }: PetTalkProps) {
+export default function PetTalk({ ctx: initialCtx, start = 'menu', onApply, onSay, onShow, onClose, onCancel }: PetTalkProps) {
   const [ctx, setCtx] = useState(initialCtx);
   const [view, setView] = useState<View>({ mode: 'menu' });
   const [text, setText] = useState('');
@@ -60,10 +62,23 @@ export default function PetTalk({ ctx: initialCtx, start = 'menu', onApply, onSa
   // 사용자가 직접 연 창이라 입력칸에 바로 글자를 칠 수 있게 포커스를 준다
   useEffect(() => { inputRef.current?.focus(); }, [view.mode]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onCancel(); } };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onCancel]);
+  // 입력·클릭·키 입력이 TALK_IDLE_CLOSE_MS(20초) 동안 없으면 자동으로 닫는다. 입력칸에 글자를 치는 중(포커스 + 글자 있음)이면 닫지 않는다.
+  const lastActivityRef = useRef(Date.now());
+  useEffect(() => {
+    const bump = () => { lastActivityRef.current = Date.now(); };
+    const evs = ['keydown', 'pointerdown', 'input', 'wheel'] as const;
+    evs.forEach(e => document.addEventListener(e, bump, true));
+    const timer = setInterval(() => {
+      const i = inputRef.current;
+      const typing = !!i && document.activeElement === i && i.value.length > 0;
+      if (talkIdleExpired(lastActivityRef.current, Date.now(), typing)) onCancel();
+    }, 500);
+    return () => { evs.forEach(e => document.removeEventListener(e, bump, true)); clearInterval(timer); };
+  }, [onCancel]);
 
   const liveHits = useMemo(() => (view.mode === 'ask' && view.ask === 'city' && text.trim() ? searchPlaces(text) : []), [view, text]);
   const weatherOn = ctx.weatherEnabled && ctx.weatherConsent;
@@ -92,7 +107,7 @@ export default function PetTalk({ ctx: initialCtx, start = 'menu', onApply, onSa
     <div className="pet-talk" role="dialog" aria-label="펫에게 말 걸기">
       <div className="pet-talk-head">
         <p className="pet-talk-title">{view.mode === 'menu' ? GREETING : view.mode === 'fortune' ? '운세를 볼까요?' : view.mode === 'consent' ? '날씨를 켤까요?' : view.mode === 'confirm' ? '확인해 주세요' : view.mode === 'pick' ? view.text : view.text}</p>
-        <button type="button" className="pet-talk-x" onClick={onClose} aria-label="닫기">×</button>
+        <button type="button" className="pet-talk-x" onClick={onCancel} aria-label="닫기">×</button>
       </div>
 
       {view.mode === 'menu' && (

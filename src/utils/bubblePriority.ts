@@ -5,13 +5,18 @@
 export type BubbleLevel = 1 | 2 | 3 | 4;
 export const LEVEL = { ALARM: 1, ANSWER: 2, BRIEFING: 3, OTHER: 4 } as const;
 
-// 보호가 끝난 뒤 4순위 말풍선과 펫 이동을 더 쉬는 시간(밀리초): 대화 답변 20초, 아침·퇴근길 날씨 안내 10초
-export const PROTECT_TAIL_MS: Record<2 | 3, number> = { 2: 20000, 3: 10000 };
+// ── 시간 상수(밀리초): 대화 보호와 복귀 속도는 전부 여기서 바꾼다 ──────────────────────────────────────
+// 답변·안내가 자연스럽게 사라진 뒤 4순위 말풍선과 펫 이동을 더 쉬는 시간(꼬리). 직접 끝낸 경우에는 꼬리 없이 바로 재개한다.
+export const PROTECT_TAIL_MS: Record<2 | 3, number> = { 2: 5000, 3: 3000 };   // 2: 대화 답변 5초, 3: 아침·퇴근길 날씨 안내 3초
 // 마우스가 펫이나 말풍선에서 벗어난 뒤 답변이 남아 있는 시간
 export const HOVER_LINGER_MS = 2000;
+// 마우스를 올려 두어 연장하는 한이 있다: 한 말풍선의 총 표시 시간이 이 값을 넘지 않는다(오래 올려 두면 펫이 계속 멈춰 있는 문제 방지)
+export const HOVER_MAX_TOTAL_MS = 20000;
+// 말 걸기 창에 입력·클릭·키 입력이 이 시간 동안 없으면 자동으로 닫고 대화 상태를 끝낸다
+export const TALK_IDLE_CLOSE_MS = 20000;
 
-// 대화 답변 표시 시간: 최소 7초, 글자당 0.15초 추가, 최대 15초. 줄마다(운세·날씨 줄 넘김) 같은 규칙을 쓴다.
-export const ANSWER_MIN_MS = 7000, ANSWER_MAX_MS = 15000, ANSWER_PER_CHAR_MS = 150;
+// 대화 답변 표시 시간: 최소 5초, 글자당 0.12초 추가, 최대 12초. 줄마다(운세·날씨 줄 넘김) 같은 규칙을 쓴다.
+export const ANSWER_MIN_MS = 5000, ANSWER_MAX_MS = 12000, ANSWER_PER_CHAR_MS = 120;
 export function answerMs(text: string): number {
   return Math.min(ANSWER_MAX_MS, Math.max(ANSWER_MIN_MS, ANSWER_MIN_MS + ANSWER_PER_CHAR_MS * Array.from(text).length));
 }
@@ -73,5 +78,13 @@ export function holdStep(s: HoldBody, bounds: Bounds, first: boolean, corr: Corr
 
 // 마우스가 펫·말풍선 위에 있거나 벗어난 지 2초가 안 됐으면 답변은 사라지지 않는다
 export const hoverKeeps = (hovering: boolean, leftAt: number, now: number): boolean => hovering || now - leftAt < HOVER_LINGER_MS;
+// 마우스 올림으로 연장하되 총 표시 시간(since부터)이 HOVER_MAX_TOTAL_MS를 넘으면 더 이상 연장하지 않는다
+export const hoverExtends = (since: number, hovering: boolean, leftAt: number, now: number): boolean => hoverKeeps(hovering, leftAt, now) && now - since < HOVER_MAX_TOTAL_MS;
+
+// 말 걸기 창 자동 닫힘: 마지막 활동 뒤 TALK_IDLE_CLOSE_MS가 지났고, 입력칸에 글자를 치는 중(포커스 + 글자 있음)이 아니면 닫는다
+export const talkIdleExpired = (lastActivity: number, now: number, typing: boolean): boolean => !typing && now - lastActivity >= TALK_IDLE_CLOSE_MS;
+
+// 대화 상태(말 걸기 창 열림·답변/안내 말풍선·보호 꼬리 중)인지: 더블클릭이 "열기"가 아니라 "끝내기"로 동작하는 조건
+export const inConversation = (s: ProtectState, now: number): boolean => isProtected(s, now);
 // 순위별 사라진 뒤 보호 시간(4순위는 없음)
 export const tailFor = (level: BubbleLevel): number => (level === 2 ? PROTECT_TAIL_MS[2] : level === 3 ? PROTECT_TAIL_MS[3] : 0);

@@ -120,7 +120,7 @@ t('주의를 끄는 동작은 모드에서 꺼진다(정적 확인): 반짝임·
   const pet = read('src/pages/PetPage.tsx');
   for (const re of [/!focusRef\.current\.enabled && !stateRef\.current\.escaping && !isSleepingRef\.current && !isProt\(\)\) \{\s*\/\/ 초집중 모드·대화 보호 중에는 반짝임 없음/, /!focusRef\.current\.enabled && !isSleepingRef\.current && !stateRef\.current\.escaping && !isProt\(\)\) \{\s*\/\/ 초집중 모드·대화 보호 중에는 낮잠/,
     /!focusRef\.current\.enabled && !stateRef\.current\.escaping && !isSleepingRef\.current && !isProt\(\)\) \{\s*\/\/ 초집중 모드·대화 보호 중에는 순간이동/, /if \(focusRef\.current\.enabled\) return;\s*\/\/ 초집중 모드에서는 도망가지 않는다/,
-    /!s\.distractEmoji \|\| focusRef\.current\.enabled\) \{ elapsed = 0; return; \}/, /!paused && !focusRef\.current\.enabled && \(force \|\| \(cur\.bubbleEnabled !== false && !lowBlocked\)\)\)/,
+    /!s\.distractEmoji \|\| focusRef\.current\.enabled\) \{ elapsed = 0; return; \}/, /!paused && !focusRef\.current\.enabled && \(force \|\| \(cur\.bubbleEnabled !== false && !lowBlocked && now >= quietUntilRef\.current\)\)\)/,
     /onShowBubble\?\.\(\(text, ms\) => \{ if \(!focusRef\.current\.enabled\) showBubble/, /if \(focusRef\.current\.enabled\) return;\s*\/\/ 초집중 모드에서는 반응 말풍선·파티클 없음/]) assert.match(pet, re, String(re));
   assert.match(read('main.cjs'), /yarDesired = settings\.yarEnabled && settings\.yarInterval > 0 \? settings\.yarInterval : 0;\s*applyYar\(\);/);   // 야르도 멈춘다
 });
