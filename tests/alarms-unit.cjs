@@ -382,7 +382,8 @@ t('알람 목록 화면 연결(정적 확인): 접이식 영역, 새 알람 포�
   const pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmPane.tsx'), 'utf8'), acc = fs.readFileSync(path.join(root, 'src/components/settings/AlarmAccordion.tsx'), 'utf8'), css = fs.readFileSync(path.join(root, 'src/styles/settings.css'), 'utf8');
   assert.match(pane, /useState<string \| null>\(null\);\s*\/\/ 목록에서 "자세히"가 펼쳐진 알람\(한 번에 하나\)/);   // 시작은 모두 접힘
   assert.match(pane, /setOpenId\(o => toggleOpen\(o, alarm\.id\)\)/); assert.match(pane, /aria-expanded=\{open\}/); assert.match(pane, /<AlarmAccordion open=\{open\}/);
-  assert.match(pane, /setOpenId\(o => openAfterAdd\(o, id\)\); setFocusId\(id\)/); assert.match(pane, /alarm-name-\$\{focusId\}/);                     // 새 알람: 펼침 + 이름 칸 포커스
+  assert.match(pane, /const a = newAlarm\(id, new Date\(\)\); update\(\{ alarms: \[\.\.\.alarms, a\] \}\); setFocusId\(id\); jumpTo\(a\);/); assert.match(pane, /alarm-name-\$\{focusId\}/);   // 새 알람: 자세히는 접힌 채, 이름 칸 포커스
+  assert.ok(!/newAlarm\(id[^\n]*setOpenId/.test(pane), '"알람 추가"는 자세히를 펼치지 않는다');
   assert.match(pane, /cloneAlarm\(editing\.id, false\)/);                                                                                         // 편집 창 복제는 목록 펼침을 건드리지 않음
   assert.ok(!/localStorage[^\n]*(open|펼침)/i.test(pane), '펼침 상태는 저장하지 않는다');
   assert.match(acc, /prefers-reduced-motion/); assert.match(acc, /DURATION_MS = 240/); assert.match(acc, /setAttribute\('inert'/); assert.match(acc, /if \(!present\) return null/);
@@ -427,5 +428,33 @@ t('지난 날짜 칸 화면 연결(정적 확인): 만들기 전에 막고 안�
   assert.match(cal, /<p className="st-cal-notice" aria-hidden>\{notice\}<\/p>/); assert.match(cal, /setTimeout\(\(\) => setNotice\(''\), 2400\)/);
   assert.match(cal, /onEdit\(a\.id\)/);                                                                                       // 기존 알람 블록은 지난 날짜에서도 눌러 수정
   assert.match(css, /\.st-cal-cell\[data-pastday\] \{[^}]*not-allowed[^}]*repeating-linear-gradient/); assert.match(css, /\.st-cal-cell\[data-pastday\] \.st-cal-block \{ cursor: pointer; \}/);
+});
+t('v1.4.1 새 알람 기본값: "알람 추가"는 오늘 하루짜리(특정 날짜 한 번), 캘린더 빈 칸 알람도 그 날짜 하루짜리', () => {
+  const today = new Date(2026, 9, 23, 14, 5);
+  const a = S.newAlarm('x1', today);
+  assert.deepStrictEqual(a, { id: 'x1', time: '09:00', enabled: true, repeat: { kind: 'date', date: '2026-10-23' } });
+  assert.strictEqual(S.occursOn(a, today), true); assert.strictEqual(S.occursOn(a, new Date(2026, 9, 24)), false, '내일은 울리지 않는다');
+  assert.strictEqual(S.repeatSummary(a), S.repeatSummary({ repeat: { kind: 'date', date: '2026-10-23' } }));
+  assert.strictEqual(S.newAlarm('x2', new Date(2026, 0, 5), '18:30').repeat.date, '2026-01-05', '월·일은 0으로 채운다');
+  const pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmPane.tsx'), 'utf8');
+  assert.match(pane, /repeat: \{ kind: 'date', date: ymd\(day\) \}/, '캘린더 빈 칸 알람은 그 날짜 하루짜리 그대로');
+});
+t('v1.4.1 홈/알람 탭 정리(정적 확인): 홈은 근무 시작·점심·퇴근 시간만, 알림 상세는 알람 탭, 저장 값은 하나', () => {
+  const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  const home = read('src/components/settings/HomePane.tsx'), pane = read('src/components/settings/AlarmPane.tsx'), notice = read('src/components/settings/NoticeCard.tsx'), pet = read('src/pages/PetPage.tsx');
+  for (const s of ['근무 시작', '점심 시간', '퇴근 시간', 'workStart', 'lunchTime', 'leaveTime']) assert.ok(home.includes(s), `홈: ${s}`);
+  for (const s of ['NoticeCard', 'testBreakTime', 'PreAlertMinutes', 'lunchEnabled', 'leaveEnabled', '미리 알림']) assert.ok(!home.includes(s), `홈에는 알림 상세가 없다: ${s}`);
+  for (const s of ['<NoticeCard id="lunch"', '<NoticeCard id="leave"', "testBreakTime('lunch')", "testBreakTime('leave')", 'lunchPreAlertMinutes', 'leavePreAlertMinutes', 'lunchEnabled', 'leaveEnabled']) assert.ok(pane.includes(s), `알람 탭: ${s}`);
+  assert.ok(!pane.includes('근무 시간') && !pane.includes('workEnd') && !pane.includes('workStart'), '알람 탭의 예전 "근무 시간" 카드(출근/퇴근)는 없다');
+  assert.ok(!/type="time"/.test(notice), '알림 카드는 시각 입력을 두지 않는다(시각은 홈 한 곳에서만 바꾼다)');
+  assert.ok(/getTimeCategory\(cur\.workStart, cur\.leaveTime\)/.test(pet) && !/cur\.workEnd/.test(pet), '버디 시간대 말풍선도 퇴근 시간(leaveTime) 하나를 쓴다');
+  assert.ok(!/id: 'login'/.test(home), '자동 실행은 칩 목록 밖');
+  // 모양(customShape)은 사진 버디에만 적용된다(CatEmoji의 customImage 분기 안에서만). 홈 칩에서 빼고 사진 올리기(자르기)·사진 관리에서 고른다. 저장 키·기본값('round')은 그대로.
+  const catEmoji = read('src/components/CatEmoji.tsx'), animal = read('src/components/settings/AnimalModal.tsx'), crop = read('src/components/CropModal.tsx');
+  assert.ok(!/id: 'shape'|label="버디 모양"|label: '모양'/.test(home), '홈 설정 칸에는 모양이 없다(미리보기는 저장된 모양을 그대로 따른다)');
+  assert.ok(catEmoji.indexOf('customShapeRadius(customShape)') > catEmoji.indexOf('if (customImage)') && catEmoji.indexOf('customShapeRadius(customShape)') < catEmoji.indexOf('HEART_EMOJI) {'), '모양은 사진 분기에서만 쓰인다');
+  assert.ok(/label="버디 모양"[^>]*value=\{s\.customShape\}|value=\{s\.customShape\}[^]*?label="버디 모양"/.test(animal) && animal.includes("patch({ customShape: v })"), '사진 관리에서 현재 모양을 보고 바꾼다');
+  assert.ok(crop.includes('label="버디 모양"') && crop.includes('onShapeChange'), '자르기 화면에서도 현재 모양이 선택된 채로 나온다');
+  assert.ok(read('src/utils/settings.ts').includes("customShape: 'round'"), '기본값 유지');
 });
 console.log(`\n${n}개 통과`);

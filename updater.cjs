@@ -18,7 +18,8 @@ const MESSAGES = {
   title: '최애를 풀어놨습니다',
   available: (v) => `새 버전(v${v})이 나왔어요. 지금 업데이트할까요?`,
   downloaded: '다운로드가 끝났어요. 재시작해서 설치할까요?',
-  checkFailed: '업데이트를 확인하지 못했어요',
+  upToDate: '최신 버전이에요 :)',
+  checkFailed: '업데이트를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요',
   downloadFailed: '업데이트를 받지 못했어요',
   moveToApplications: '응용 프로그램 폴더로 옮겨서 실행해 주세요',
   moveToApplicationsDetail: (v) => `새 버전(v${v})이 나왔지만, 자동 업데이트는 응용 프로그램 폴더에 있는 앱에서만 할 수 있어요.\n앱을 응용 프로그램 폴더로 옮겨서 실행해 주세요.`,
@@ -36,10 +37,22 @@ function installLocationStatus({ platform, exePath, home }) {
   const p = String(exePath || '');
   if (p.includes('/AppTranslocation/')) return { ok: false, reason: 'translocated' };
   if (p.startsWith('/Volumes/')) return { ok: false, reason: 'dmg' };
-  const userApps = home ? path.join(home, 'Applications') + '/' : null;
+  const userApps = home ? path.posix.join(home, 'Applications') + '/' : null;   // 맥 경로 판정이라 어느 OS에서 돌려도 '/' 구분자(Windows의 path.join은 '\\')
   if (p.startsWith('/Applications/') || (userApps && p.startsWith(userApps))) return { ok: true, reason: null };
   return { ok: false, reason: 'location' };
 }
+
+// 확인 실패를 로그에서 구분하려고 종류를 나눈다. 404는 "서버는 답했는데 업데이트 정보(latest.yml)가 없음", 네트워크는 "서버에 닿지 못함".
+//  notfound | network | other
+function classifyUpdateError(err) {
+  const msg = String((err && err.message) || err || '');
+  const code = String((err && err.code) || '');
+  if ((err && err.statusCode === 404) || code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' || /\b404\b|not found/i.test(msg)) return 'notfound';
+  if (/^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|ERR_INTERNET_DISCONNECTED)$/.test(code)
+    || /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|net::ERR_|getaddrinfo|socket hang up|network|timed? ?out/i.test(msg)) return 'network';
+  return 'other';
+}
+const ERROR_KIND_LOG = { notfound: '업데이트 정보 없음(404)', network: '네트워크 오류', other: '기타 오류' };
 
 function createUpdater(deps) {
   const {
@@ -47,7 +60,7 @@ function createUpdater(deps) {
     enabled = false,
     location = { ok: true, reason: null },
     isBusy = () => false,        // 알람·전체화면 알림이 떠 있는지
-    showPrompt = async () => 'later',   // (kind, ctx) → 'yes' | 'later' | 'ok'   kind: available | downloaded | checkFailed | location
+    showPrompt = async () => 'later',   // (kind, ctx) → 'yes' | 'later' | 'ok'   kind: available | downloaded | location
     requestInstallQuit = () => {},      // 재시작 요청: main이 설치 표시를 하고 requestQuit()을 호출한다
     onState = () => {},
     timers = { setTimeout, clearTimeout, setInterval, clearInterval },
@@ -178,17 +191,19 @@ function createUpdater(deps) {
   function onError(err, opts = {}) {
     if (checkErrored && !opts.downloading) return;   // 같은 확인에서 error 이벤트와 reject가 둘 다 오는 경우 한 번만
     checkErrored = true;
-    log('업데이트 오류', err && err.message);
+    const kind = classifyUpdateError(err);
+    log(`업데이트 ${opts.downloading ? '받기' : '확인'} 오류 [${ERROR_KIND_LOG[kind]}]`, err && err.message);
     if (opts.downloading) {
       setState({ status: 'available', version: opts.version, error: MESSAGES.downloadFailed });   // 다시 받을 수 있게 되돌린다
       return;
     }
     if (state.status === 'downloading') { setState({ status: 'available', version: state.version, error: MESSAGES.downloadFailed }); return; }
-    if (checkManual) { setState({ status: 'error', message: MESSAGES.checkFailed }); showPrompt('checkFailed', {}).catch(() => {}); }   // 수동 확인일 때만 알린다
+    // 수동 확인 실패는 설정창 상태 문구로만 알린다(네이티브 대화상자 없음: 대화상자는 알람 스케줄러를 멈출 수 있고, 설정창이 닫혀 있으면 보여 줄 곳도 없다)
+    if (checkManual) setState({ status: 'error', message: MESSAGES.checkFailed, errorKind: kind });
     else setState({ status: 'idle' });                                                                                              // 자동 확인은 조용히
   }
 
   return { init, start, stop, check, download, install, runInstall, getState };
 }
 
-module.exports = { createUpdater, isUpdaterEnabled, installLocationStatus, MESSAGES, FIRST_CHECK_MS, CHECK_INTERVAL_MS, BUSY_RETRY_MS };
+module.exports = { createUpdater, isUpdaterEnabled, installLocationStatus, classifyUpdateError, MESSAGES, FIRST_CHECK_MS, CHECK_INTERVAL_MS, BUSY_RETRY_MS };

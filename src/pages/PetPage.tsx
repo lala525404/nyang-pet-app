@@ -724,7 +724,7 @@ export default function PetPage() {
     const cur = settingsRef.current;
     const special = getSpecialMessages();
     if (isCustomModeRef.current) return rand([...CUSTOM_NAGS, ...special]);
-    const timeMsgs = TIME_MESSAGES[getTimeCategory(cur.workStart, cur.workEnd)] || TIME_MESSAGES.work;
+    const timeMsgs = TIME_MESSAGES[getTimeCategory(cur.workStart, cur.leaveTime)] || TIME_MESSAGES.work;
     return rand([...animalRef.current.nags, ...timeMsgs, ...special]);
   }, []);
   // 졸림 방지 말풍선: 내 메시지가 있으면 그걸 순서대로, 없으면 기존 문구

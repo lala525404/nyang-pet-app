@@ -125,16 +125,38 @@ t('늦게 도착한 대화상자 답은 그 사이 상태가 바뀌었으면 무
 });
 
 // ── 오류 ──────────────────────────────────────────────────────────────────────
-t('오류: 자동 확인은 조용히(대화상자 없음, 상태 idle), 수동 확인만 "확인하지 못했어요"', async () => {
+t('오류: 자동 확인은 조용히(상태 idle), 수동 확인은 설정창 상태 문구로만(네이티브 대화상자 없음)', async () => {
   for (const mode of ['error', 'reject', 'both']) {
     const a = make(); a.au.next = mode; await a.up.check({ manual: false }); await tick();
     assert.deepStrictEqual(a.prompts, [], `자동/${mode}`); assert.strictEqual(a.up.getState().status, 'idle');
     const b = make(); b.au.next = mode; await b.up.check({ manual: true }); await tick();
-    assert.deepStrictEqual(b.prompts.map(p => p.kind), ['checkFailed'], `수동/${mode}: 한 번만`); assert.strictEqual(b.up.getState().status, 'error');
-    assert.strictEqual(b.up.getState().message, '업데이트를 확인하지 못했어요');
+    assert.deepStrictEqual(b.prompts, [], `수동/${mode}: 대화상자를 띄우지 않는다(알람 스케줄러 보호)`); assert.strictEqual(b.up.getState().status, 'error');
+    assert.strictEqual(b.up.getState().message, '업데이트를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요');
+    assert.strictEqual(b.states.filter(s => s.status === 'error').length, 1, `수동/${mode}: 상태는 한 번만 바뀐다`);
   }
   const m = make(); m.au.next = 'reject'; await m.up.check({ manual: false }); m.au.next = 'none'; await m.up.check({ manual: false });
   assert.strictEqual(m.up.getState().status, 'none', '다음 확인에서 정상으로 돌아온다');
+});
+t('오류 종류 구분: 404(업데이트 정보 없음)와 네트워크 오류를 로그에서 다르게 남긴다', async () => {
+  const E = (message, props = {}) => Object.assign(new Error(message), props);
+  assert.strictEqual(U.classifyUpdateError(E('Cannot find latest.yml in the latest release artifacts (https://x/latest.yml): HttpError: 404', { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' })), 'notfound');
+  assert.strictEqual(U.classifyUpdateError(E('x', { statusCode: 404 })), 'notfound');
+  assert.strictEqual(U.classifyUpdateError(E('getaddrinfo ENOTFOUND github.com', { code: 'ENOTFOUND' })), 'network');
+  assert.strictEqual(U.classifyUpdateError(E('connect ECONNREFUSED 127.0.0.1:1')), 'network');
+  assert.strictEqual(U.classifyUpdateError(E('net::ERR_INTERNET_DISCONNECTED')), 'network');
+  assert.strictEqual(U.classifyUpdateError(E('이상한 오류')), 'other');
+  assert.strictEqual(U.classifyUpdateError(null), 'other');
+  for (const [err, tag, kind] of [[E('HttpError: 404', { statusCode: 404 }), '404', 'notfound'], [E('connect ECONNREFUSED', { code: 'ECONNREFUSED' }), '네트워크', 'network']]) {
+    const m = make(); m.au.checkForUpdates = async () => { throw err; };
+    await m.up.check({ manual: true }); await tick();
+    assert.ok(m.logs.some(l => l.includes('확인 오류') && l.includes(tag)), `로그에 ${tag}: ${m.logs.join(' | ')}`);
+    assert.strictEqual(m.up.getState().errorKind, kind); assert.deepStrictEqual(m.prompts, []);
+  }
+});
+t('다시 확인: 실패 뒤 다시 확인하면 새 확인이 시작되고, 성공하면 "최신 버전이에요 :)" 상태(none)로', async () => {
+  const m = make(); m.au.next = 'reject'; await m.up.check({ manual: true });
+  assert.strictEqual(m.up.getState().status, 'error'); m.au.next = 'none'; await m.up.check({ manual: true });
+  assert.strictEqual(m.up.getState().status, 'none'); assert.strictEqual(m.au.calls.check, 2); assert.strictEqual(U.MESSAGES.upToDate, '최신 버전이에요 :)');
 });
 t('다운로드 실패: 대화상자 없이 available로 되돌려 다시 받을 수 있다', async () => {
   const m = make({ answers: { available: 'yes' } }); m.au.next = 'available'; m.au.failDownload = true;
@@ -204,7 +226,8 @@ t('preload·타입·설정창 UI 연결', () => {
   const pre = read('preload.cjs'), d = read('src/electron.d.ts'), page = read('src/pages/SettingsPage.tsx'), ui = read('src/components/settings/UpdateStatus.tsx'), css = read('src/styles/settings.css');
   for (const f of ['getUpdateState', 'checkForUpdates', 'downloadUpdate', 'installUpdate', 'onUpdateState']) { assert.ok(pre.includes(f), `preload ${f}`); assert.ok(d.includes(f), `d.ts ${f}`); }
   assert.match(page, /<small>v\{__APP_VERSION__\}<\/small><UpdateStatus \/>/);                                            // 버전 표시 바로 옆
-  for (const s of ['최신 버전이에요', '새 버전 v', '다운로드 중', '재시작하면 설치돼요', '업데이트 확인', '응용 프로그램 폴더로 옮겨서 실행해 주세요']) assert.ok(ui.includes(s), s);
+  assert.ok(ui.includes(U.MESSAGES.upToDate) && ui.includes(U.MESSAGES.checkFailed) && ui.includes("'다시 확인'"), '상태 문구가 updater 메시지와 같다');
+  for (const s of ['최신 버전이에요 :)', '새 버전 v', '다운로드 중', '재시작하면 설치돼요', '업데이트 확인', '응용 프로그램 폴더로 옮겨서 실행해 주세요']) assert.ok(ui.includes(s), s);
   assert.match(ui, /s\.status === 'disabled'\) return null/);                                                              // 개발 모드에서는 그리지 않는다
   assert.match(css, /\.st-update-btn \{[^}]*var\(--ui-track\)[^}]*var\(--ui-ink\)/);                                      // 토큰 색(라이트·다크 모두)
   assert.ok(!/#[0-9a-fA-F]{3,6}\b/.test(css.split('.st-update {')[1].split('@media (prefers-reduced-motion')[0]), '업데이트 스타일은 하드코딩 색 없이 토큰만');

@@ -22,7 +22,7 @@ export interface PetSettings {
   petVisible: boolean;
   distractEmoji: boolean;
   workStart: string;
-  workEnd: string;
+  workEnd: string;   // 더 이상 쓰지 않는다(퇴근 시간은 leaveTime 하나). 예전 저장값 호환용으로만 남긴다
   animalId: string;
   customImages: (string | null)[];
   distractInterval: number;

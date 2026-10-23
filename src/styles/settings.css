@@ -180,8 +180,13 @@ html[data-theme="dark"] .st-pop { color-scheme: dark; }
 @media (hover: hover) and (pointer: fine) { .st-zone[aria-pressed="false"]:hover { background: var(--ui-track); } }
 
 /* ── 점심 · 퇴근 알림 카드 ── */
-.st-notices { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-content: start; overflow-y: auto; }
-.st-notice { padding: 12px 20px 14px; display: flex; flex-direction: column; }
+/* 홈: 하루 시간(근무 시작·점심·퇴근) 한 줄 + 남는 자리에 자동 실행 토글 */
+.st-times { flex: none; padding: 12px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+.st-times-fields { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.st-times-login { flex: 0 1 280px; min-width: 220px; }
+.st-times-login .st-row { min-height: 44px; }
+/* 알람 탭: 점심·퇴근 알림 카드 두 장을 오른쪽 열에 세로로 */
+.st-notices-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }.st-notice { padding: 12px 20px 14px; display: flex; flex-direction: column; }
 .st-notice-head { display: flex; align-items: center; gap: 8px; }
 .st-notice-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; white-space: nowrap; }
 .st-notice-title .ui-i { width: 18px; height: 18px; color: var(--ui-sub); }
@@ -227,8 +232,6 @@ html[data-theme="dark"] .st-pop { color-scheme: dark; }
 @media (prefers-reduced-motion: reduce) { .st-more .ui-i { transition: none; } }
 .st-empty { padding: 20px 0; font-size: 13px; color: var(--ui-sub); }
 .st-card-foot { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
-.st-work { display: flex; flex-direction: column; gap: 12px; }
-.st-work-times { display: flex; flex-wrap: wrap; gap: 12px 24px; }
 .st-help { max-width: 640px; }
 .st-tipline { display: flex; align-items: center; gap: 16px; min-height: 52px; padding: 8px 0; font-size: 14px; }
 .st-tipline + .st-tipline { border-top: 1px solid var(--ui-line); }
@@ -284,7 +287,6 @@ button.st-slot:active { transform: scale(0.97); }
   .st-buddy { grid-template-columns: minmax(0, 1fr); }
   .st-side { order: -1; }
   .st-stage { flex: none; height: 252px; }
-  .st-notices { flex: none; grid-template-columns: minmax(0, 1fr); overflow: visible; }
   .st-two { grid-template-columns: minmax(0, 1fr); }
 }
 

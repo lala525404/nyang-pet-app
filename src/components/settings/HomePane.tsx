@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CSSProperties, ReactNode } from 'react';
-import { ChevronDown, LogOut, Minus, Plus, Utensils } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import CatEmoji from '../CatEmoji';
 import { Segmented, Switch, RangeInput } from '../ui';
 import { getAnimal } from '../../data/animals';
-import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, cleanBubbleMessages, clampTo, formatInterval, formatTime } from '../../utils/settings';
+import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, cleanBubbleMessages, clampTo, formatInterval } from '../../utils/settings';
 import { usePhotoState } from '../../hooks/usePhotoState';
 import { useLoginItem } from '../../hooks/useLoginItem';
 import { useFocusMode } from '../../hooks/useFocusMode';
-import type { PetSettings } from '../../utils/settings';
 import { MODE_NAME } from './shared';
 import type { Monitor, PaneProps } from './shared';
 
@@ -158,41 +157,6 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   );
 }
 
-function NoticeCard({ id, icon, title, enabled, time, pre, onEnabled, onTime, onPre, onTest, testLabel }: {
-  id: string; icon: ReactNode; title: string; enabled: boolean; time: string; pre: number;
-  onEnabled: (v: boolean) => void; onTime: (v: string) => void; onPre: (v: number) => void;
-  onTest: () => void; testLabel: string;
-}) {
-  const preId = `${id}-pre`;
-  return (
-    <article className="st-card st-notice" data-state={enabled ? 'on' : 'off'}>
-      <div className="st-notice-head">
-        <h3 className="st-notice-title">{icon}<span>{title}</span></h3>
-        <button type="button" className="ui-btn ui-btn--sm" onClick={onTest}>{testLabel}</button>
-        <Switch checked={enabled} onChange={onEnabled} label={`${title} 켜기`} />
-      </div>
-      <div className="st-notice-body">
-        <label className="st-field"><span className="st-field-label">시간</span>
-          <input type="time" className="ui-time" value={time} disabled={!enabled} aria-label={`${title} 시간`}
-            onChange={e => { if (e.target.value) onTime(e.target.value); }} />
-        </label>
-        <div className="st-field"><span className="st-field-label" id={preId}>미리 알림</span>
-          <div className="st-stepper" role="group" aria-labelledby={preId}>
-            <button type="button" className="st-step" disabled={!enabled || pre <= 1} aria-label={`${title} 미리 알림 1분 줄이기`}
-              onClick={() => onPre(Math.max(1, pre - 1))}><Minus className="ui-i" strokeWidth={1.5} aria-hidden /></button>
-            <output className="st-step-val">{pre}분 전</output>
-            <button type="button" className="st-step" disabled={!enabled || pre >= 30} aria-label={`${title} 미리 알림 1분 늘리기`}
-              onClick={() => onPre(Math.min(30, pre + 1))}><Plus className="ui-i" strokeWidth={1.5} aria-hidden /></button>
-          </div>
-        </div>
-      </div>
-      <p className="ui-note st-notice-note">
-        {enabled ? `${formatTime(time)}에 알려요 · ${pre}분 전에 미리 알려요` : '꺼져 있어요'}
-      </p>
-    </article>
-  );
-}
-
 export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onOpenBubble, onUpload }: PaneProps & {
   monitors: Monitor[];
   applyMode: (mode: 'chill' | 'buddy' | 'chaos') => void;
@@ -203,7 +167,6 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   const [openKey, setOpenKey] = useState<string | null>(null);
   const login = useLoginItem();
   const focus = useFocusMode();   // 초집중 모드(메인이 소유·저장: 트레이에서 바꿔도 같이 바뀐다)
-  useEffect(() => { if (openKey === 'login') login.refresh(); }, [openKey, login.refresh]);   // 토글을 열 때마다 OS의 실제 상태를 다시 읽는다
   const [bubbleAdv, setBubbleAdv] = useState(false);   // 말풍선 팝오버의 "고급" 펼침
   const closePop = (key: string) => () => setOpenKey(cur => (cur === key ? null : cur));
 
@@ -377,16 +340,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
         </>
       ),
     },
-    {
-      id: 'shape', label: '모양', value: s.customShape === 'round' ? '원형' : '사각형',
-      body: (
-        <>
-          <Segmented label="버디 모양" value={s.customShape} onChange={v => patch({ customShape: v })}
-            options={[{ value: 'round', label: '원형' }, { value: 'rounded', label: '사각형' }]} />
-          <p className="ui-note">내 사진을 버디로 쓸 때 적용돼요.</p>
-        </>
-      ),
-    },
+    // 버디 모양(원형/사각형)은 사진 버디에만 적용되므로 홈 칩에서 뺐다. 사진 올리기(자르기 화면)와 사진 관리(AnimalModal)에서 고른다.
     // 사진이 2장 이상일 때만 보인다. 켜기/끄기와 주기, 기존 imageRotateInterval 키를 그대로 쓴다.
     ...(s.useCustomMode && images.length >= 2 ? [{
       id: 'rotate', label: '사진 교체',
@@ -404,28 +358,9 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
         </>
       ),
     }] : []),
-    // 컴퓨터를 켜면 자동 실행: 기본 꺼짐. 켬/끔은 저장하지 않고 OS의 실제 상태를 읽고 쓴다. 쓸 수 없는 환경(개발·포터블·응용 프로그램 폴더 밖)에서는 꺼 둔 채 이유를 보여 준다.
-    ...(login.state ? [{
-      id: 'login', label: '자동 실행', value: !login.state.supported ? '사용 불가' : login.state.enabled ? '켜짐' : '꺼짐',
-      body: (
-        <>
-          <div className="st-row"><span>컴퓨터를 켜면 자동 실행</span><Switch checked={login.state.enabled} disabled={!login.state.supported} onChange={login.set} label="컴퓨터를 켜면 자동 실행" /></div>
-          <p className="ui-note">{login.state.note}</p>
-        </>
-      ),
-    }] : []),
   ];
 
   const bobSeconds = (2.8 - s.moveSpeed * 0.22).toFixed(2);
-  const stat = (label: string, key: 'lunch' | 'leave') => ({
-    enabled: s[`${key}Enabled` as keyof PetSettings] as boolean,
-    time: s[`${key}Time` as keyof PetSettings] as string,
-    pre: (s[`${key}PreAlertMinutes` as keyof PetSettings] as number) || 5,
-    label,
-  });
-  const lunch = stat('점심 알림', 'lunch');
-  const leave = stat('퇴근 알림', 'leave');
-
   return (
     <section className="st-pane st-home">
       <article className="st-card st-buddy">
@@ -469,16 +404,31 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
         </div>
       </article>
 
-      <div className="st-notices">
-        <NoticeCard id="lunch" icon={<Utensils className="ui-i" strokeWidth={1.5} aria-hidden />} title={lunch.label} enabled={lunch.enabled}
-          time={lunch.time} pre={lunch.pre} testLabel="점심 테스트"
-          onEnabled={v => update({ lunchEnabled: v })} onTime={v => update({ lunchTime: v })}
-          onPre={v => update({ lunchPreAlertMinutes: v })} onTest={() => window.electronAPI?.testBreakTime('lunch')} />
-        <NoticeCard id="leave" icon={<LogOut className="ui-i" strokeWidth={1.5} aria-hidden />} title={leave.label} enabled={leave.enabled}
-          time={leave.time} pre={leave.pre} testLabel="퇴근 테스트"
-          onEnabled={v => update({ leaveEnabled: v })} onTime={v => update({ leaveTime: v })}
-          onPre={v => update({ leavePreAlertMinutes: v })} onTest={() => window.electronAPI?.testBreakTime('leave')} />
-      </div>
+      {/* 홈에는 하루 시간만 둔다. 점심·퇴근 알림의 세부 설정은 알람 탭에 있다(시각 저장 값은 하나). */}
+      <article className="st-card st-times">
+        <div className="st-times-fields">
+          <label className="st-field"><span className="st-field-label">근무 시작</span>
+            <input type="time" className="ui-time" value={s.workStart} aria-label="근무 시작 시간"
+              onChange={e => { if (e.target.value) update({ workStart: e.target.value }); }} />
+          </label>
+          <label className="st-field"><span className="st-field-label">점심 시간</span>
+            <input type="time" className="ui-time" value={s.lunchTime} aria-label="점심 시간"
+              onChange={e => { if (e.target.value) update({ lunchTime: e.target.value }); }} />
+          </label>
+          <label className="st-field"><span className="st-field-label">퇴근 시간</span>
+            <input type="time" className="ui-time" value={s.leaveTime} aria-label="퇴근 시간"
+              onChange={e => { if (e.target.value) update({ leaveTime: e.target.value }); }} />
+          </label>
+        </div>
+        {/* 자동 실행: 칩 목록에서 빼서 이 카드의 남는 자리에 둔다. 켬/끔은 저장하지 않고 OS의 실제 상태를 읽고 쓴다. 쓸 수 없는 환경에서는 꺼 둔 채 이유를 보여 준다. */}
+        {login.state && (
+          <div className="st-times-login">
+            <div className="st-row"><span>컴퓨터를 켜면 자동 실행</span>
+              <Switch checked={login.state.enabled} disabled={!login.state.supported} onChange={login.set} label="컴퓨터를 켜면 자동 실행" /></div>
+            {(!login.state.supported || login.state.note) && <p className="ui-note">{login.state.note}</p>}
+          </div>
+        )}
+      </article>
     </section>
   );
 }

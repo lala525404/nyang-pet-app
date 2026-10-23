@@ -8,6 +8,11 @@ export type AlarmRepeat =
   | { kind: 'week'; weekStart: string; days: number[] }; // weekStart는 그 주 월요일 YYYY-MM-DD
 
 export const MAX_ALARMS = 50;
+
+// "알람 추가" 버튼으로 만드는 새 알람: 반복 기본값은 "특정 날짜 한 번"(날짜는 오늘). 캘린더 빈 칸에서 만드는 알람도 그 날짜 하루짜리라 같은 모양이다.
+export function newAlarm(id: string, today: Date, time = '09:00'): Alarm {
+  return { id, time, enabled: true, repeat: { kind: 'date', date: ymd(today) } };
+}
 export const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;   // 화면 순서: 월~일
 export const DAY_PRESETS: { label: string; days: number[] }[] = [

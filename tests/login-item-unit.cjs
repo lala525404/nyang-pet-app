@@ -82,7 +82,8 @@ t('연결(정적 확인): IPC·preload·타입·기본 꺼짐 UI·빌드 파일'
   const main = read('main.cjs'), pre = read('preload.cjs'), d = read('src/electron.d.ts'), home = read('src/components/settings/HomePane.tsx'), hook = read('src/hooks/useLoginItem.ts'), pkg = JSON.parse(read('package.json'));
   assert.match(main, /ipcMain\.handle\('login-item-get', \(\) => loginItem\.readLoginItem\(loginItemDeps\(\)\)\);/); assert.match(main, /ipcMain\.handle\('login-item-set', \(_e, enabled\) => loginItem\.writeLoginItem\(loginItemDeps\(\), enabled === true\)\);/);
   assert.ok(pre.includes("'login-item-get'") && pre.includes("'login-item-set'")); assert.ok(d.includes('getLoginItem') && d.includes('setLoginItem') && d.includes('LoginItemState'));
-  for (const s of ['컴퓨터를 켜면 자동 실행', "id: 'login', label: '자동 실행'", "openKey === 'login'", 'login.refresh']) assert.ok(home.includes(s), s);
+  for (const s of ['컴퓨터를 켜면 자동 실행', 'useLoginItem()', 'login.set', 'st-times-login']) assert.ok(home.includes(s), s);
+  assert.ok(!home.includes("id: 'login'"), '자동 실행은 칩 목록이 아니라 홈 하단 시간 카드의 남는 자리에 둔다');
   assert.ok(!/localStorage|petSettings/.test(hook), '켬/끔 값을 앱 안에 저장하지 않는다(OS 상태가 기준)');
   assert.match(hook, /window\.addEventListener\('focus', refresh\)/);
   assert.ok(pkg.build.files.includes('login-item.cjs'));

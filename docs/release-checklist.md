@@ -6,8 +6,8 @@
 ## 0. 꼭 지킬 규칙
 
 - **릴리스는 draft도 prerelease도 아니어야 한다.** 업데이터는 "최신(latest)" 정식 릴리스만 본다. draft나 prerelease로 두면 사용자에게 보이지 않는다.
-  (버전이 `1.4.0-rc1`처럼 시험판이면 앱이 알리지 않는다. 시험판은 prerelease로 올린다.)
-- **태그는 `v` + `package.json`의 버전**이다. 예: 버전 `1.4.0` → 태그 `v1.4.0`.
+  (버전이 `1.4.1-rc1`처럼 시험판이면 앱이 알리지 않는다. 시험판은 prerelease로 올린다.)
+- **태그는 `v` + `package.json`의 버전**이다. 예: 버전 `1.4.1` → 태그 `v1.4.1`.
 - **에셋 이름은 공백 없는 ASCII**여야 한다(한글·공백 금지). GitHub는 공백을 `.`으로 바꿔 올리기 때문에 `latest*.yml`에 적힌 이름과 달라져 404가 난다.
   이미 `package.json`에 `choeae-app-Setup-${version}.exe`, `${productName}-${version}-${arch}.dmg`, `${productName}-${version}-${arch}-mac.zip`으로 고정돼 있으니 **`productName`·`appId`·artifactName을 바꾸지 않는다**
   (`appId`·`productName`을 바꾸면 사용자 데이터 폴더(userData) 경로와 설치 위치가 달라질 수 있다).

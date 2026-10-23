@@ -1,38 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, LogOut, Plus, Trash2, Utensils } from 'lucide-react';
 import { Switch } from '../ui';
 import AlarmAccordion from './AlarmAccordion';
 import AlarmCalendar from './AlarmCalendar';
 import AlarmDetailFields from './AlarmDetailFields';
 import AlarmEditor from './AlarmEditor';
-import { formatTime } from '../../utils/settings';
+import NoticeCard from './NoticeCard';
 import { ALARM_NAME_MAX } from '../../utils/alarmText';
-import { MAX_ALARMS, isPastOneShot, parseYmd, repeatSummary, ymd } from '../../utils/alarmSchedule';
+import { MAX_ALARMS, isPastOneShot, newAlarm, parseYmd, repeatSummary, ymd } from '../../utils/alarmSchedule';
 import { openAfterAdd, openAfterRemove, openIfExists, toggleOpen } from '../../utils/alarmList';
 import type { Alarm } from '../../utils/settings';
 import type { PaneProps } from './shared';
 
 const newId = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const LIMIT_NOTE = `알람은 최대 ${MAX_ALARMS}개까지 만들 수 있어요. 지난 알람을 정리하거나 쓰지 않는 알람을 지워 주세요.`;
-
-// 기존 TimePreview 판정 그대로, 이모지만 뺐다
-function workStatus(workStart: string, workEnd: string, now: Date): string {
-  const total = now.getHours() * 60 + now.getMinutes();
-  const [sh, sm] = workStart.split(':').map(Number);
-  const [eh, em] = workEnd.split(':').map(Number);
-  const startMin = sh * 60 + sm, endMin = eh * 60 + em;
-  let zone: string;
-  if (total < 5 * 60)            zone = '새벽';
-  else if (total < startMin)     zone = '출근 전';
-  else if (total < 12 * 60)      zone = '오전 근무 중';
-  else if (total < 13 * 60)      zone = '점심시간';
-  else if (total < endMin - 60)  zone = '오후 근무 중';
-  else if (total < endMin)       zone = '퇴근 임박!';
-  else if (total < endMin + 60)  zone = '퇴근 시간!';
-  else if (total < 21 * 60)      zone = '저녁';
-  else                           zone = '밤';
-  return `지금 ${formatTime(`${now.getHours()}:${now.getMinutes()}`)} · ${zone}`;
-}
 
 export default function AlarmPane({ settings: s, update }: PaneProps) {
   const alarms = s.alarms || [];
@@ -97,7 +78,7 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
   const toolbar = (
     <div className="st-card-foot">
       <button type="button" className="ui-btn ui-btn--primary" disabled={atLimit}
-        onClick={() => { const id = newId(); update({ alarms: [...alarms, { id, time: '09:00', enabled: true }] }); setOpenId(o => openAfterAdd(o, id)); setFocusId(id); }}>
+        onClick={() => { const id = newId(); const a = newAlarm(id, new Date()); update({ alarms: [...alarms, a] }); setFocusId(id); jumpTo(a); }}>
         <Plus className="ui-i" strokeWidth={1.5} aria-hidden />
         <span>{atLimit ? `최대 ${MAX_ALARMS}개` : '알람 추가'}</span>
       </button>
@@ -109,21 +90,18 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
       <h3 className="st-h">일반 알람 <span className="st-count">{alarms.length} / {MAX_ALARMS}</span></h3>
     </div>
   );
+  // 점심·퇴근 알림의 자세한 설정(홈 탭에서 옮겨 왔다). 시각은 홈 탭 한 곳에서만 바꾼다.
   const work = (
-    <article className="st-card st-work">
-      <h3 className="st-h">근무 시간</h3>
-      <div className="st-work-times">
-        <label className="st-field"><span className="st-field-label">출근</span>
-          <input type="time" className="ui-time" value={s.workStart} aria-label="출근 시간"
-            onChange={e => { if (e.target.value) update({ workStart: e.target.value }); }} />
-        </label>
-        <label className="st-field"><span className="st-field-label">퇴근</span>
-          <input type="time" className="ui-time" value={s.workEnd} aria-label="퇴근 시간"
-            onChange={e => { if (e.target.value) update({ workEnd: e.target.value }); }} />
-        </label>
-      </div>
-      <p className="ui-note">{workStatus(s.workStart, s.workEnd, now)}</p>
-    </article>
+    <div className="st-notices-col">
+      <NoticeCard id="lunch" icon={<Utensils className="ui-i" strokeWidth={1.5} aria-hidden />} title="점심 알림" enabled={s.lunchEnabled}
+        time={s.lunchTime} pre={s.lunchPreAlertMinutes || 5} testLabel="점심 테스트"
+        onEnabled={v => update({ lunchEnabled: v })} onPre={v => update({ lunchPreAlertMinutes: v })}
+        onTest={() => window.electronAPI?.testBreakTime('lunch')} />
+      <NoticeCard id="leave" icon={<LogOut className="ui-i" strokeWidth={1.5} aria-hidden />} title="퇴근 알림" enabled={s.leaveEnabled}
+        time={s.leaveTime} pre={s.leavePreAlertMinutes || 5} testLabel="퇴근 테스트"
+        onEnabled={v => update({ leaveEnabled: v })} onPre={v => update({ leavePreAlertMinutes: v })}
+        onTest={() => window.electronAPI?.testBreakTime('leave')} />
+    </div>
   );
 
   return (

@@ -557,7 +557,6 @@ async function promptUpdate(kind, ctx) {
   const spec = {
     available:   { message: UPDATE_MESSAGES.available(ctx.version), buttons: [B.updateNow, B.later] },
     downloaded:  { message: UPDATE_MESSAGES.downloaded, buttons: [B.restart, B.later] },
-    checkFailed: { message: UPDATE_MESSAGES.checkFailed, buttons: [B.ok] },
     location:    { message: UPDATE_MESSAGES.moveToApplications, detail: UPDATE_MESSAGES.moveToApplicationsDetail(ctx.version), buttons: [B.ok] },
   }[kind];
   const { response } = await dialog.showMessageBox(parent, {   // 부모 창에 붙인다(위 주석: 부모 없이 띄우면 알람 타이머가 멈춘다)

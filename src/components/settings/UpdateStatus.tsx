@@ -7,12 +7,12 @@ import type { UpdateState } from '../../electron';
 const NOTE: Record<string, (s: UpdateState) => string> = {
   idle: () => '',
   checking: () => '확인 중…',
-  none: () => '최신 버전이에요',
+  none: () => '최신 버전이에요 :)',
   available: (s) => s.error ?? `새 버전 v${s.version}이 있어요`,
   blocked: () => '응용 프로그램 폴더로 옮겨서 실행해 주세요',
   downloading: (s) => `다운로드 중 ${s.percent ?? 0}%`,
   downloaded: (s) => (s.pendingInstall ? '알림이 끝나면 재시작해요' : '재시작하면 설치돼요'),
-  error: (s) => s.message ?? '업데이트를 확인하지 못했어요',
+  error: (s) => s.message ?? '업데이트를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요',
 };
 
 export default function UpdateStatus() {

@@ -5,6 +5,7 @@ export interface UpdateState {
   percent?: number;
   message?: string;
   error?: string;
+  errorKind?: 'notfound' | 'network' | 'other';
   reason?: string | null;
   pendingInstall?: boolean;
 }

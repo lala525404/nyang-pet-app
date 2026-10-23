@@ -78,6 +78,11 @@ export default function AnimalModal({ settings: s, update, patch, onClose, onPic
                 </div>
               ))}
             </div>
+            <div className="st-stack">
+              <p className="st-lab">버디 모양</p>
+              <Segmented label="버디 모양" value={s.customShape} onChange={v => patch({ customShape: v })}
+                options={[{ value: 'round', label: '원형' }, { value: 'rounded', label: '사각형' }]} />
+            </div>
             {activeCount === 1 && <p className="ui-note">사진을 더 올리면 번갈아 보여줄 수 있어요.</p>}
             {activeCount >= 2 && <p className="ui-note">대표 사진은 점심·퇴근·알람 알림 카드에 나와요.</p>}
             <p className="ui-note">PNG / JPG / WEBP / SVG · 자동으로 정사각형 512px 이하로 저장 · 최대 5MB</p>
