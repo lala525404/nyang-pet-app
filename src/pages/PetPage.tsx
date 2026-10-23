@@ -376,7 +376,8 @@ export default function PetPage() {
   const areaRef = useRef<Rect>(computeArea(null, -1));
   const [focus, setFocus] = useState<FocusModeState>({ enabled: false, seconds: false, anchor: null });   // 초집중 모드(메인이 소유)
   const focusRef = useRef(focus);
-  const focusPausedRef = useRef(false);   // 켜져 있는 동안 기본 물리 루프를 쉬게 한다
+  const focusPausedRef = useRef(false);   // 켜져 있는 동안 기본 물리 루프를 쉬게 한다(초집중 모드 또는 우클릭 퀵 메뉴가 열려 있는 동안)
+  const quickOpenRef = useRef(false);     // 우클릭 퀵 메뉴가 열려 있는 동안 true: 초집중 모드와 같은 경로로 이동·순간이동·도망·랜덤 움직임을 멈추고 모든 말풍선을 쉰다
   const zoneDropsRef = useRef<number[]>([]);   // 구역 밖 드롭 시각
   const zoneHintAtRef = useRef(0);             // 마지막 안내 시각 (메모리 기준)
   const [petSize, setPetSize] = useState(settings.size || 100);
@@ -406,7 +407,7 @@ export default function PetPage() {
       let next = incoming;
       const prev = focusRef.current;
       const first = !focusSeenRef.current; focusSeenRef.current = true;
-      focusRef.current = next; focusPausedRef.current = next.enabled;
+      focusRef.current = next; focusPausedRef.current = next.enabled || quickOpenRef.current;
       if (next.enabled && (first || !prev.enabled)) {
         const st = stateRef.current;
         if (first && next.anchor) { st.wx = next.anchor.x; st.wy = next.anchor.y; api?.movePetWindow(next.anchor.x, next.anchor.y); }   // 앱을 다시 켰을 때: 저장된 자리로
@@ -535,6 +536,7 @@ export default function PetPage() {
 
   // ── 말풍선 ────────────────────────────────────────────────────────
   const showBubble = useCallback((text: string, newMood = 'normal', colorize = false, ms = 4000) => {
+    if (quickOpenRef.current) return;   // 퀵 메뉴가 열려 있는 동안은 어떤 경로의 말풍선도 쉰다(졸림 방지·반응·안내 포함)
     if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
     setBubble(text);
     setBubbleKey(k => k + 1);
@@ -605,7 +607,7 @@ export default function PetPage() {
     const scheduleSparkle = () => {
       const delay = 15000 + Math.random() * 15000;
       return setTimeout(() => {
-        if (!focusRef.current.enabled && !stateRef.current.escaping && !isSleepingRef.current) {   // 초집중 모드에서는 반짝임 없음
+        if (!focusRef.current.enabled && !quickOpenRef.current && !stateRef.current.escaping && !isSleepingRef.current) {   // 초집중 모드·퀵 메뉴가 열린 동안에는 반짝임 없음
           spawnSparkles();
         }
         sparkleTimerRef.current = scheduleSparkle();
@@ -629,7 +631,7 @@ export default function PetPage() {
       mouseIdleTimerRef.current = setTimeout(() => {
         mouseMovedRef.current = false;
         // 마우스 30초 정지 → 낮잠
-        if (!focusRef.current.enabled && !isSleepingRef.current && !stateRef.current.escaping) {   // 초집중 모드에서는 낮잠 연출 없음
+        if (!focusRef.current.enabled && !quickOpenRef.current && !isSleepingRef.current && !stateRef.current.escaping) {   // 초집중 모드·퀵 메뉴가 열린 동안에는 낮잠 연출 없음
           isSleepingRef.current = true;
           setMotionClass('motion-sleep');
           showBubble('z z z 💤', 'sleepy');
@@ -648,7 +650,7 @@ export default function PetPage() {
     const scheduleTeleport = () => {
       const delay = 40000 + Math.random() * 40000;
       return setTimeout(() => {
-        if (!focusRef.current.enabled && !stateRef.current.escaping && !isSleepingRef.current) {   // 초집중 모드에서는 순간이동 없음
+        if (!focusRef.current.enabled && !quickOpenRef.current && !stateRef.current.escaping && !isSleepingRef.current) {   // 초집중 모드·퀵 메뉴가 열린 동안에는 순간이동 없음
           // 연기 효과 후 반대편으로 이동
           setMotionClass('motion-teleport-out');
           setTimeout(async () => {
@@ -682,7 +684,7 @@ export default function PetPage() {
 
   // ── 도망 - 마우스가 버디 위에 2초 올려두면 도망 ────────────────────
   const handleMouseEnter = useCallback(() => {
-    if (focusRef.current.enabled) return;   // 초집중 모드에서는 도망가지 않는다
+    if (focusRef.current.enabled || quickOpenRef.current) return;   // 초집중 모드·퀵 메뉴가 열린 동안에는 도망가지 않는다
     if (mouseNearTimer.current) clearTimeout(mouseNearTimer.current);
     mouseNearTimer.current = setTimeout(() => {
       if (!stateRef.current.escaping) {
@@ -760,10 +762,13 @@ export default function PetPage() {
   // ★ 알림 상태: 전체화면 알림(점심·퇴근·알람 카드, 야르)과 미리 알림 토스트가 떠 있는 동안 말풍선을 숨긴다
   useEffect(() => { alertRef.current = alertActive; }, [alertActive]);
   useEffect(() => { toastActiveRef.current = !!toast; }, [toast]);
-  // 우클릭 퀵 메뉴가 열려 있는 동안에도 평소 말풍선은 쉰다(시간도 함께 멈췄다가 닫히면 이어서 진행)
-  const quickOpenRef = useRef(false);
+  // 우클릭 퀵 메뉴가 열려 있는 동안: 펫은 제자리에 있고(초집중 모드의 물리 루프 정지 플래그 재사용) 모든 말풍선은 쉰다. 닫히면 바로 원래대로(평소 말풍선은 시간도 함께 멈췄다가 이어서 진행).
   useEffect(() => {
-    const off = window.electronAPI?.onQuickState?.(open => { quickOpenRef.current = open; });
+    const off = window.electronAPI?.onQuickState?.(open => {
+      quickOpenRef.current = open;
+      focusPausedRef.current = focusRef.current.enabled || open;
+      if (open) { setBubble(null); setIdleBubble(null); }
+    });
     return () => { if (typeof off === 'function') off(); };
   }, []);
   useEffect(() => {
@@ -861,6 +866,7 @@ export default function PetPage() {
 
     const timer = setInterval(() => {
       const s = settingsRef.current;
+      if (quickOpenRef.current) return;   // 퀵 메뉴가 열린 동안은 졸림 방지 이모지·말풍선도 쉰다(시간은 멈췄다가 닫히면 이어서)
       if (!s.distractEmoji || focusRef.current.enabled) { elapsed = 0; return; }   // 초집중 모드에서는 졸림 방지 이모지·말풍선 없음
       if (stateRef.current.escaping) return;
 

@@ -260,6 +260,20 @@ t('방사형 모션·색(정적 확인): CSS 애니메이션만(rAF 루프 없�
   assert.ok(/ipcMain\.on\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main) && /closeQuickMenu\(true\); return; \}   \/\/ 열려 있을 때의 우클릭은 닫는다/.test(main), '재우클릭은 닫는다');
   assert.ok(/if \(st && st\.closing\) return;/.test(main) && /\(quickState && quickState\.closing\)\) return;/.test(main), '닫히는 중의 반복 닫기·눌림은 무시(상태가 꼬이지 않음)');
 });
+t('퀵 메뉴가 열린 동안 펫은 제자리(정적 확인): 초집중 모드의 정지 플래그 재사용, 순간이동·도망·낮잠·반짝임·졸림 방지 멈춤, 모든 말풍선 경로는 showBubble 한 곳에서 쉼, 클릭·드래그 코드는 그대로', () => {
+  const pet = read('src/pages/PetPage.tsx');
+  assert.ok(/const quickOpenRef = useRef\(false\)/.test(pet) && /focusPausedRef\.current = focusRef\.current\.enabled \|\| open/.test(pet), '열림 알림이 같은 정지 플래그(focusPausedRef)를 켠다');
+  assert.ok(/focusPausedRef\.current = next\.enabled \|\| quickOpenRef\.current/.test(pet), '초집중 모드를 켜고 끄는 중에도 메뉴가 열려 있으면 계속 정지');
+  assert.ok(/const showBubble = useCallback\([^\n]*\n\s*if \(quickOpenRef\.current\) return;/.test(pet), '모든 말풍선 경로가 지나는 showBubble에서 막는다');
+  for (const marker of ['반짝임 없음', '낮잠 연출 없음', '순간이동 없음']) assert.ok(new RegExp(`!quickOpenRef\\.current[^\\n]*${marker}`).test(pet), marker);
+  assert.ok(/if \(focusRef\.current\.enabled \|\| quickOpenRef\.current\) return;   \/\/ 초집중 모드·퀵 메뉴가 열린 동안에는 도망가지 않는다/.test(pet), '도망 없음');
+  assert.ok(/if \(quickOpenRef\.current\) return;   \/\/ 퀵 메뉴가 열린 동안은 졸림 방지/.test(pet), '졸림 방지 멈춤');
+  assert.ok(/if \(open\) \{ setBubble\(null\); setIdleBubble\(null\); \}/.test(pet), '열리면 떠 있던 말풍선도 치운다');
+  assert.ok(/const paused = alertRef\.current \|\| toastActiveRef\.current \|\| quickOpenRef\.current/.test(pet), '평소 말풍선 시간도 멈췄다가 이어서');
+  // 클릭·더블클릭·드래그 코드는 이 변경에서 건드리지 않았다: 핸들러 본문이 그대로
+  assert.ok(/const handleMouseDown = \(e: React\.MouseEvent\) => \{\s*if \(e\.button !== 0\) return;\s*e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*isDragging\.current = true;/.test(pet), '드래그 시작 코드 그대로');
+  assert.ok(/onMouseDown=\{handleMouseDown\}\s*onClick=\{handleCatClick\}\s*onMouseEnter=\{handleMouseEnter\}\s*onMouseLeave=\{handleMouseLeave\}/.test(pet), '클릭·호버 연결 그대로');
+});
 t('화면: 아이콘은 이모지가 아니라 lucide, 새 홈 칩·설정 스위치 없음(칩 8개 유지), 한글 깨짐 없음', () => {
   const page = read('src/pages/QuickPage.tsx'), css = read('src/styles/quick.css'), home = read('src/components/settings/HomePane.tsx');
   assert.ok(!/[\u{1F000}-\u{1FFFF}☀-➿]/u.test(page), '이모지 없음'); assert.ok(/from 'lucide-react'/.test(page));
