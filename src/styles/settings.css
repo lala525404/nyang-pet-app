@@ -88,6 +88,11 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 .st-lab { font-size: 12px; color: var(--ui-sub); }
 .st-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .st-stack { display: flex; flex-direction: column; gap: 12px; }
+/* 하위 옵션(초집중 모드 → 초 표시): 들여쓰기 + 왼쪽 연결선. 상위 모드가 꺼져 있으면 흐리게(값은 그대로 바꿀 수 있다). 행 높이는 st-row(44px) 그대로 */
+.st-subopt { position: relative; margin-left: 12px; padding-left: 14px; display: flex; flex-direction: column; gap: 0; transition: opacity 160ms var(--ui-ease-out); }
+.st-subopt::before { content: ''; position: absolute; left: 0; top: -8px; bottom: 14px; width: 8px; border-left: 1.5px solid var(--ui-line); border-bottom: 1.5px solid var(--ui-line); border-bottom-left-radius: 6px; pointer-events: none; }
+.st-subopt[data-off] { opacity: 0.55; }
+.st-subopt .ui-note { margin: -4px 0 0; }
 /* 사진 관리: 버디 모양 · 사진 교체를 한 줄에 반반. 세그먼트 높이 40px(버튼 34 + 안쪽 여백 3×2), 좁아도 줄바꿈 없이 들어가게 글자·여백을 조금 줄인다 */
 .st-photo-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
 .st-photo-opts[data-single] { grid-template-columns: minmax(0, 1fr); }

@@ -212,7 +212,11 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
             <>
               <div className="st-row"><span>초집중 모드</span><Switch checked={focus.state.enabled} onChange={v => focus.set({ enabled: v })} label="초집중 모드" /></div>
               <p className="ui-note">한자리에서 조금만 움직이고 시계만 보여요. 알람은 그대로 울려요</p>
-              <div className="st-row"><span>시계에 초 표시</span><Switch checked={focus.state.seconds} onChange={v => focus.set({ seconds: v })} label="시계에 초 표시" /></div>
+              {/* 초 표시는 초집중 모드의 하위 옵션이다(초집중 시계에만 쓰인다). 모드가 꺼져 있으면 흐리게 보이지만 값은 바꿀 수 있다(저장값·기본값 그대로). */}
+              <div className="st-subopt" data-off={focus.state.enabled ? undefined : ''}>
+                <div className="st-row"><span>초 표시</span><Switch checked={focus.state.seconds} onChange={v => focus.set({ seconds: v })} label="초집중 모드 시계에 초 표시" /></div>
+                <p className="ui-note">초집중 모드에서 표시돼요</p>
+              </div>
             </>
           )}
         </>
