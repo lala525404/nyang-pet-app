@@ -3,7 +3,10 @@ import '../styles/pet.css';
 import { Bell } from 'lucide-react';
 import CatEmoji from '../components/CatEmoji';
 import { usePhotoState } from '../hooks/usePhotoState';
-import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, cleanBubbleMessages, clampTo, clockText, readStoredSettings, isFreshWindow } from '../utils/settings';
+import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, bubbleIdleOf, cleanBubbleMessages, clampTo, clockText, readStoredSettings, isFreshWindow } from '../utils/settings';
+import type { BubbleIdle } from '../utils/settings';
+import { fortuneFor, phraseFor } from '../utils/fortune';
+import DayProgressBar from '../components/DayProgressBar';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
 import FocusClock from '../components/FocusClock';
@@ -73,6 +76,7 @@ interface Particle {
   id: number; x: number; y: number; vx: number; vy: number;
   emoji: string; opacity: number; scale: number; rotation: number;
 }
+type IdleKind = 'message' | BubbleIdle;
 interface BubbleStyle { bg: string; text: string; }
 interface Settings {
   distractEmoji: boolean;
@@ -87,6 +91,7 @@ interface Settings {
   bubbleShowSec: number;
   bubbleGapSec: number;
   bubbleClock: boolean;
+  bubbleIdle: BubbleIdle;
   useCustomMode: boolean;
   customShape: CustomShape;
   moveSpeed: number;
@@ -112,7 +117,7 @@ const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
   distractInterval: 30, imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleIdle: 'clock',
   useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
@@ -333,7 +338,8 @@ export default function PetPage() {
   const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle | null>(null);
   // 말풍선 우선순위: 알림 카드·미리 알림 토스트·야르 > 반응·졸림 방지(위의 bubble) > 내 메시지 > 시계(idleBubble)
   const [alertActive, setAlertActive] = useState(false);
-  const [idleBubble, setIdleBubble] = useState<{ kind: 'message' | 'clock'; text: string; key: number } | null>(null);
+  const [idleBubble, setIdleBubble] = useState<{ kind: IdleKind; text: string; key: number } | null>(null);
+  const fortunePageRef = useRef(0);   // 운세 말풍선에서 지금 보여주는 줄(펫을 클릭하면 다음 줄)
   const alertRef = useRef(false);
   const toastActiveRef = useRef(false);
   const reloadSettingsRef = useRef<() => void>(() => {});
@@ -752,7 +758,7 @@ export default function PetPage() {
   // ★ 말풍선 엔진: 내 메시지를 순서대로 하나씩(표시 시간·주기 설정), 빈 간격에는 시계. 알림 중에는 시간이 멈췄다가 이어서 진행한다.
   useEffect(() => {
     let elapsed = 0, last = Date.now(), sig = '';
-    let curKind: 'message' | 'clock' | null = null, curIdx = -1, curText = '', key = 0;
+    let curKind: IdleKind | null = null, curIdx = -1, curText = '', key = 0;
     const tick = () => {
       const now = Date.now();
       const dt = Math.min(now - last, 1500);   // 절전 복귀처럼 큰 간격은 잘라서 메시지를 한꺼번에 건너뛰지 않는다
@@ -765,12 +771,20 @@ export default function PetPage() {
       if (nextSig !== sig) { sig = nextSig; elapsed = 0; }   // 표시 시간·주기·메시지 수가 바뀌면 처음부터 다시 돈다
       const paused = alertRef.current || toastActiveRef.current;
       if (!paused) elapsed += dt;
-      let kind: 'message' | 'clock' | null = null, idx = -1, text = '';
+      let kind: IdleKind | null = null, idx = -1, text = '';
       if (!paused && cur.bubbleEnabled !== false && !focusRef.current.enabled) {   // 초집중 모드에서는 내 메시지·시계 말풍선 없음(시계는 따로 표시)
         if (msgs.length && (show >= gap || elapsed % gap < show)) {
           kind = 'message'; idx = Math.floor(elapsed / gap) % msgs.length; text = msgs[idx];
         } else if (cur.bubbleClock !== false) {
-          kind = 'clock'; text = clockText();
+          const idle = bubbleIdleOf(cur.bubbleIdle);   // 저장값이 없으면 시계(예전 설정 그대로)
+          const d = new Date();
+          if (idle === 'phrase') { kind = 'phrase'; idx = Math.floor((d.getHours() * 60 + d.getMinutes()) / 30); text = phraseFor(d); }
+          else if (idle === 'fortune') {
+            const pages = fortuneFor(d).pages;
+            kind = 'fortune'; idx = fortunePageRef.current % pages.length; text = pages[idx];
+          }
+          else if (idle === 'progress') { kind = 'progress'; text = ''; }   // 막대는 자기 안에서 분마다 갱신
+          else { kind = 'clock'; text = clockText(); }
         }
       }
       if (kind === curKind && idx === curIdx && text === curText) return;
@@ -907,6 +921,10 @@ export default function PetPage() {
     e.stopPropagation();
     if (didDrag.current) { didDrag.current = false; return; }
     if (focusRef.current.enabled) return;   // 초집중 모드에서는 반응 말풍선·파티클 없음
+    if (!bubble && !alertActive && !toast && idleBubble?.kind === 'fortune') {   // 운세가 떠 있으면 클릭으로 다음 줄
+      fortunePageRef.current += 1;
+      return;
+    }
     const now = Date.now();
     const isDoubleClick = now - lastClickTime.current < 400;
     lastClickTime.current = now;
@@ -948,7 +966,9 @@ export default function PetPage() {
             {shownBubble && (
               <div className="bubble" key={shownBubble.key}
                 style={shownBubble.style ? { background: shownBubble.style.bg, color: shownBubble.style.text, borderColor: 'transparent' } : {}}>
-                <span className={`bubble-text${shownBubble.kind === 'clock' ? ' bubble-clock' : ''}`}>{shownBubble.text}</span>
+                {shownBubble.kind === 'progress'
+                  ? <DayProgressBar workStart={settings.workStart} lunchTime={settings.lunchTime} leaveTime={settings.leaveTime} />
+                  : <span className={`bubble-text${shownBubble.kind === 'clock' ? ' bubble-clock' : ''}`}>{shownBubble.text}</span>}
                 <div className="bubble-tail"
                   style={shownBubble.style ? { borderTopColor: shownBubble.style.bg } : {}} />
               </div>
@@ -991,6 +1011,7 @@ export default function PetPage() {
           </div>
         </div>
         {focus.enabled && !alertActive && <FocusClock seconds={focus.seconds} />}
+        {focus.enabled && !alertActive && <DayProgressBar compact workStart={settings.workStart} lunchTime={settings.lunchTime} leaveTime={settings.leaveTime} />}
       </div>
     </div>
   );

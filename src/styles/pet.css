@@ -239,3 +239,18 @@ html, body, #root {
   background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
   pointer-events: none; user-select: none;
 }
+
+/* 하루 진행 바: 말풍선 안(기본)과 초집중 모드 시계 아래(compact). 애니메이션·전환 없음(분마다 값만 바뀐다). */
+.day-progress { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 168px; }
+.day-progress-track { position: relative; width: 100%; height: 6px; border-radius: 999px; background: rgba(0,0,0,0.12); overflow: visible; }
+.day-progress-fill { height: 100%; border-radius: 999px; background: #ff7aa2; }
+.day-progress-tick { position: absolute; top: -2px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; background: #2c2c2c; opacity: 0.55; }
+.day-progress-label {
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; font-size: 13px; font-weight: 600; line-height: 1.4; color: #2c2c2c;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.day-progress--compact { width: 112px; gap: 3px; margin-top: 3px; padding: 3px 8px 4px; border-radius: 10px; opacity: 0.72;
+  background: color-mix(in srgb, var(--ui-panel) 58%, transparent); pointer-events: none; user-select: none; }
+.day-progress--compact .day-progress-track { height: 4px; background: color-mix(in srgb, var(--ui-ink) 18%, transparent); }
+.day-progress--compact .day-progress-tick { top: -1px; height: 6px; background: var(--ui-ink); }
+.day-progress--compact .day-progress-label { font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 11px; color: var(--ui-ink); }

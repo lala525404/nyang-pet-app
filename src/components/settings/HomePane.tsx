@@ -5,7 +5,18 @@ import { ChevronDown } from 'lucide-react';
 import CatEmoji from '../CatEmoji';
 import { Segmented, Switch, RangeInput } from '../ui';
 import { getAnimal } from '../../data/animals';
-import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, cleanBubbleMessages, clampTo, formatInterval } from '../../utils/settings';
+import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, bubbleIdleOf, cleanBubbleMessages, clampTo, formatInterval } from '../../utils/settings';
+import type { BubbleIdle } from '../../utils/settings';
+
+// 말풍선 "메시지가 없는 동안" 옵션: 칩 값 이름과 설명
+const IDLE_NAME: Record<string, string> = { clock: '시계', phrase: '한마디', fortune: '운세', progress: '하루 진행', none: '' };
+const IDLE_NOTE: Record<string, string> = {
+  clock: '메시지가 없는 동안에는 현재 시간을 보여줘요.',
+  phrase: '메시지가 없는 동안에는 짧은 한마디를 보여줘요. 30분마다 바뀌어요.',
+  fortune: '오늘의 운세를 보여줘요. 버디를 누르면 다음 줄이 나와요. 하루 동안 같은 결과예요.',
+  progress: '메시지가 없는 동안에는 오늘 하루가 얼마나 지났는지 보여줘요.',
+  none: '메시지가 없는 동안에는 말풍선이 숨겨져요.',
+};
 import { usePhotoState } from '../../hooks/usePhotoState';
 import { useLoginItem } from '../../hooks/useLoginItem';
 import { useFocusMode } from '../../hooks/useFocusMode';
@@ -196,8 +207,9 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   const bubbleCount = cleanBubbleMessages(s.bubbleMessages).length;
   const bubbleShow = clampTo(s.bubbleShowSec, BUBBLE_SHOW_RANGE, 5);
   const bubbleGap = clampTo(s.bubbleGapSec, BUBBLE_GAP_RANGE, 30);
+  const idleValue = bubbleClock ? bubbleIdleOf(s.bubbleIdle) : 'none';
   const bubbleValue = !bubbleOn ? '끔'
-    : [bubbleCount ? `메시지 ${bubbleCount}개` : '', bubbleClock ? '시계' : ''].filter(Boolean).join(' · ') || '없음';
+    : [bubbleCount ? `메시지 ${bubbleCount}개` : '', IDLE_NAME[idleValue]].filter(Boolean).join(' · ') || '없음';
   const chips: { id: string; label: string; value: string; body: ReactNode }[] = [
     {
       id: 'mode', label: '모드', value: focus.state?.enabled ? `초집중 · ${MODE_NAME[s.buddyMode] || 'Buddy'}` : MODE_NAME[s.buddyMode] || 'Buddy',
@@ -315,8 +327,14 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
       body: (
         <>
           <div className="st-row"><span>말풍선 사용</span><Switch checked={bubbleOn} onChange={v => patch({ bubbleEnabled: v })} label="말풍선 사용" /></div>
-          <div className="st-row"><span>시계 표시</span><Switch checked={bubbleClock} onChange={v => patch({ bubbleClock: v })} label="시계 표시" disabled={!bubbleOn} /></div>
-          <p className="ui-note">{!bubbleOn ? '켜면 내 메시지와 시계가 말풍선으로 떠요.' : bubbleClock ? '메시지가 없는 동안에는 현재 시간을 보여줘요.' : '메시지가 없는 동안에는 말풍선이 숨겨져요.'}</p>
+          {/* 빈 시간에 보여줄 것. "없음"은 예전 시계 끔(bubbleClock=false)과 같은 값이라 저장 키가 호환된다. */}
+          <p className="st-lab">메시지가 없는 동안</p>
+          <div className="st-idle">
+            <Segmented<string> label="메시지가 없는 동안 보여줄 것" value={idleValue}
+              onChange={v => (v === 'none' ? patch({ bubbleClock: false }) : patch({ bubbleClock: true, bubbleIdle: v as BubbleIdle }))}
+              options={[{ value: 'clock', label: '시계' }, { value: 'phrase', label: '한마디' }, { value: 'fortune', label: '운세' }, { value: 'progress', label: '하루 진행' }, { value: 'none', label: '없음' }]} />
+          </div>
+          <p className="ui-note">{!bubbleOn ? '켜면 내 메시지와 선택한 내용이 말풍선으로 떠요.' : IDLE_NOTE[idleValue]}</p>
           <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
             메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
           </button>

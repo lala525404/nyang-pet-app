@@ -93,6 +93,8 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 .st-photo-opts[data-single] { grid-template-columns: minmax(0, 1fr); }
 .st-photo-opts .st-stack { gap: 4px; min-width: 0; }
 .st-photo-opts .ui-seg button { min-height: 34px; padding: 0 8px; font-size: 13px; }
+/* 말풍선 "메시지가 없는 동안" 5종: 글자 길이에 맞춰 폭을 나눠 "하루 진행"도 잘리지 않게 */
+.st-idle .ui-seg button { flex: 1 1 auto; min-height: 40px; padding: 0 6px; }
 .st-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .st-field-label { font-size: 12px; line-height: 18px; color: var(--ui-sub); }
 

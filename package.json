@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "electron": "electron .",
     "fresh": "npm run build && node scripts/fresh-start.cjs",
-    "test": "node scripts/test-default-heart.cjs && node scripts/test-reopen-settings.cjs && node scripts/test-default-light.cjs && node tests/alarms-unit.cjs && node tests/updater-unit.cjs && node tests/login-item-unit.cjs && node tests/focus-mode-unit.cjs",
+    "test": "node scripts/test-default-heart.cjs && node scripts/test-reopen-settings.cjs && node scripts/test-default-light.cjs && node tests/alarms-unit.cjs && node tests/updater-unit.cjs && node tests/login-item-unit.cjs && node tests/focus-mode-unit.cjs && node tests/fortune-unit.cjs",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never",
     "dist:mac": "npm run build && electron-builder --mac --arm64 --publish never",
