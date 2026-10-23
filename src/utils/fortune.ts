@@ -1,6 +1,8 @@
 import { voiceFor, type FortuneVoice } from '../data/fortune';
+import { ANIMALS, ZODIAC } from '../data/zodiacText';
+import { animalIndex, readBirth, zodiacIndex } from './zodiac';
 
-// 오늘의 한마디·운세: 전부 로컬 계산(네트워크 없음). 같은 입력이면 항상 같은 결과가 나오는 순수 함수다.
+// 오늘의 한마디·운세: 전부 로컬 계산(네트워크 없음). 같은 입력이면 항상 같은 결과가 나오는 순수 함수다(한마디만 난수).
 
 // 문자열 → 32비트 해시 (FNV-1a)
 export function hash32(text: string): number {
@@ -25,18 +27,12 @@ const pad = (n: number) => String(n).padStart(2, '0');
 // 로컬 날짜 키 "2026-10-23" (UTC가 아니라 PC의 현재 날짜)
 export const dateKey = (d: Date): string => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-// 한마디 슬롯: 30분 단위. 같은 슬롯에서는 같은 문구
-export const PHRASE_SLOT_MIN = 30;
-export const phraseSlotKey = (d: Date): string => `${dateKey(d)}#${Math.floor((d.getHours() * 60 + d.getMinutes()) / PHRASE_SLOT_MIN)}`;
-
-const phraseIndexAt = (key: string, count: number): number => hash32(`phrase|${key}`) % count;
-
-// 슬롯의 문구. 직전 슬롯과 같은 문구가 나오면 다음 문구로 밀어서 연속 중복을 막는다.
-export function phraseFor(d: Date, voiceId?: string): string {
+// 한마디: 목록에서 무작위로 고르되 직전에 보여 준 문구와는 같지 않게 한다. rand는 0 이상 1 미만(테스트에서 주입).
+export function randomPhrase(last: string | null, rand: () => number = Math.random, voiceId?: string): string {
   const list = voiceFor(voiceId).phrases;
-  const cur = phraseIndexAt(phraseSlotKey(d), list.length);
-  const prev = phraseIndexAt(phraseSlotKey(new Date(d.getTime() - PHRASE_SLOT_MIN * 60000)), list.length);
-  return list[cur === prev ? (cur + 1) % list.length : cur];
+  let i = Math.floor(rand() * list.length) % list.length;
+  if (list[i] === last) i = (i + 1) % list.length;
+  return list[i];
 }
 
 export type FortuneTopic = 'work' | 'money' | 'people';
@@ -48,10 +44,12 @@ export interface Fortune {
 const pick = <T,>(list: T[], r: () => number): T => list[Math.floor(r() * list.length) % list.length];
 
 // 하루 운세: 로컬 날짜가 시드. 같은 날은 몇 번을 눌러도 같고, 날짜가 바뀌면 (대부분) 달라진다.
-export function fortuneFor(d: Date, voiceId?: string): Fortune {
+// 생일(선택)을 넣으면 시드에 함께 섞여 사람마다 다른 결과가 되고, 가끔 별자리·띠 한 줄이 끼어든다. 생일이 비어 있으면 예전과 똑같은 결과다.
+export function fortuneFor(d: Date, voiceId?: string, birth?: string): Fortune {
   const v: FortuneVoice = voiceFor(voiceId);
   const date = dateKey(d);
-  const r = rng(hash32(`fortune|${v.id}|${date}`));
+  const b = readBirth(birth, d);
+  const r = rng(hash32(b ? `fortune|${v.id}|${date}|${birth}` : `fortune|${v.id}|${date}`));
   const topic = (['work', 'money', 'people'] as const)[Math.floor(r() * 3)];
   const total = pick(v.total, r);
   const line = pick(v[topic], r);
@@ -59,14 +57,20 @@ export function fortuneFor(d: Date, voiceId?: string): Fortune {
   const number = 1 + Math.floor(r() * 99);
   const snack = pick(v.snacks, r);
   const footer = pick(v.footers, r);
-  return {
-    date,
-    pages: [
-      total,
-      `${v.labels[topic]} · ${line}`,
-      // 항목 하나가 줄 중간에서 끊기지 않게 항목 안의 공백은 줄바꿈 없는 공백(NBSP)으로 둔다
-      [`${v.labels.color} ${color}`, `${v.labels.number} ${number}`, `${v.labels.snack} ${snack}`].map(s => s.replace(/ /g, ' ')).join(' · '),
-      footer,
-    ],
-  };
+  const pages = [
+    total,
+    `${v.labels[topic]} · ${line}`,
+    // 항목 하나가 줄 중간에서 끊기지 않게 항목 안의 공백은 줄바꿈 없는 공백(NBSP)으로 둔다
+    [`${v.labels.color} ${color}`, `${v.labels.number} ${number}`, `${v.labels.snack} ${snack}`].map(s => s.replace(/ /g, ' ')).join(' · '),
+    footer,
+  ];
+  if (b) {
+    const extraR = rng(hash32(`extra|${date}|${birth}`));
+    if (extraR() < 0.6) {   // 가끔(대략 열 번 중 여섯 번)
+      const useAnimal = b.year !== null && extraR() < 0.5;
+      const sign = useAnimal ? ANIMALS[animalIndex(b.year as number)] : ZODIAC[zodiacIndex(b.month, b.day)];
+      pages.splice(1, 0, `${sign.name} · ${sign.lines[Math.floor(extraR() * sign.lines.length) % sign.lines.length]}`);
+    }
+  }
+  return { date, pages };
 }

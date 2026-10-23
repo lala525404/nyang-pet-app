@@ -79,6 +79,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('show-bubble', handler);
     return () => ipcRenderer.removeListener('show-bubble', handler);
   },
+  // ★ 펫에게 말 걸기: 트레이 메뉴("💬 펫에게 말 걸기", "☀️ 지금 날씨")가 버디 창에 열라고 알린다
+  onOpenTalk:       (cb) => {
+    const handler = (_e, start) => cb(start);
+    ipcRenderer.on('open-talk', handler);
+    return () => ipcRenderer.removeListener('open-talk', handler);
+  },
   onShowToast:      (cb) => {
     ipcRenderer.removeAllListeners('show-toast');
     const handler = (_e, msg, ms) => cb(msg, ms);

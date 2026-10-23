@@ -10,13 +10,12 @@ import HelpPane from '../components/settings/HelpPane';
 import UpdateStatus from '../components/settings/UpdateStatus';
 import HeartMark from '../components/HeartMark';
 import BubbleModal from '../components/settings/BubbleModal';
-import WeatherModal from '../components/settings/WeatherModal';
 import Intro from '../components/Intro';
 import type { EntranceKind } from '../components/Intro';
 import Onboarding from '../components/Onboarding';
 import { createPortal } from 'react-dom';
 import type { Monitor } from '../components/settings/shared';
-import { MODE_PRESETS, loadSettings, saveSettings, seedFreshInstall } from '../utils/settings';
+import { MODE_PRESETS, PET_OWNED_KEYS, loadSettings, saveSettings, seedFreshInstall } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
 import { getThemePref, nextThemePref, setThemePref } from '../utils/theme';
 import type { ThemePref } from '../utils/theme';
@@ -44,7 +43,6 @@ export default function SettingsPage() {
   const [page, setPage] = useState<NavPage>('home');
   const [animalOpen, setAnimalOpen] = useState(false);
   const [bubbleOpen, setBubbleOpen] = useState(false);
-  const [weatherOpen, setWeatherOpen] = useState(false);
 
   // ── 시작 인트로: 메인이 새 버전 첫 설정창에만 해시에 intro=1을 붙여 준다. 설정의 "시작 인트로 보기"가 꺼져 있으면 건너뛴다.
   // 움직임 줄이기면 인트로 없이 150ms 페이드만 한다.
@@ -122,15 +120,15 @@ export default function SettingsPage() {
     timerRef.current = setTimeout(apply, SAVE_DELAY_MS);
   }, [apply]);
 
-  // 버디가 묻는 대화에서 도시를 고르면 버디 창이 저장값의 날씨 키만 바꾼다. 설정창의 화면 값이 낡아 나중에 그 키를 되돌려 쓰지 않도록, 날씨 키만 바로 받아 온다(저장 대기 상태는 건드리지 않는다).
+  // 펫과 대화로 바뀌는 값(날씨·생일·빼기)은 버디 창이 저장값을 직접 바꾼다. 설정창의 화면 값이 낡아 나중에 되돌려 쓰지 않도록 이 키들만 바로 받아 온다(저장 대기 상태는 건드리지 않는다).
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== 'petSettings' || !e.newValue) return;
       try {
         const s = JSON.parse(e.newValue);
-        const w = { weatherEnabled: s.weatherEnabled, weatherConsent: s.weatherConsent, weatherCityId: s.weatherCityId };
-        if (w.weatherEnabled === undefined && w.weatherConsent === undefined && w.weatherCityId === undefined) return;
-        const merge = (p: PetSettings): PetSettings => ({ ...p, ...Object.fromEntries(Object.entries(w).filter(([, v]) => v !== undefined)) });
+        const owned = Object.fromEntries(PET_OWNED_KEYS.filter(k => s[k] !== undefined).map(k => [k, s[k]]));
+        if (Object.keys(owned).length === 0) return;
+        const merge = (p: PetSettings): PetSettings => ({ ...p, ...owned });
         latestRef.current = merge(latestRef.current);
         appliedRef.current = merge(appliedRef.current);
         setSettings(merge);
@@ -251,9 +249,6 @@ export default function SettingsPage() {
       {bubbleOpen && (
         <BubbleModal settings={settings} patch={patch} onClose={() => setBubbleOpen(false)} suspended={cropState !== null} />
       )}
-      {weatherOpen && (
-        <WeatherModal settings={settings} patch={patch} onClose={() => setWeatherOpen(false)} suspended={cropState !== null} />
-      )}
 
       {animalOpen && (
         <AnimalModal settings={settings} update={update} patch={patch}
@@ -295,7 +290,7 @@ export default function SettingsPage() {
 
         {page === 'home' && (
           <HomePane settings={settings} update={update} patch={patch} monitors={monitors} applyMode={applyMode}
-            onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onOpenWeather={() => setWeatherOpen(true)} onUpload={upload} />
+            onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onUpload={upload} />
         )}
         {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
         {page === 'help' && <HelpPane settings={settings} patch={patch} onReplayIntro={replayIntro} onReplayOnboarding={() => setOnboarding(true)} />}

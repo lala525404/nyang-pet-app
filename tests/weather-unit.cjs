@@ -10,7 +10,6 @@ const load = (rel, deps = {}) => {
   const m = { exports: {} }; new Function('module', 'exports', 'require', 'localStorage', 'window', out)(m, m.exports, (p) => deps[p] || ({ seedFreshTheme() {} }), { getItem: () => null, setItem() {} }, { location: { hash: '' } }); return m.exports;
 };
 const cities = load('src/data/cities.ts');
-const S = load('src/utils/citySearch.ts', { '../data/cities': cities });
 const fortuneData = load('src/data/fortune.ts');
 const fortune = load('src/utils/fortune.ts', { '../data/fortune': fortuneData });
 const wdata = load('src/data/weatherText.ts');
@@ -126,21 +125,7 @@ t('내장 도시: 250개 이상, id 중복 없음, 좌표는 한국 범위, 필�
   for (const id of cities.UNCERTAIN_CITY_IDS) assert.ok(cities.cityById(id), `불확실 목록의 id가 없음: ${id}`);
   assert.strictEqual(cities.cityById('없는'), null); assert.strictEqual(cities.cityById(''), null);
 });
-t('도시 검색: 부분 일치, 공백 무시, 시/군/구 생략, 초성, 상위 지역, 최대 3개, 없으면 빈 목록', () => {
-  const names = (q) => S.searchCities(q).map(c => c.name);
-  assert.strictEqual(names('의정부')[0], '의정부시'); assert.strictEqual(names('의정부시')[0], '의정부시');
-  assert.strictEqual(names('의 정 부')[0], '의정부시'); assert.strictEqual(names('  의정부  ')[0], '의정부시');
-  assert.strictEqual(names('ㅇㅈㅂ')[0], '의정부시', '초성');
-  assert.deepStrictEqual(S.searchCities('부산 중구').map(c => c.id).slice(0, 1), ['bs:중구']); assert.strictEqual(S.searchCities('부산중구')[0].id, 'bs:중구');
-  assert.strictEqual(S.searchCities('서울 강서')[0].id, 'sl:강서구');
-  assert.ok(S.searchCities('중구').length === 3 && S.searchCities('중구').every(c => c.name === '중구'));
-  assert.ok(S.searchCities('경기').length <= 3 && S.searchCities('경기').every(c => c.parent === '경기도'));
-  assert.ok(names('수원')[0] === '수원시');
-  assert.deepStrictEqual(S.searchCities(''), []); assert.deepStrictEqual(S.searchCities('   '), []); assert.deepStrictEqual(S.searchCities('zzzzqq'), []); assert.deepStrictEqual(S.searchCities('없는동네'), []);
-  for (const q of ['시', '구', '군', 'ㅅ', '서', '광']) assert.ok(S.searchCities(q).length <= 3);
-  assert.strictEqual(S.searchCities('제주')[0].name, '제주시');
-  assert.ok(/^의정부시 · 경기$/.test(S.cityLabel(S.searchCities('의정부')[0])));
-});
+// (동네 검색은 tests/talk-unit.cjs에서 시험한다)
 
 // ── 문구 ────────────────────────────────────────────────────────────────────
 t('날씨 코드 → 종류: 맑음/흐림/안개/비/눈/뇌우, 강수 확률 60% 이상이면 비', () => {
@@ -196,10 +181,9 @@ t('문구 풀 전체 조합을 돌려도 비어 있거나 NaN·undefined가 나�
 // ── 설정 호환 ───────────────────────────────────────────────────────────────
 t('설정 기본값: 날씨는 꺼짐·동의 없음·도시 없음, 예전 저장값(키 없음)도 꺼짐으로 읽힌다', () => {
   const d = settingsTs.DEFAULT_SETTINGS; assert.deepStrictEqual([d.weatherEnabled, d.weatherConsent, d.weatherCityId], [false, false, '']);
-  const old = { bubbleEnabled: true, bubbleClock: true, bubbleIdle: 'clock', bubbleMessages: ['a'] };
+  const old = { bubbleEnabled: true, bubbleClock: true, bubbleMessages: ['a'] };
   const r = settingsTs.migrateSettings(old); for (const k of ['weatherEnabled', 'weatherConsent', 'weatherCityId']) assert.ok(!(k in r.settings), '마이그레이션이 날씨 키를 새로 채우지 않는다');
-  const merged = { ...d, ...r.settings }; assert.strictEqual(merged.weatherEnabled, false); assert.strictEqual(merged.bubbleIdle, 'clock');
-  assert.strictEqual(settingsTs.bubbleIdleOf('weather'), 'weather'); assert.strictEqual(settingsTs.bubbleIdleOf('x'), 'clock');
+  const merged = { ...d, ...r.settings }; assert.strictEqual(merged.weatherEnabled, false); assert.strictEqual(merged.bubbleClock, true);
 });
 t('알람 설정 키와 섞이지 않는다: 알람 모듈 기본값에 날씨 키가 없고, 알람 병합이 날씨 키를 저장하지 않는다', () => {
   const A = require('../alarms.cjs');
@@ -219,41 +203,25 @@ t('메인: 네트워크는 weather.cjs 한 곳, 동의+켜짐일 때만 허용, 
   assert.ok(!/weather/i.test(alarmBlock), '알람 체크 함수는 날씨와 무관');
   assert.ok(/setInterval\(runAlarmCheck, 1000\)/.test(main));
   assert.ok(/getWeather:\s+\(lat, lon\) => ipcRenderer\.invoke\('weather-get', \{ lat, lon \}\)/.test(pre), '렌더러는 좌표 두 개만 넘긴다');
-  assert.ok(!/fetch\(|XMLHttpRequest|WebSocket/.test(read('src/pages/PetPage.tsx') + read('src/components/PetAsk.tsx') + read('src/components/settings/WeatherModal.tsx')), '렌더러에서는 직접 요청하지 않는다');
+  assert.ok(!/fetch\(|XMLHttpRequest|WebSocket/.test(read('src/pages/PetPage.tsx') + read('src/components/PetTalk.tsx') + read('src/utils/talk.ts')), '렌더러에서는 직접 요청하지 않는다');
   assert.ok(JSON.parse(read('package.json')).build.files.includes('weather.cjs'), '설치본에 weather.cjs 포함');
 });
-t('펫 대화: 초집중 모드·알림·토스트 중에는 열지 않고, 입력은 직접 눌렀을 때만 포커스, Esc로 닫힘', () => {
-  const pet = read('src/pages/PetPage.tsx'), ask = read('src/components/PetAsk.tsx');
-  assert.ok(/const askBlocked = focus\.enabled \|\| alertActive \|\| !!toast/.test(pet));
-  assert.ok(/if \(askBlocked\) \{ setAskOpen\(false\); return; \}/.test(pet));
-  assert.ok(!/autoFocus[=\s{]|\.focus\(\)/.test(ask.replace(/\/\/.*$/gm, '')), '자동 포커스 없음'); assert.ok(/Escape/.test(ask));
-  assert.ok(/어느 동네에 있어요\?/.test(ask) && /못 찾았어요, 다른 이름으로 알려줄래요\?/.test(ask) && /날씨 알려드릴게요/.test(pet));
-  assert.ok(/setPetInteractive\?\.\(true\)/.test(pet) && /setPetInteractive\?\.\(false\)/.test(pet), '클릭 통과 중에도 대화 동안만 입력 허용');
-  assert.ok(/id\s*=|const\b/.test(ask) && (ask.match(/cityLabel|searchCities/g) || []).length >= 2);
-});
-t('표시: 출근 전후(-30~+90분)·퇴근 30분 전 하루 한 번, 클릭은 현재 날씨, 섞기 옵션 날씨(기본 꺼짐)', () => {
+t('표시: 출근 전후(-30~+90분)·퇴근 30분 전 하루 한 번(날씨가 꺼져 있으면 빠짐), 안내 직후 보호 시간', () => {
   const pet = read('src/pages/PetPage.tsx');
   assert.ok(/n >= ws - 30 && n <= ws \+ 90/.test(pet) && /n >= lv - 30 && n <= lv/.test(pet));
   assert.ok(/shown\.morning/.test(pet) && /shown\.evening/.test(pet) && /weatherShown/.test(pet));
-  assert.ok(/currentText\(w\.data, new Date\(\)\)/.test(pet)); assert.ok(/idle === 'weather'/.test(pet));
+  assert.ok(/cur\.weatherEnabled !== true \|\| cur\.weatherConsent !== true/.test(pet), '날씨가 꺼져 있으면 안내에서 빠진다');
   assert.ok(/focusRef\.current\.enabled \|\| alertRef\.current \|\| toastActiveRef\.current\) return;/.test(pet), '초집중·알림 중에는 미룬다');
   assert.ok(/cur\.bubbleEnabled === false/.test(pet), '말풍선 사용을 끄면 안내도 없다');
-  assert.strictEqual((pet.match(/Date\.now\(\) >= briefingUntilRef\.current/g) || []).length, 3, '졸림 방지 말풍선 3곳이 안내를 덮어쓰지 않는다');
-});
-t('설정: 칩은 8개 그대로, 날씨는 말풍선 팝오버 안(동의 안내·도시 검색·삭제·표기)', () => {
-  const home = read('src/components/settings/HomePane.tsx'), ws = read('src/components/settings/WeatherModal.tsx');
-  assert.strictEqual((home.match(/^ {6}id: '/gm) || []).length, 8);
-  assert.ok(/onClick=\{\(\) => \{ setOpenKey\(null\); onOpenWeather\(\); \}\}/.test(home), '말풍선 팝오버의 날씨 버튼'); assert.ok(home.includes('날씨 데이터: Open-Meteo (CC BY 4.0)'));
-  assert.ok(ws.includes('날씨를 켜면 선택한 도시의 대략적인 좌표가 날씨 서비스(Open-Meteo)로 전송돼요. 이름·사진·알람 같은 개인 정보는 보내지 않아요.'));
-  assert.ok(ws.includes('켤게요') && ws.includes('안 할래요') && ws.includes('도시 삭제') && ws.includes('도시 검색'));
-  assert.ok(/weatherConsent: true, weatherEnabled: true/.test(ws), '켤게요를 눌러야 동의');
-  assert.ok(/value: 'weather', label: '날씨'/.test(home));
+  assert.ok(/BRIEFING_MS \+ BRIEFING_GUARD_MS/.test(pet) && /const guarded = now < briefingUntilRef\.current/.test(pet), '안내 직후 보호 시간에는 엔진도 쉰다');
+  assert.strictEqual((pet.match(/bubbleEnabled !== false && nagOk\(\)/g) || []).length, 3, '졸림 방지 말풍선 3곳이 안내를 덮어쓰지 않는다');
+  assert.ok(/const nagOk = \(\) => Date\.now\(\) >= Math\.max\(briefingUntilRef\.current, forceRef\.current\?\.until \?\? 0\)/.test(pet));
 });
 t('위치 자동 감지 없음: geolocation·IP 조회 코드가 없다', () => {
-  for (const f of ['main.cjs', 'weather.cjs', 'src/pages/PetPage.tsx', 'src/components/PetAsk.tsx', 'src/components/settings/WeatherModal.tsx', 'src/utils/citySearch.ts']) assert.ok(!/geolocation|ipapi|ipinfo|ip-api|getCurrentPosition/i.test(read(f)), f);
+  for (const f of ['main.cjs', 'weather.cjs', 'src/pages/PetPage.tsx', 'src/components/PetTalk.tsx', 'src/utils/talk.ts', 'src/utils/citySearch.ts']) assert.ok(!/geolocation|ipapi|ipinfo|ip-api|getCurrentPosition/i.test(read(f)), f);
 });
 t('새 소스 파일에 U+FFFD 없음', () => {
-  for (const f of ['weather.cjs', 'src/data/cities.ts', 'src/data/weatherText.ts', 'src/utils/citySearch.ts', 'src/utils/weatherText.ts', 'src/components/PetAsk.tsx', 'src/components/settings/WeatherModal.tsx', 'src/pages/PetPage.tsx', 'src/components/settings/HomePane.tsx', 'main.cjs']) assert.ok(!read(f).includes(FFFD), f);
+  for (const f of ['weather.cjs', 'src/data/cities.ts', 'src/data/weatherText.ts', 'src/utils/citySearch.ts', 'src/utils/weatherText.ts', 'src/components/PetTalk.tsx', 'src/utils/talk.ts', 'src/pages/PetPage.tsx', 'src/components/settings/HomePane.tsx', 'main.cjs']) assert.ok(!read(f).includes(FFFD), f);
 });
 
 (async () => {

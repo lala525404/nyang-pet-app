@@ -361,6 +361,14 @@ function createTray() {
   nativeTheme.on('updated', refreshTrayIcon);
   tray.setToolTip('최애를 풀어놨습니다');
 
+  // 트레이 메뉴를 직접 눌렀을 때만 버디 창을 앞으로 가져와 입력 포커스를 준다(열 수 있는지는 버디 창이 판단: 초집중·알림 중에는 열리지 않는다)
+  const openPetTalk = (start) => {
+    if (!petWindow || petWindow.isDestroyed()) createPetWindow();
+    else { petWindow.show(); resumeAlwaysOnTopKeepAlive(); }
+    const send = () => { try { petWindow.focus(); petWindow.webContents.send('open-talk', start); } catch {} };
+    if (petWindow.webContents.isLoading()) petWindow.webContents.once('did-finish-load', () => setTimeout(send, 800)); else send();
+  };
+
   const buildTrayMenu = () => Menu.buildFromTemplate([
     {
       label: '⚙️ 설정 열기',
@@ -376,6 +384,14 @@ function createTray() {
         petWindow.show();
         petWindow.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('call-pet'))`);
       },
+    },
+    {
+      label: '💬 펫에게 말 걸기',
+      click: () => openPetTalk('menu'),
+    },
+    {
+      label: '☀️ 지금 날씨',   // 날씨가 꺼져 있으면 버디 쪽에서 날씨 켜기 대화로 이어진다
+      click: () => openPetTalk('weather'),
     },
     { type: 'separator' },
     {

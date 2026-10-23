@@ -3,14 +3,18 @@ import '../styles/pet.css';
 import { Bell } from 'lucide-react';
 import CatEmoji from '../components/CatEmoji';
 import { usePhotoState } from '../hooks/usePhotoState';
-import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, bubbleIdleOf, cleanBubbleMessages, clampTo, clockText, readStoredSettings, isFreshWindow } from '../utils/settings';
-import type { BubbleIdle } from '../utils/settings';
-import { fortuneFor, phraseFor } from '../utils/fortune';
+import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, cleanBubbleMessages, cleanOffKinds, clampTo, clockText, readStoredSettings, isFreshWindow } from '../utils/settings';
+import type { BubbleKind } from '../utils/settings';
+import { fortuneFor, randomPhrase } from '../utils/fortune';
+import { pickKind } from '../utils/bubbleMix';
+import { BIRTHDAY_MESSAGE } from '../data/zodiacText';
+import { isBirthday, readBirth } from '../utils/zodiac';
+import { BIRTH_SNOOZE_DAYS, isSnoozed, readTalkState, snoozedUntil, writeTalkState } from '../utils/talkState';
+import type { SettingsPatch, ShowKind, TalkCtx } from '../utils/talk';
 import DayProgressBar from '../components/DayProgressBar';
-import PetAsk from '../components/PetAsk';
+import PetTalk, { PetBirthAsk } from '../components/PetTalk';
 import { cityById } from '../data/cities';
-import type { City } from '../data/cities';
-import { currentText, eveningText, morningText } from '../utils/weatherText';
+import { eveningText, morningText, weatherLines } from '../utils/weatherText';
 import type { WeatherData } from '../electron';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
@@ -81,8 +85,11 @@ interface Particle {
   id: number; x: number; y: number; vx: number; vy: number;
   emoji: string; opacity: number; scale: number; rotation: number;
 }
-type IdleKind = 'message' | BubbleIdle;
-const BRIEFING_MS = 9000;   // 날씨 안내 말풍선 표시 시간
+type IdleKind = 'message' | BubbleKind;
+const BRIEFING_MS = 9000;          // 날씨 안내 말풍선 표시 시간
+const BRIEFING_GUARD_MS = 8000;    // 안내가 끝난 뒤 다른 말풍선이 바로 덮지 않게 비켜 주는 보호 시간
+const FORCE_MS = 12000;            // 펫에게 물어서 보여 주는 운세·날씨가 떠 있는 시간(눌러서 넘기면 더 붙잡는다)
+const DOUBLE_CLICK_MS = 350;       // 이 안에 두 번 누르면 더블클릭(펫에게 말 걸기)
 interface BubbleStyle { bg: string; text: string; }
 interface Settings {
   distractEmoji: boolean;
@@ -97,10 +104,11 @@ interface Settings {
   bubbleShowSec: number;
   bubbleGapSec: number;
   bubbleClock: boolean;
-  bubbleIdle: BubbleIdle;
+  bubbleOffKinds: BubbleKind[];
   weatherEnabled: boolean;
   weatherConsent: boolean;
   weatherCityId: string;
+  fortuneBirth: string;
   useCustomMode: boolean;
   customShape: CustomShape;
   moveSpeed: number;
@@ -126,7 +134,7 @@ const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
   distractInterval: 30, imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleIdle: 'clock', weatherEnabled: false, weatherConsent: false, weatherCityId: '',
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleOffKinds: [], weatherEnabled: false, weatherConsent: false, weatherCityId: '', fortuneBirth: '',
   useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
@@ -350,9 +358,17 @@ export default function PetPage() {
   const [idleBubble, setIdleBubble] = useState<{ kind: IdleKind; text: string; key: number } | null>(null);
   const fortunePageRef = useRef(0);   // 운세 말풍선에서 지금 보여주는 줄(펫을 클릭하면 다음 줄)
   const weatherRef = useRef<{ data: WeatherData; at: number } | null>(null);   // 메인이 가져온 마지막 날씨(말풍선 엔진·클릭이 읽는다)
-  const [askOpen, setAskOpen] = useState(false);          // 펫이 "어느 동네에 있어요?"를 묻는 중
-  const briefingUntilRef = useRef(0);                     // 아침·퇴근길 날씨 안내가 떠 있는 동안(이 시각까지) 졸림 방지 말풍선은 쉰다
-  const askDismissedRef = useRef(false);                 // "나중에"를 누르면 날씨를 다시 켜기 전까지 먼저 묻지 않는다(펫을 누르면 다시 묻는다)
+  const weatherPageRef = useRef(0);                       // 날씨 말풍선에서 지금 보여주는 줄(펫을 누르면 최고/최저 → 강수 확률 순)
+  const mixRef = useRef<{ slot: number; kind: BubbleKind | null; last: BubbleKind | null }>({ slot: -1, kind: null, last: null });   // 빈 시간 말풍선 자동 섞기 상태(이번 주기에 고른 종류, 직전 종류)
+  const lastPhraseRef = useRef<string | null>(null);      // 직전에 보여 준 한마디(연속 중복 방지)
+  const forceRef = useRef<{ kind: 'fortune' | 'weather'; until: number } | null>(null);   // 펫에게 물어서 지금 보여 주는 운세·날씨
+  const singleClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);   // 더블클릭인지 기다리는 한 번 클릭 처리
+  const idleHoldRef = useRef(0);                         // 눌러서 줄을 넘기는 동안 말풍선을 조금 더 붙잡아 두는 시각
+  const birthAskRequestRef = useRef<() => void>(() => {});   // 운세 말풍선이 나왔을 때 생일 묻기를 요청(엔진이 부른다)
+  const [talk, setTalk] = useState<null | 'menu' | 'weather' | 'birth'>(null);   // 펫에게 말 걸기 창(열려 있는 동안만 입력을 받는다)
+  const [birthAsk, setBirthAsk] = useState(false);          // "생일을 알려줄래요?" 작은 묻기
+  const nagOk = () => Date.now() >= Math.max(briefingUntilRef.current, forceRef.current?.until ?? 0);   // 졸림 방지 말풍선이 날씨 안내·물어서 보여 주는 운세·날씨를 덮지 않는다
+  const briefingUntilRef = useRef(0);                    // 아침·퇴근길 날씨 안내가 떠 있는 동안과 그 직후(보호 시간)는 다른 말풍선이 덮지 않는다
   const alertRef = useRef(false);
   const toastActiveRef = useRef(false);
   const reloadSettingsRef = useRef<() => void>(() => {});
@@ -785,20 +801,32 @@ export default function PetPage() {
       const paused = alertRef.current || toastActiveRef.current;
       if (!paused) elapsed += dt;
       let kind: IdleKind | null = null, idx = -1, text = '';
-      if (!paused && cur.bubbleEnabled !== false && !focusRef.current.enabled) {   // 초집중 모드에서는 내 메시지·시계 말풍선 없음(시계는 따로 표시)
-        if (msgs.length && (show >= gap || elapsed % gap < show)) {
+      const guarded = now < briefingUntilRef.current;   // 아침·퇴근길 날씨 안내 직후에는 다른 말풍선이 바로 덮지 않는다(보호 시간)
+      if (!paused && !guarded && cur.bubbleEnabled !== false && !focusRef.current.enabled) {   // 초집중 모드에서는 말풍선이 뜨지 않는다(시계·진행 바는 따로 표시)
+        const d = new Date();
+        const force = forceRef.current && now < forceRef.current.until ? forceRef.current : null;   // 펫에게 물어서 지금 보여 주는 운세·날씨
+        const phase = elapsed % gap, winStart = msgs.length ? show : 0;
+        const inIdleWindow = show >= gap || (phase >= winStart && phase < winStart + show);   // 메시지가 있으면 메시지 다음 차례, 없으면 매 주기의 첫 표시 시간
+        if (!force && msgs.length && (show >= gap || phase < show)) {
           kind = 'message'; idx = Math.floor(elapsed / gap) % msgs.length; text = msgs[idx];
-        } else if (cur.bubbleClock !== false) {
-          const idle = bubbleIdleOf(cur.bubbleIdle);   // 저장값이 없으면 시계(예전 설정 그대로)
-          const d = new Date();
-          if (idle === 'phrase') { kind = 'phrase'; idx = Math.floor((d.getHours() * 60 + d.getMinutes()) / 30); text = phraseFor(d); }
-          else if (idle === 'fortune') {
-            const pages = fortuneFor(d).pages;
-            kind = 'fortune'; idx = fortunePageRef.current % pages.length; text = pages[idx];
+        } else if (force || (cur.bubbleClock !== false && (inIdleWindow || now < idleHoldRef.current))) {
+          const off = cleanOffKinds(cur.bubbleOffKinds);
+          const weatherReady = cur.weatherEnabled === true && cur.weatherConsent === true && !!weatherRef.current;
+          const slot = Math.floor(elapsed / gap);
+          if (force) { mixRef.current = { slot, kind: force.kind, last: mixRef.current.last }; }
+          else if (mixRef.current.slot !== slot || mixRef.current.kind === null || (mixRef.current.kind === 'weather' && !weatherReady) || (mixRef.current.kind && off.includes(mixRef.current.kind))) {
+            const k = pickKind({ off, weatherReady, last: mixRef.current.last });
+            mixRef.current = { slot, kind: k, last: k ?? mixRef.current.last };
+            fortunePageRef.current = 0; weatherPageRef.current = 0;
+            if (k === 'phrase') lastPhraseRef.current = randomPhrase(lastPhraseRef.current);
+            if (k === 'fortune') birthAskRequestRef.current();
           }
-          else if (idle === 'progress') { kind = 'progress'; text = ''; }   // 막대는 자기 안에서 분마다 갱신
-          else if (idle === 'weather' && cur.weatherEnabled === true && cur.weatherConsent === true && weatherRef.current) { kind = 'weather'; text = currentText(weatherRef.current.data, d); }   // 날씨가 없으면(꺼짐·도시 없음·아직 못 받음) 시계
-          else { kind = 'clock'; text = clockText(); }
+          const k = mixRef.current.kind;
+          if (k === 'clock') { kind = 'clock'; text = clockText(); }
+          else if (k === 'phrase') { kind = 'phrase'; idx = slot; text = lastPhraseRef.current ?? ''; }
+          else if (k === 'progress') { kind = 'progress'; text = ''; }   // 막대는 자기 안에서 분마다 갱신
+          else if (k === 'fortune') { const pages = fortuneFor(d, undefined, cur.fortuneBirth).pages; kind = 'fortune'; idx = fortunePageRef.current % pages.length; text = pages[idx]; }
+          else if (k === 'weather' && weatherRef.current) { const lines = weatherLines(weatherRef.current.data, d); kind = 'weather'; idx = Math.min(weatherPageRef.current, lines.length - 1); text = lines[idx]; }
         }
       }
       if (kind === curKind && idx === curIdx && text === curText) return;
@@ -835,13 +863,20 @@ export default function PetPage() {
   // 아침(출근 30분 전~출근 후 90분)과 퇴근길(퇴근 30분 전~퇴근) 안내를 하루에 한 번씩. 초집중 모드·알림 중에는 미루고 다음 확인 때 다시 시도한다.
   useEffect(() => {
     const toMin = (hm: string) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hm || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const announce = (text: string) => {
+      briefingUntilRef.current = Date.now() + BRIEFING_MS + BRIEFING_GUARD_MS;   // 안내가 떠 있는 동안과 그 직후는 다른 말풍선이 덮지 않는다
+      showBubble(text, 'happy', false, BRIEFING_MS);
+    };
     const check = () => {
       const cur = settingsRef.current;
-      const w = weatherRef.current;
-      if (!w || cur.bubbleEnabled === false || cur.weatherEnabled !== true || cur.weatherConsent !== true || !cityById(cur.weatherCityId)) return;
-      if (focusRef.current.enabled || alertRef.current || toastActiveRef.current) return;
+      if (cur.bubbleEnabled === false || focusRef.current.enabled || alertRef.current || toastActiveRef.current) return;   // 초집중 모드·알림 중에는 미루고 다음 확인 때 다시 시도한다
       const now = new Date(), n = now.getHours() * 60 + now.getMinutes();
       const day = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+      // 생일 당일 축하(그날 한 번). 생일은 이 PC 안에서만 쓰고 밖으로 보내지 않는다.
+      const birth = readBirth(cur.fortuneBirth, now);
+      if (birth && isBirthday(birth, now) && readTalkState().birthdayShown !== day) { writeTalkState({ birthdayShown: day }); announce(BIRTHDAY_MESSAGE); return; }
+      const w = weatherRef.current;
+      if (!w || cur.weatherEnabled !== true || cur.weatherConsent !== true || !cityById(cur.weatherCityId)) return;   // 날씨가 꺼져 있으면 아침·퇴근길 안내에서 빠진다
       let shown: { day?: string; morning?: boolean; evening?: boolean } = {};
       try { shown = JSON.parse(localStorage.getItem('weatherShown') || '{}'); } catch {}
       if (shown.day !== day) shown = { day };
@@ -851,39 +886,88 @@ export default function PetPage() {
       else if (lv !== null && !shown.evening && n >= lv - 30 && n <= lv) { shown.evening = true; text = eveningText(w.data, now); }
       if (!text) return;
       try { localStorage.setItem('weatherShown', JSON.stringify(shown)); } catch {}
-      briefingUntilRef.current = Date.now() + BRIEFING_MS;   // 졸림 방지 말풍선이 안내를 덮어쓰지 않게 잠시 비켜 준다
-      showBubble(text, 'happy', false, BRIEFING_MS);
+      announce(text);
     };
     const timer = setInterval(check, 30 * 1000);
     return () => clearInterval(timer);
   }, [showBubble]);
 
-  // 날씨를 켰는데 도시가 없으면 펫이 먼저 묻는다(초집중 모드·알림이 떠 있는 동안은 열지 않는다). 사용자가 입력칸을 눌러야 입력 포커스를 가져간다.
-  const askBlocked = focus.enabled || alertActive || !!toast;
+  // ★ 펫에게 말 걸기(더블클릭·트레이 메뉴): 초집중 모드·알람 울림·알람 팝업·미리 알림 토스트 중에는 열지 않는다.
+  // 열려 있는 동안만 클릭 통과 중에도 입력·키보드를 받고, 닫히면 원래대로 돌아간다. 대화 내용은 저장하지 않는다(바뀐 설정만 저장).
+  const talkBlocked = focus.enabled || alertActive || !!toast;
+  const openTalk = useCallback((start: 'menu' | 'weather' | 'birth' = 'menu') => {
+    if (focusRef.current.enabled || alertRef.current || toastActiveRef.current) return;
+    setBirthAsk(false); setTalk(start);
+  }, []);
+  useEffect(() => { if (talkBlocked) { setTalk(null); setBirthAsk(false); } }, [talkBlocked]);
   useEffect(() => {
-    if (!weatherOn) { askDismissedRef.current = false; setAskOpen(false); return; }
-    if (askBlocked) { setAskOpen(false); return; }
-    if (!weatherCity && !askDismissedRef.current) setAskOpen(true);
-    if (weatherCity) setAskOpen(false);
-  }, [weatherOn, weatherCityId, askBlocked, weatherCity]);
-  useEffect(() => {
-    if (!askOpen) return;
-    window.electronAPI?.setPetInteractive?.(true);   // 클릭 통과 중에도 이 대화 동안만 입력을 받는다(대화가 닫히면 원래대로)
+    if (!talk) return;
+    window.electronAPI?.setPetInteractive?.(true);
     return () => { window.electronAPI?.setPetInteractive?.(false); };
-  }, [askOpen]);
-  const closeAsk = useCallback(() => { askDismissedRef.current = true; setAskOpen(false); }, []);
-  const pickCity = useCallback((c: City) => {
-    try {   // 날씨 키만 바꿔 저장한다(설정창이 열려 있으면 storage 이벤트로 같이 반영한다)
+  }, [talk]);
+  useEffect(() => window.electronAPI?.onOpenTalk?.((start) => openTalk(start === 'weather' ? 'weather' : 'menu')), [openTalk]);   // 트레이 메뉴
+
+  // 대화로 바뀐 설정(날씨·생일·빼기)만 저장한다. 설정창이 열려 있으면 storage 이벤트로 같이 반영된다.
+  const saveOwned = useCallback((patch: SettingsPatch) => {
+    try {
       const raw = JSON.parse(localStorage.getItem('petSettings') || '{}');
-      raw.weatherCityId = c.id;
+      Object.assign(raw, patch);
       localStorage.setItem('petSettings', JSON.stringify(raw));
-      setSettings(s => ({ ...s, weatherCityId: c.id }));
+      settingsRef.current = { ...settingsRef.current, ...patch } as Settings;
+      setSettings(s => ({ ...s, ...patch }));
       window.electronAPI?.syncSettings({ ...DEFAULT_SETTINGS, ...raw });
     } catch {}
-    setAskOpen(false);
-    const last = c.name.charCodeAt(c.name.length - 1);
-    const batchim = last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 !== 0;
-    showBubble(`${c.name}${batchim ? '이' : ''}군요! 날씨 알려드릴게요 ☀️`, 'happy', false, 5000);
+  }, []);
+  const talkCtx = (): TalkCtx => {
+    const s = settingsRef.current;
+    return { weatherEnabled: s.weatherEnabled === true, weatherConsent: s.weatherConsent === true, weatherCityId: s.weatherCityId || '', fortuneBirth: s.fortuneBirth || '', offKinds: cleanOffKinds(s.bubbleOffKinds), today: new Date() };
+  };
+
+  // 물어서 보여 주기: 날씨(값이 없으면 지금 받아 옴)·운세는 말풍선 엔진이 잠시 붙잡아 보여 주고(눌러서 다음 줄), 한마디는 바로 한 줄
+  const showWeatherNow = useCallback(async () => {
+    const cur = settingsRef.current, city = cityById(cur.weatherCityId);
+    if (!city || cur.weatherEnabled !== true || cur.weatherConsent !== true) return;
+    let w = weatherRef.current;
+    if (!w || Date.now() - w.at > 15 * 60 * 1000) {
+      try { const r = await window.electronAPI?.getWeather?.(city.lat, city.lon); if (r && r.data) { w = { data: r.data, at: Date.now() }; weatherRef.current = w; } } catch { /* 조용히 건너뜀 */ }
+    }
+    if (!w) { showBubble('날씨를 아직 못 가져왔어요. 잠시 뒤에 다시 물어봐 줄래요?', 'normal', false, 5000); return; }
+    dropBubble(); weatherPageRef.current = 0; forceRef.current = { kind: 'weather', until: Date.now() + FORCE_MS };
+  }, [showBubble]);
+  // 물어서 보여 주는 말풍선이 떠 있던 반응·낮잠 말풍선에 가려지지 않게 먼저 치운다
+  const dropBubble = () => { if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current); setBubble(null); setBubbleStyle(null); setMood('normal'); };
+  const showFortuneNow = useCallback(() => { dropBubble(); fortunePageRef.current = 0; forceRef.current = { kind: 'fortune', until: Date.now() + FORCE_MS }; }, []);
+  const showPhraseNow = useCallback(() => { lastPhraseRef.current = randomPhrase(lastPhraseRef.current); showBubble(lastPhraseRef.current, 'happy', false, 5000); }, [showBubble]);
+  const talkShow = useCallback((what: ShowKind) => { if (what === 'weather') void showWeatherNow(); else if (what === 'fortune') showFortuneNow(); else showPhraseNow(); }, [showWeatherNow, showFortuneNow, showPhraseNow]);
+  const talkSay = useCallback((text: string, then?: ShowKind) => {
+    showBubble(text, 'happy', false, 3500);
+    if (then) setTimeout(() => talkShow(then), 3700);
+  }, [showBubble, talkShow]);
+
+  // 운세 말풍선이 나왔을 때 생일이 없으면 한 번 묻는다. "다음에요"(또는 25초 무응답·닫기)는 7일 동안 다시 묻지 않는다.
+  birthAskRequestRef.current = () => {
+    const cur = settingsRef.current;
+    if (readBirth(cur.fortuneBirth) || focusRef.current.enabled || alertRef.current || toastActiveRef.current) return;
+    if (isSnoozed(readTalkState(), new Date())) return;
+    setBirthAsk(true);
+  };
+  const birthLater = useCallback(() => { writeTalkState({ birthSnoozeUntil: snoozedUntil(new Date()) }); setBirthAsk(false); }, []);
+  useEffect(() => {
+    if (!birthAsk) return;
+    const t = setTimeout(birthLater, 25000);
+    return () => clearTimeout(t);
+  }, [birthAsk, birthLater]);
+
+  // 새 버전을 처음 실행한 뒤 한 번만 대화 기능을 알린다(초집중 모드·알림 중에는 미루고 다음에 다시 시도)
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (readTalkState().introShown) { clearInterval(t); return; }
+      if (focusRef.current.enabled || alertRef.current || toastActiveRef.current || settingsRef.current.bubbleEnabled === false) return;
+      writeTalkState({ introShown: true });
+      showBubble('더블클릭하면 저랑 얘기할 수 있어요 💬', 'happy', false, 7000);
+      clearInterval(t);
+    }, 5000);
+    return () => clearInterval(t);
   }, [showBubble]);
 
   // ★ 졸림방지 - 항상 실행, 내부에서 최신 ref 참조
@@ -908,7 +992,7 @@ export default function PetPage() {
 
       if (custom && imgs.length > 0) {
         // 커스텀 모드: 말풍선 (사진 교체는 교체 주기 설정을 따라 메인이 따로 처리한다)
-        if (s.bubbleEnabled !== false && Date.now() >= briefingUntilRef.current) showBubble(pickOwnMessage() ?? getLegacyNag(), 'happy', true);
+        if (s.bubbleEnabled !== false && nagOk()) showBubble(pickOwnMessage() ?? getLegacyNag(), 'happy', true);
         // 1.5초 뒤 기습 이모지
         setTimeout(() => {
           if (!stateRef.current.escaping) {
@@ -920,13 +1004,13 @@ export default function PetPage() {
         // 일반 모드
         if (Math.random() < 0.3) {
           setAmbushEmoji(rand(AMBUSH_EMOJIS));
-          if (s.bubbleEnabled !== false && Date.now() >= briefingUntilRef.current) showBubble(pickOwnMessage() ?? getLegacyNag(), 'surprised', true);
+          if (s.bubbleEnabled !== false && nagOk()) showBubble(pickOwnMessage() ?? getLegacyNag(), 'surprised', true);
           setTimeout(() => setAmbushEmoji(null), 1800);
         } else {
           const moods = ['happy','sleepy','party','love','cool','angry'];
           const newMood = rand(moods);
           setMood(newMood);
-          if (s.bubbleEnabled !== false && Date.now() >= briefingUntilRef.current) showBubble(pickOwnMessage() ?? getLegacyNag(), newMood, true);
+          if (s.bubbleEnabled !== false && nagOk()) showBubble(pickOwnMessage() ?? getLegacyNag(), newMood, true);
           setTimeout(() => setMood('normal'), 2000);
         }
       }
@@ -1010,34 +1094,36 @@ export default function PetPage() {
     e.stopPropagation();
     if (didDrag.current) { didDrag.current = false; return; }
     if (focusRef.current.enabled) return;   // 초집중 모드에서는 반응 말풍선·파티클 없음
-    if (!bubble && !alertActive && !toast && idleBubble?.kind === 'fortune') {   // 운세가 떠 있으면 클릭으로 다음 줄
-      fortunePageRef.current += 1;
-      return;
-    }
-    const cur = settingsRef.current;
-    const weatherAsked = cur.weatherEnabled === true && cur.weatherConsent === true;
-    if (weatherAsked && !cityById(cur.weatherCityId) && !alertActive && !toast) {   // 도시가 아직 없으면 눌렀을 때 다시 묻는다
-      askDismissedRef.current = false; setAskOpen(true);
-      return;
-    }
+    // 더블클릭: 펫에게 말 걸기 창(예전 더블클릭 놀람 반응을 대신한다). 직접 눌렀을 때만 열리고, 초집중·알림 중에는 openTalk가 막는다.
     const now = Date.now();
-    const isDoubleClick = now - lastClickTime.current < 400;
-    lastClickTime.current = now;
-    const reactions = isCustomMode ? CUSTOM_REACTIONS : animal.reactions;
-    if (isDoubleClick) {
-      spawnParticles(14);
-      showBubble(rand(reactions), 'happy');
-    } else {
+    const isDoubleClick = now - lastClickTime.current < DOUBLE_CLICK_MS;
+    lastClickTime.current = isDoubleClick ? 0 : now;
+    if (singleClickTimerRef.current) { clearTimeout(singleClickTimerRef.current); singleClickTimerRef.current = null; }   // 두 번째 클릭이 오면 첫 클릭의 반응은 취소
+    if (isDoubleClick) { openTalk('menu'); return; }
+    // 한 번 클릭은 더블클릭인지 기다린 뒤(짧은 지연) 처리한다: 더블클릭의 첫 클릭이 반응 말풍선을 띄워 운세·날씨 말풍선을 덮지 않게
+    singleClickTimerRef.current = setTimeout(() => {
+      singleClickTimerRef.current = null;
+      // 한 번 클릭 우선순위: 운세 말풍선이 떠 있으면 다음 줄 → 날씨 말풍선이 떠 있으면 현재 → 최고/최저 → 강수 확률 → 그 외에는 평소 반응
+      const t = Date.now();
+      if (!bubble && !alertActive && !toast && idleBubble?.kind === 'fortune') {
+        fortunePageRef.current += 1; idleHoldRef.current = t + Math.max(FORCE_MS / 2, 5000);
+        if (forceRef.current) forceRef.current.until = Math.max(forceRef.current.until, idleHoldRef.current);
+        return;
+      }
+      if (!bubble && !alertActive && !toast && idleBubble?.kind === 'weather' && weatherRef.current) {
+        const last = weatherLines(weatherRef.current.data, new Date()).length - 1;
+        if (weatherPageRef.current < last) { weatherPageRef.current += 1; idleHoldRef.current = t + Math.max(FORCE_MS / 2, 5000); if (forceRef.current) forceRef.current.until = Math.max(forceRef.current.until, idleHoldRef.current); return; }
+        weatherPageRef.current = 0; forceRef.current = null; idleHoldRef.current = 0;   // 마지막 줄 다음 클릭은 평소 반응으로
+      }
+      const reactions = isCustomMode ? CUSTOM_REACTIONS : animal.reactions;
       clickCount.current += 1;
       const threshold = 2 + Math.floor(Math.random() * 2);
       if (clickCount.current >= threshold) {
         clickCount.current = 0;
         spawnParticles(10);
       }
-      // 날씨를 켜 둔 상태에서 한 번 누르면 지금 날씨 한 줄(아직 못 받았으면 평소 반응)
-      const w = weatherAsked ? weatherRef.current : null;
-      showBubble(w ? currentText(w.data, new Date()) : rand(reactions), w ? 'happy' : 'surprised');
-    }
+      showBubble(rand(reactions), 'surprised');
+    }, DOUBLE_CLICK_MS);
   };
 
   const currentCustomImage = isCustomMode && activeImages.length > 0
@@ -1058,7 +1144,8 @@ export default function PetPage() {
           <span>{toast.msg.replace(/(오전|오후) (?=\d)/g, '$1\u00A0')}</span>
         </div>
       )}
-      {askOpen && <PetAsk onPick={pickCity} onClose={closeAsk} />}
+      {talk && <PetTalk ctx={talkCtx()} start={talk} onApply={saveOwned} onSay={talkSay} onShow={talkShow} onClose={() => setTalk(null)} />}
+      {birthAsk && !talk && <PetBirthAsk onYes={() => { setBirthAsk(false); setTalk('birth'); }} onLater={birthLater} />}
       <div className="pet-container">
         <div className="bubble-slot" style={{ marginBottom: `${-8 + (petSize - 100) * 0.3}px` }}>
             {shownBubble && (
@@ -1072,6 +1159,7 @@ export default function PetPage() {
               </div>
             )}
           </div>
+        {focus.enabled && !alertActive && <FocusClock seconds={focus.seconds} />}   {/* 초집중 모드: 시계는 버디 위, 진행 바는 버디 바로 아래 */}
         <div className="cat-wrapper">
           {particles.map(p => (
             <div key={p.id} className="particle" style={{
@@ -1108,7 +1196,6 @@ export default function PetPage() {
             )}
           </div>
         </div>
-        {focus.enabled && !alertActive && <FocusClock seconds={focus.seconds} />}
         {focus.enabled && !alertActive && <DayProgressBar compact workStart={settings.workStart} lunchTime={settings.lunchTime} leaveTime={settings.leaveTime} />}
       </div>
     </div>

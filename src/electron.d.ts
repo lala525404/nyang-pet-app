@@ -48,6 +48,7 @@ interface ElectronAPI {
   onPhotoState: (cb: (state: { index: number; count: number; intervalSec: number }) => void) => () => void;
   onShowBubble: (cb: (text: string, ms?: number) => void) => () => void;
   onShowToast: (cb: (msg: string, ms?: number) => void) => () => void;
+  onOpenTalk: (cb: (start: 'menu' | 'weather') => void) => () => void;
   getAllDisplays: () => Promise<{ all: { minX: number; minY: number; width: number; height: number }; monitors: { id: number; displayId: number; isPrimary: boolean; label: string; bounds: { x: number; y: number; width: number; height: number } }[] }>;
   getPetPosition: () => Promise<{x:number,y:number}|null>;
   getFocusMode: () => Promise<FocusModeState>;

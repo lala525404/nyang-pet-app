@@ -16,10 +16,13 @@ export interface Alarm {
 }
 
 export type BuddyMode = 'chill' | 'buddy' | 'chaos' | 'custom';
-export type BubbleIdle = 'clock' | 'phrase' | 'fortune' | 'progress' | 'weather';
-export const BUBBLE_IDLE_KINDS: readonly BubbleIdle[] = ['clock', 'phrase', 'fortune', 'progress', 'weather'];
-// 저장값이 없거나 알 수 없는 값이면 시계
-export const bubbleIdleOf = (v: unknown): BubbleIdle => (BUBBLE_IDLE_KINDS as readonly unknown[]).includes(v) ? v as BubbleIdle : 'clock';
+// 빈 시간 말풍선에 자동으로 섞여 나오는 종류(v1.5.x). 빼고 싶은 종류는 펫에게 말해서 bubbleOffKinds에 담는다.
+export type BubbleKind = 'clock' | 'phrase' | 'progress' | 'fortune' | 'weather';
+export const BUBBLE_KINDS: readonly BubbleKind[] = ['clock', 'phrase', 'progress', 'fortune', 'weather'];
+// 저장값에서 알 수 없는 종류·중복을 걸러 낸다
+export const cleanOffKinds = (v: unknown): BubbleKind[] => Array.isArray(v) ? BUBBLE_KINDS.filter(k => v.includes(k)) : [];
+// 펫과의 대화로 바뀌는 저장 키: 설정창이 낡은 값으로 되돌려 쓰지 않도록 이 키들은 설정창이 저장값에서 바로 받아 온다
+export const PET_OWNED_KEYS = ['weatherEnabled', 'weatherConsent', 'weatherCityId', 'fortuneBirth', 'bubbleOffKinds'] as const;
 
 export interface PetSettings {
   alwaysOnTop: boolean;
@@ -37,11 +40,12 @@ export interface PetSettings {
   bubbleMessages: string[];   // 내 메시지 최대 5개, 각 20자 이하. 순서대로 하나씩 돌린다
   bubbleShowSec: number;      // 한 번 보여주는 시간(초)
   bubbleGapSec: number;       // 메시지가 나오는 주기(초, 한 메시지가 나오고 다음 메시지가 나올 때까지)
-  bubbleClock: boolean;       // 메시지가 없는 동안 빈 시간 말풍선 표시(false면 안 보임). 켜져 있을 때 무엇을 보일지는 bubbleIdle
-  bubbleIdle: BubbleIdle;     // 빈 시간에 보여줄 것(v1.5.0). 저장값이 없으면 'clock'이라 예전 설정 그대로 시계가 나온다
-  weatherEnabled: boolean;    // 날씨(v1.5.1). 기본 꺼짐. 켜짐 + 동의가 둘 다 있어야 날씨 요청을 보낸다
+  bubbleClock: boolean;       // 메시지가 없는 동안 빈 시간 말풍선(시계·한마디·하루 진행·운세·날씨가 섞여 나온다). false면 안 나온다
+  bubbleOffKinds: BubbleKind[];   // 빈 시간 말풍선에서 뺀 종류(펫에게 말해서 정한다). 기본 비어 있음
+  weatherEnabled: boolean;    // 날씨. 기본 꺼짐. 켜짐 + 동의가 둘 다 있어야 날씨 요청을 보낸다(펫과 대화로 켠다)
   weatherConsent: boolean;    // 선택한 도시의 대략적인 좌표가 Open-Meteo로 전송되는 것에 동의했는지(기본 false)
-  weatherCityId: string;      // 내장 도시 id(src/data/cities.ts). 빈 문자열이면 도시 없음
+  weatherCityId: string;      // 날씨 도시(시·군·구) id(src/data/cities.ts). 빈 문자열이면 없음
+  fortuneBirth: string;       // 운세용 생일("YYYY-MM-DD" 또는 연도를 모르면 "MM-DD"). 기본 비어 있음. 밖으로 보내지 않는다
   introEnabled: boolean;      // 설정창 시작 인트로 보기(새 버전 첫 설정창에서만 한 번). 예전 설정에는 없으므로 기본값(켬)이 쓰인다
   moveSpeed: number;
   zone: number;
@@ -71,7 +75,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleIdle: 'clock', weatherEnabled: false, weatherConsent: false, weatherCityId: '', introEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleOffKinds: [], weatherEnabled: false, weatherConsent: false, weatherCityId: '', fortuneBirth: '', introEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
   lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchPreAlertEnabled: false, leavePreAlertEnabled: false, alarms: [],

@@ -231,9 +231,10 @@ html, body, #root {
 
 /* 초집중 모드: 말풍선 자리를 접고 버디 아래에 작은 시계. 글자는 반투명, 색은 라이트/다크 테마를 따라간다. 마우스는 통과한다(버디만 드래그·우클릭). */
 .pet-root[data-focus] .bubble-slot { display: none; }
+.pet-root[data-focus] { box-sizing: border-box; padding-bottom: 16px; }   /* 진행 바가 창 아래 가장자리에 붙어 잘려 보이지 않게 안쪽 여유 */
 .pet-root[data-focus] .cat-emoji { animation: none; }   /* 상시 둥실 애니메이션(60fps 합성)을 멈춘다: 느린 이동만 남겨 CPU·GPU를 아낀다 */
 .focus-clock {
-  margin-top: 2px; padding: 2px 10px; border-radius: 999px;
+  margin-bottom: 2px; padding: 2px 10px; border-radius: 999px;
   font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 12px; line-height: 1.35; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;
   color: var(--ui-ink); opacity: 0.72;
   background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
@@ -255,22 +256,37 @@ html, body, #root {
 .day-progress--compact .day-progress-tick { top: -1px; height: 6px; background: var(--ui-ink); }
 .day-progress--compact .day-progress-label { font-family: 'Pretendard Variable', Pretendard, sans-serif; font-size: 11px; color: var(--ui-ink); }
 
-/* 펫이 묻는 대화(날씨 도시 고르기): 버디 창 위쪽에 겹쳐 뜬다. 이 안에서만 마우스·키보드를 받는다(창 나머지는 평소와 같다). */
-.pet-ask {
-  position: absolute; z-index: 5; top: 6px; left: 12px; right: 12px; box-sizing: border-box; padding: 10px 10px 8px;
+/* 펫에게 말 걸기 창: 버디 창 위쪽에 겹쳐 뜬다. 이 안에서만 마우스·키보드를 받는다(창 나머지는 평소와 같다). 창이 낮아도(230px) 넘치면 안에서 스크롤. */
+.pet-talk {
+  position: absolute; z-index: 5; top: 4px; left: 10px; right: 10px; box-sizing: border-box; padding: 8px 10px 8px; max-height: calc(100vh - 8px); overflow-y: auto; scrollbar-width: thin;
   display: flex; flex-direction: column; gap: 6px; border-radius: 14px; pointer-events: auto;
   background: var(--ui-panel); color: var(--ui-ink); box-shadow: 0 4px 20px rgba(0,0,0,0.22), 0 1px 4px rgba(0,0,0,0.12);
   font-family: 'Pretendard Variable', Pretendard, 'Segoe UI', sans-serif; font-size: 12px; line-height: 1.4;
 }
-.pet-ask-title { margin: 0; font-size: 13px; font-weight: 700; }
-.pet-ask-input {
-  box-sizing: border-box; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 10px; outline: none;
+.pet-talk--small { padding-bottom: 10px; }
+.pet-talk-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.pet-talk-title { margin: 0; font-size: 13px; font-weight: 700; }
+.pet-talk-x { flex: none; width: 20px; height: 20px; margin: -2px -4px 0 0; border: 0; border-radius: 999px; background: transparent; color: var(--ui-sub); font-size: 16px; line-height: 1; cursor: pointer; }
+.pet-talk-x:hover { background: var(--ui-item); color: var(--ui-ink); }
+.pet-talk-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.pet-talk-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.pet-talk-chip, .pet-talk-opt, .pet-talk-clear { border: 0; cursor: pointer; font: inherit; color: var(--ui-ink); }
+.pet-talk-chip { min-height: 26px; padding: 0 10px; border-radius: 999px; background: var(--ui-track); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pet-talk-chip--wide { grid-column: 1 / -1; }
+.pet-talk-chip--primary { background: var(--ui-primary); color: var(--ui-primary-ink); }
+.pet-talk-chip--ghost { background: transparent; color: var(--ui-sub); }
+.pet-talk-chip:hover, .pet-talk-opt:hover, .pet-talk-chip:focus-visible, .pet-talk-opt:focus-visible { background: var(--ui-hover); outline: none; }
+.pet-talk-chip--primary:hover, .pet-talk-chip--primary:focus-visible { background: var(--ui-primary-hover); }
+.pet-talk-input {
+  box-sizing: border-box; width: 100%; height: 30px; padding: 0 10px; border: 0; border-radius: 10px; outline: none;
   background: var(--ui-item); color: var(--ui-ink); font: inherit; font-size: 13px;
 }
-.pet-ask-input:focus-visible { box-shadow: 0 0 0 2px var(--ui-accent); }
-.pet-ask-list { display: flex; flex-direction: column; gap: 4px; }
-.pet-ask-opt, .pet-ask-later { border: 0; cursor: pointer; font: inherit; color: var(--ui-ink); }
-.pet-ask-opt { min-height: 28px; padding: 0 10px; border-radius: 999px; background: var(--ui-track); font-size: 12px; font-weight: 600; text-align: left; }
-.pet-ask-opt:hover, .pet-ask-opt:focus-visible { background: var(--ui-hover); outline: none; }
-.pet-ask-none { margin: 0; color: var(--ui-sub); }
-.pet-ask-later { align-self: flex-end; padding: 2px 6px; background: transparent; color: var(--ui-sub); font-size: 11px; }
+.pet-talk-input:focus-visible { box-shadow: 0 0 0 2px var(--ui-accent); }
+.pet-talk-list { display: flex; flex-direction: column; gap: 3px; }
+.pet-talk-opt { min-height: 24px; padding: 0 10px; border-radius: 999px; background: var(--ui-track); font-size: 12px; font-weight: 600; text-align: left; }
+.pet-talk-note { margin: 0; color: var(--ui-sub); }
+.pet-talk-detail { color: var(--ui-ink); }
+.pet-talk-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.pet-talk-memory { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ui-sub); }
+.pet-talk-clear { flex: none; padding: 2px 6px; border-radius: 999px; background: transparent; color: var(--ui-sub); font-size: 11px; text-decoration: underline; }
+.pet-talk-credit { margin: 0; font-size: 10px; color: var(--ui-sub); opacity: 0.85; }

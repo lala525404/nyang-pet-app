@@ -10,7 +10,9 @@ const load = (rel, deps = {}) => {
 };
 const FFFD = String.fromCharCode(0xFFFD);   // 깨진 글자(대체 문자). 소스에 문자 그대로 쓰지 않는다
 const D = load('src/data/fortune.ts');
-const F = load('src/utils/fortune.ts', { '../data/fortune': D });
+const ZT = load('src/data/zodiacText.ts');
+const Z = load('src/utils/zodiac.ts', { '../data/zodiacText': ZT });
+const F = load('src/utils/fortune.ts', { '../data/fortune': D, '../data/zodiacText': ZT, './zodiac': Z });
 const P = load('src/utils/dayProgress.ts');
 const S = load('src/utils/settings.ts');
 const day = (y, m, d, h = 12, mi = 0) => new Date(y, m - 1, d, h, mi, 30);
@@ -39,15 +41,14 @@ t('금지 표현: 불안·단정·의학·금융 조언 단어가 없다', () =>
   const all = [...v.phrases, ...v.total, ...v.work, ...v.money, ...v.people, ...v.footers];
   for (const s of all) for (const b of bad) assert.ok(!s.includes(b), `"${b}" in ${s}`);
 });
-t('한마디: 같은 슬롯(30분)은 같은 문구, 직전 슬롯과 같은 문구는 나오지 않는다(하루 48슬롯 × 60일)', () => {
-  assert.strictEqual(F.phraseFor(day(2026, 10, 23, 10, 0)), F.phraseFor(day(2026, 10, 23, 10, 29)));
-  assert.ok(v.phrases.includes(F.phraseFor(day(2026, 10, 23, 10, 0))));
-  let prev = null, distinct = new Set();
-  for (let i = 0; i < 48 * 60; i++) {
-    const cur = F.phraseFor(new Date(2026, 8, 1, 0, i * 30, 5));
-    assert.notStrictEqual(cur, prev, `연속 중복 i=${i}`); prev = cur; distinct.add(cur);
+t('한마디: 목록에서 무작위로 고르되 직전 문구와 같은 문구는 연속으로 나오지 않는다(수천 번 시뮬레이션), 난수가 같은 값이어도 직전 문구는 피한다', () => {
+  let prev = null; const distinct = new Set();
+  for (let i = 0; i < 5000; i++) {
+    const cur = F.randomPhrase(prev); assert.ok(v.phrases.includes(cur)); assert.notStrictEqual(cur, prev, `연속 중복 i=${i}`); prev = cur; distinct.add(cur);
   }
-  assert.ok(distinct.size > 100, `다양성 ${distinct.size}`);
+  assert.ok(distinct.size > 140, `다양성 ${distinct.size}`);
+  const first = F.randomPhrase(null, () => 0); assert.notStrictEqual(F.randomPhrase(first, () => 0), first, '같은 난수여도 직전 문구는 피한다');
+  assert.ok(first === v.phrases[0]);
 });
 t('운세: 같은 날짜는 몇 번을 불러도 같은 결과(시각이 달라도)', () => {
   const a = F.fortuneFor(day(2026, 10, 23, 0, 1)), b = F.fortuneFor(day(2026, 10, 23, 23, 59));
@@ -85,14 +86,15 @@ t('날짜 키는 로컬 날짜(자정 직전/직후에 바뀐다)', () => {
 });
 
 // ── 설정 기본값·호환 ────────────────────────────────────────────────────────
-t('설정 기본값: 빈 시간 표시는 시계(예전과 동일), 저장값이 없거나 이상하면 시계', () => {
-  assert.strictEqual(S.DEFAULT_SETTINGS.bubbleIdle, 'clock'); assert.strictEqual(S.DEFAULT_SETTINGS.bubbleClock, true);
-  for (const x of [undefined, null, '', 'xx', 3, {}]) assert.strictEqual(S.bubbleIdleOf(x), 'clock');
-  for (const k of ['clock', 'phrase', 'fortune', 'progress']) assert.strictEqual(S.bubbleIdleOf(k), k);
+t('설정 기본값: bubbleClock 켜짐(예전과 동일), 뺀 종류 없음, 생일 비어 있음, 이전 베타의 bubbleIdle 키는 없다', () => {
+  const d = S.DEFAULT_SETTINGS;
+  assert.strictEqual(d.bubbleClock, true); assert.deepStrictEqual(d.bubbleOffKinds, []); assert.strictEqual(d.fortuneBirth, ''); assert.ok(!('bubbleIdle' in d));
+  assert.deepStrictEqual(S.cleanOffKinds(['fortune', 'xx', 'fortune', 'clock', 3]), ['clock', 'fortune']); assert.deepStrictEqual(S.cleanOffKinds(undefined), []); assert.deepStrictEqual(S.cleanOffKinds('fortune'), []);
 });
-t('예전 저장 설정(bubbleIdle 없음)은 마이그레이션이 건드리지 않는다', () => {
+t('예전 저장 설정(새 키 없음)은 마이그레이션이 건드리지 않고, 읽으면 기본값으로 채워진다', () => {
   const old = { bubbleEnabled: true, bubbleClock: true, bubbleMessages: ['a'] };
-  const r = S.migrateSettings(old); assert.ok(!('bubbleIdle' in r.settings)); assert.strictEqual(S.bubbleIdleOf(r.settings.bubbleIdle), 'clock');
+  const r = S.migrateSettings(old); for (const k of ['bubbleOffKinds', 'fortuneBirth', 'weatherEnabled']) assert.ok(!(k in r.settings), k);
+  const merged = { ...S.DEFAULT_SETTINGS, ...r.settings }; assert.strictEqual(merged.bubbleClock, true); assert.deepStrictEqual(merged.bubbleOffKinds, []);
 });
 
 // ── 하루 진행 ───────────────────────────────────────────────────────────────
@@ -128,20 +130,24 @@ t('진행 바: 하루 전체를 돌려도 비율이 0~1이고 근무 중에는 �
 });
 
 // ── 연결(정적 확인) ─────────────────────────────────────────────────────────
-t('홈 칩은 8개 그대로, 말풍선 옵션 5종(시계·한마디·운세·하루 진행·없음)이 말풍선 칩 안에 있다', () => {
+t('설정 화면은 v1.4.1 그대로: 홈 칩 8개, 말풍선 팝오버에 "메시지가 없는 동안" 선택·날씨 버튼·표기가 없다', () => {
   const src = read('src/components/settings/HomePane.tsx');
   assert.strictEqual((src.match(/^ {6}id: '/gm) || []).length, 8, '칩 8개');
-  for (const w of ["'clock'", "'phrase'", "'fortune'", "'progress'", "'none'", '한마디', '운세', '하루 진행']) assert.ok(src.includes(w), w);
-  assert.ok(/v === 'none'\) \{ patch\(\{ bubbleClock: false \}\)/.test(src), '없음 = 예전 bubbleClock=false');
+  for (const w of ['메시지가 없는 동안 보여줄 것', 'bubbleIdle', 'st-idle', 'WeatherModal', 'WeatherSettings', 'onOpenWeather', 'Open-Meteo', 'fortuneBirth', '섞어서']) assert.ok(!src.includes(w), `HomePane에 ${w} 없음`);
+  assert.ok(src.includes('말풍선 사용') && src.includes('시계 표시') && src.includes('메시지 편집') && src.includes('표시 시간') && src.includes('간격') && src.includes('고급'));
 });
-t('버디 클릭: 초집중 모드가 먼저 막고, 운세가 떠 있을 때만 다음 줄로 넘긴다', () => {
+t('버디 클릭: 더블클릭이 말 걸기를 열고, 한 번 클릭은 운세 → 날씨 줄 넘김 → 평소 반응 순서', () => {
   const src = read('src/pages/PetPage.tsx');
   const click = src.slice(src.indexOf('const handleCatClick'));
-  assert.ok(click.indexOf('focusRef.current.enabled') < click.indexOf("idleBubble?.kind === 'fortune'"), '초집중 → 운세 순서');
+  assert.ok(click.indexOf('focusRef.current.enabled') < click.indexOf('openTalk'), '초집중 → 더블클릭 순서');
+  assert.ok(click.indexOf("idleBubble?.kind === 'fortune'") < click.indexOf("idleBubble?.kind === 'weather'") && click.indexOf("idleBubble?.kind === 'weather'") < click.indexOf('showBubble(rand(reactions)'));
   assert.ok(/fortunePageRef\.current \+= 1/.test(click));
 });
-t('초집중 모드: 시계 아래 진행 바(compact)와 1분 갱신·애니메이션 없음', () => {
+t('초집중 모드: 시계는 버디 위, 진행 바(compact)는 버디 바로 아래, 1분 갱신·애니메이션 없음, 창 아래 안쪽 여유', () => {
   const pet = read('src/pages/PetPage.tsx'), bar = read('src/components/DayProgressBar.tsx'), css = read('src/styles/pet.css');
+  const iClock = pet.indexOf('<FocusClock'), iCat = pet.indexOf('<div className="cat-wrapper">'), iBar = pet.indexOf('<DayProgressBar compact');
+  assert.ok(iClock > 0 && iClock < iCat && iCat < iBar, '시계 → 버디 → 진행 바');
+  assert.ok(/\.pet-root\[data-focus\] \{[^}]*padding-bottom: 16px/.test(css), '창 아래 여유');
   assert.ok(/focus\.enabled && !alertActive && <DayProgressBar compact/.test(pet));
   assert.ok(/60000 - \(d\.getSeconds\(\)/.test(bar));
   const block = css.slice(css.indexOf('.day-progress {'));

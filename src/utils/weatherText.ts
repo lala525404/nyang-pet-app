@@ -36,6 +36,13 @@ export function eveningText(w: WeatherData, now: Date): string {
   return `${pick(EVENING[key], `e|${key}|${day(now)}`)} (지금 ${deg(w.temp)})`;
 }
 
+// 날씨 말풍선을 펫을 눌러 넘겨 보는 줄들: 지금 날씨 → 오늘 최고/최저 → 비 올 확률(값이 있을 때)
+export function weatherLines(w: WeatherData, now: Date): string[] {
+  const lines = [currentText(w, now), `오늘 최고 ${deg(w.max)} / 최저 ${deg(w.min)}`];
+  if (typeof w.pop === 'number') lines.push(`비 올 확률은 ${Math.round(w.pop)}%예요${w.pop >= 60 ? ' ☔' : ''}`);
+  return lines;
+}
+
 // 지금 날씨 한 줄(체감이 2도 이상 다르면 체감도 덧붙인다). 30분마다 문구가 바뀐다.
 export function currentText(w: WeatherData, now: Date): string {
   const kind = weatherKind(w.code, w.pop);

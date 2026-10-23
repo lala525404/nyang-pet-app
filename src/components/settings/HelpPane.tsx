@@ -6,7 +6,7 @@ import type { PaneProps } from './shared';
 const TIPS: [LucideIcon, string][] = [
   [Move, '드래그해서 화면 어디든 이동 가능해요'],
   [MousePointerClick, '클릭하면 반응해요 (2~3번 중 1번 파티클!)'],
-  [Zap, '더블클릭하면 무조건 파티클 팡팡!'],
+  [Zap, '더블클릭하면 버디와 얘기할 수 있어요. 날씨·운세·한마디를 물어보고, 동네와 생일도 알려 줄 수 있어요 (트레이 메뉴 "💬 펫에게 말 걸기"도 같아요)'],
   [Eye, '마우스를 2초간 올려두면 버디가 도망가요'],
   [SlidersHorizontal, '우클릭하면 설정창이 열려요'],
   [Megaphone, "'버디 부르기' 버튼으로 버디를 불러올 수 있어요"],
@@ -37,6 +37,7 @@ export default function HelpPane({ settings, patch, onReplayIntro, onReplayOnboa
         <p className="ui-note">버디 고르기, 알림 켜기, 끄는 방법을 3단계로 다시 보여 드려요. 지금 설정값이 채워진 채로 시작해요.</p>
         <button type="button" className="ui-btn" onClick={onReplayOnboarding}>처음 안내 다시 보기</button>
       </article>
+      <p className="ui-note st-credit">날씨 데이터: Open-Meteo (CC BY 4.0)</p>
       <p className="ui-note st-credit">
         버디 이미지: Twemoji © Twitter, Inc. and other contributors · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
       </p>
