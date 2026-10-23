@@ -9,6 +9,7 @@
 const BASE_URL = 'https://api.open-meteo.com/v1/forecast';
 const CURRENT_FIELDS = ['temperature_2m', 'apparent_temperature', 'weather_code', 'wind_speed_10m'];
 const HOURLY_FIELDS = ['temperature_2m', 'apparent_temperature', 'precipitation_probability', 'weather_code', 'wind_speed_10m'];
+const DAILY_FIELDS = ['temperature_2m_max', 'temperature_2m_min', 'precipitation_probability_max'];   // 오늘 최고·최저 기온, 강수 확률 최대(퀵 메뉴의 날씨 카드)
 const TIMEOUT_MS = 8000;
 const CACHE_MS = 30 * 60 * 1000;
 const STALE_MAX_MS = 6 * 60 * 60 * 1000;
@@ -28,6 +29,7 @@ function buildUrl(lat, lon) {
     longitude: round2(lon).toFixed(2),
     current: CURRENT_FIELDS.join(','),
     hourly: HOURLY_FIELDS.join(','),
+    daily: DAILY_FIELDS.join(','),
     wind_speed_unit: 'ms',
     timeformat: 'unixtime',
     timezone: 'auto',
@@ -50,9 +52,18 @@ function parseResponse(json) {
       hours.push({ at: at * 1000, temp, feels: isNum(feels) ? feels : temp, pop: isNum(pop) ? pop : null, code, wind: isNum(wind) ? wind : null });
     }
     if (!hours.length) return null;
+    // 일별(오늘·내일): 그날 0시(ms)와 최고·최저 기온, 강수 확률 최대. 빠진 값은 null이고, 일별이 통째로 없어도 나머지는 그대로 쓴다.
+    const d = json.daily, days = [];
+    if (d && Array.isArray(d.time)) {
+      for (let i = 0; i < d.time.length; i++) {
+        if (!isNum(d.time[i])) continue;
+        const max = d.temperature_2m_max && d.temperature_2m_max[i], min = d.temperature_2m_min && d.temperature_2m_min[i], pop = d.precipitation_probability_max && d.precipitation_probability_max[i];
+        days.push({ at: d.time[i] * 1000, max: isNum(max) ? max : null, min: isNum(min) ? min : null, pop: isNum(pop) ? pop : null });
+      }
+    }
     return {
       temp: c.temperature_2m, feels: isNum(c.apparent_temperature) ? c.apparent_temperature : c.temperature_2m, code: c.weather_code,
-      wind: isNum(c.wind_speed_10m) ? c.wind_speed_10m : null, hours,
+      wind: isNum(c.wind_speed_10m) ? c.wind_speed_10m : null, hours, days,
     };
   } catch { return null; }
 }
@@ -106,4 +117,4 @@ function createWeatherService(deps) {
   };
 }
 
-module.exports = { BASE_URL, CURRENT_FIELDS, HOURLY_FIELDS, TIMEOUT_MS, CACHE_MS, STALE_MAX_MS, FAIL_BACKOFF_MS, buildUrl, parseResponse, validCoords, createWeatherService };
+module.exports = { BASE_URL, CURRENT_FIELDS, HOURLY_FIELDS, DAILY_FIELDS, TIMEOUT_MS, CACHE_MS, STALE_MAX_MS, FAIL_BACKOFF_MS, buildUrl, parseResponse, validCoords, createWeatherService };

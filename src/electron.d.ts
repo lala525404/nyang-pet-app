@@ -18,7 +18,13 @@ export interface FocusModeState { enabled: boolean; seconds: boolean; anchor: { 
 
 // 날씨(메인의 weather.cjs가 Open-Meteo 응답을 정리한 값). hours[].at은 그 시간의 시각(ms)
 export interface WeatherHour { at: number; temp: number; feels: number; pop: number | null; code: number; wind: number | null }
-export interface WeatherData { temp: number; feels: number; code: number; wind: number | null; hours: WeatherHour[] }
+export interface WeatherDay { at: number; max: number | null; min: number | null; pop: number | null }   // at: 그날 0시(ms), pop: 강수 확률 최대(%)
+export interface WeatherData { temp: number; feels: number; code: number; wind: number | null; hours: WeatherHour[]; days?: WeatherDay[] }
+
+// 펫 우클릭 퀵 메뉴: 퀵 창이 메인에 보내는 동작, 설정창을 특정 위치로 여는 목적지
+export type QuickAction = 'open' | 'weather-setup' | 'alarm-settings' | 'quit';
+export interface SettingsTarget { page?: 'home' | 'alarm'; focus?: 'weather-city' }
+export type QuickAlarmSettings = import('./utils/quickAlarms').QuickAlarmSettings;
 
 interface ElectronAPI {
   quitApp: () => void;
@@ -46,6 +52,13 @@ interface ElectronAPI {
   onAlertState: (cb: (active: boolean) => void) => () => void;
   onSettingsChanged: (cb: () => void) => () => void;
   getWeather: (lat: number, lon: number) => Promise<{ data: WeatherData; stale: boolean; at: number } | null>;
+  quickClose: () => void;
+  quickResize: (width: number, height: number) => void;
+  quickAction: (action: QuickAction) => void;
+  getQuickAlarmSettings: () => Promise<QuickAlarmSettings>;
+  onQuickState: (cb: (open: boolean) => void) => () => void;
+  onSettingsGoto: (cb: (target: SettingsTarget) => void) => () => void;
+  takeSettingsGoto: () => Promise<SettingsTarget | null>;
   getPhotoState: () => Promise<{ index: number; count: number; intervalSec: number }>;
   onPhotoState: (cb: (state: { index: number; count: number; intervalSec: number }) => void) => () => void;
   onShowBubble: (cb: (text: string, ms?: number) => void) => () => void;

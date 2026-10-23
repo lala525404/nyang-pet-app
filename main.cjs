@@ -15,6 +15,7 @@ const CREDIT_URL = 'https://creativecommons.org/licenses/by/4.0/';
 let settingsWindow = null;
 let petWindow = null;
 let yarWindow = null;
+let quickWindow = null;   // 펫 우클릭 퀵 메뉴(아래 "퀵 메뉴" 구역)
 let tray = null;
 let updater = null;       // 자동 업데이트(initUpdater에서 만든다)
 let focusState = { enabled: false, seconds: false, anchor: null };   // 초집중 모드 상태(시작할 때 파일에서 읽는다)
@@ -38,6 +39,9 @@ let alwaysOnTopFlag = true;  // 설정창에서 고른 '항상 위' 상태
 function startAlwaysOnTopKeepAlive() {
   if (alwaysOnTopInterval) clearInterval(alwaysOnTopInterval);
   alwaysOnTopInterval = setInterval(() => {
+    // 퀵 메뉴가 열려 있는 동안은 쉰다: 맥에서는 이 재설정이 펫 창에 키 포커스를 가져와 퀵 메뉴가 바로 닫혀 버린다(실측).
+    // 퀵 창은 펫 창 뒤에 열려 위에 떠 있고, 메뉴는 금방 닫히므로 그동안 재설정을 못 해도 문제없다.
+    if (quickWindow && !quickWindow.isDestroyed()) return;
     if (petWindow && !petWindow.isDestroyed()) {
       petWindow.setAlwaysOnTop(true, 'screen-saver');
     }
@@ -443,7 +447,7 @@ function finishQuit() {
   for (const w of BrowserWindow.getAllWindows()) {
     try { if (!w.isDestroyed()) w.destroy(); } catch {}
   }
-  settingsWindow = null; petWindow = null; yarWindow = null; breakTimeWindow = null;
+  settingsWindow = null; petWindow = null; yarWindow = null; breakTimeWindow = null; quickWindow = null;
   trayBeatTimers.forEach(clearTimeout);
   if (tray) { try { tray.destroy(); } catch {} tray = null; }
   // 업데이트 재시작이 요청된 종료면, 정리가 모두 끝난 지금 설치하고 종료한다(quitAndInstall이 app.quit()을 대신한다). 아니면 평소처럼 종료.
@@ -707,10 +711,88 @@ ipcMain.on('onboarding-finish', () => {
   }
 });
 
-// ★ 고양이 우클릭 → 설정창 열기
-ipcMain.on('pet-right-click', () => {
-  createSettingsWindow();
+// ★ 퀵 메뉴: 고양이를 우클릭하면 설정창 대신 작은 아이콘 메뉴(/quick 창)가 펫 근처에 뜬다. 메인 열기·날씨·알람·종료.
+// 닫기: Esc(퀵 창이 요청) · 바깥 클릭이나 다른 창으로 포커스 이동(blur) · 동작을 고른 뒤. 열려 있는 동안 펫의 평소 말풍선은 쉰다(quick-state).
+// 위치·크기 계산은 quick-menu.cjs(시험됨). 창은 열 때 만들고 닫을 때 없앤다(메모리를 계속 쓰지 않는다).
+const quickMenu = require('./quick-menu.cjs');
+let quickShownAt = 0;
+let pendingGoto = null;   // 설정창이 막 만들어지는 중이면 가야 할 곳을 맡아 둔다(설정창이 뜨면 가져간다)
+
+function notifyQuickState(open) {
+  if (petWindow && !petWindow.isDestroyed()) { try { petWindow.webContents.send('quick-state', open); } catch {} }
+}
+function closeQuickMenu() {
+  const w = quickWindow;
+  quickWindow = null;
+  if (w && !w.isDestroyed()) { try { w.destroy(); } catch {} }
+  notifyQuickState(false);
+}
+function placeQuick(size) {
+  if (!quickWindow || quickWindow.isDestroyed() || !petWindow || petWindow.isDestroyed()) return;
+  const pet = petWindow.getBounds();
+  const work = quickMenu.pickWorkArea(pet, screen.getAllDisplays()) || screen.getPrimaryDisplay().workArea;
+  quickWindow.setBounds(quickMenu.placeQuickWindow(pet, size, work));
+}
+function showQuick() {
+  if (!quickWindow || quickWindow.isDestroyed() || quickWindow.isVisible()) return;
+  quickShownAt = Date.now();
+  quickWindow.setAlwaysOnTop(true, 'screen-saver');
+  quickWindow.show();
+  quickWindow.focus();
+}
+function openQuickMenu() {
+  if (isQuitting || !petWindow || petWindow.isDestroyed()) return;
+  if (quickWindow && !quickWindow.isDestroyed()) { quickWindow.focus(); return; }
+  const size = { width: quickMenu.QUICK_W, height: quickMenu.QUICK_INITIAL_H };
+  const win = new BrowserWindow({
+    width: size.width, height: size.height, show: false,
+    transparent: true, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, hasShadow: false, focusable: true, backgroundColor: '#00000000',
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false },
+  });
+  quickWindow = win;
+  placeQuick(size);
+  win.loadURL(getPageURL('/quick'));
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  // 첫 크기 알림(quick-resize)이 오면 보여 준다. 안 오면 잠시 뒤에라도 보여 준다.
+  setTimeout(() => { if (quickWindow === win) showQuick(); }, quickMenu.QUICK_SHOW_FALLBACK_MS);
+  win.on('blur', () => {
+    if (quickWindow !== win) return;
+    if (Date.now() - quickShownAt < quickMenu.QUICK_BLUR_GRACE_MS) { try { win.focus(); } catch {} return; }
+    closeQuickMenu();
+  });
+  win.on('closed', () => { if (quickWindow === win) { quickWindow = null; notifyQuickState(false); } });
+  notifyQuickState(true);
+}
+ipcMain.on('pet-right-click', () => openQuickMenu());
+
+const fromQuick = (e) => !!quickWindow && !quickWindow.isDestroyed() && e.sender === quickWindow.webContents;
+ipcMain.on('quick-close', (e) => { if (fromQuick(e)) closeQuickMenu(); });
+ipcMain.on('quick-resize', (e, size) => {
+  if (!fromQuick(e)) return;
+  const s = size && quickMenu.clampQuickSize(size.width, size.height);
+  if (!s) return;
+  placeQuick(s);
+  showQuick();
 });
+ipcMain.handle('quick-get-alarms', (e) => (fromQuick(e) ? quickMenu.quickAlarmSettings(alarms.resolveAlarmSettings, alarmSettings) : null));   // 스케줄러가 쓰는 값을 읽기만 한다
+ipcMain.on('quick-action', (e, action) => {
+  if (!fromQuick(e) || !quickMenu.isQuickAction(action)) return;
+  closeQuickMenu();
+  if (action === 'quit') { requestQuit(); return; }   // 정상 종료 경로(저장·정리 후 app.quit, 막히면 QUIT_TIMEOUT_MS 뒤 app.exit)
+  openSettingsTo(quickMenu.settingsTargetFor(action));
+});
+
+// 설정창을 열고, 목적지(페이지·강조할 곳)가 있으면 알려 준다. 이미 열려 있으면 바로 보내고, 새로 만들면 설정창이 뜬 뒤에 가져가게 맡겨 둔다.
+function openSettingsTo(target) {
+  const t = quickMenu.sanitizeTarget(target);
+  const existed = !!settingsWindow && !settingsWindow.isDestroyed();
+  pendingGoto = existed ? null : t;
+  createSettingsWindow();
+  if (existed && t) { try { settingsWindow.webContents.send('settings-goto', t); } catch {} }
+}
+ipcMain.handle('settings-take-goto', () => { const t = pendingGoto; pendingGoto = null; return t; });
 
 // ★ 야르타임 IPC
 ipcMain.handle('get-pet-position', () => {

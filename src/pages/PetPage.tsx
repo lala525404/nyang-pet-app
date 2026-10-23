@@ -760,6 +760,12 @@ export default function PetPage() {
   // ★ 알림 상태: 전체화면 알림(점심·퇴근·알람 카드, 야르)과 미리 알림 토스트가 떠 있는 동안 말풍선을 숨긴다
   useEffect(() => { alertRef.current = alertActive; }, [alertActive]);
   useEffect(() => { toastActiveRef.current = !!toast; }, [toast]);
+  // 우클릭 퀵 메뉴가 열려 있는 동안에도 평소 말풍선은 쉰다(시간도 함께 멈췄다가 닫히면 이어서 진행)
+  const quickOpenRef = useRef(false);
+  useEffect(() => {
+    const off = window.electronAPI?.onQuickState?.(open => { quickOpenRef.current = open; });
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
   useEffect(() => {
     const api = window.electronAPI;
     api?.getAlertState?.().then(active => setAlertActive(!!active)).catch(() => {});
@@ -810,7 +816,7 @@ export default function PetPage() {
       const gap = clampTo(cur.bubbleGapSec, BUBBLE_GAP_RANGE, 30) * 1000;
       const nextSig = `${show}/${gap}/${msgs.length}`;
       if (nextSig !== sig) { sig = nextSig; elapsed = 0; slot = -1; picked = false; msgCursor = -1; }   // 표시 시간·주기·메시지 수가 바뀌면 처음부터 다시 돈다
-      const paused = alertRef.current || toastActiveRef.current;
+      const paused = alertRef.current || toastActiveRef.current || quickOpenRef.current;
       if (!paused) elapsed += dt;
       const active = !paused && cur.bubbleEnabled !== false && !focusRef.current.enabled;   // 초집중 모드에서는 내 메시지·시계 말풍선 없음(시계는 따로 표시)
       const nowSlot = Math.floor(elapsed / gap);

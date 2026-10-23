@@ -158,14 +158,24 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   );
 }
 
-export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onOpenBubble, onUpload }: PaneProps & {
+export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onOpenBubble, onUpload, gotoWeather = 0 }: PaneProps & {
   monitors: Monitor[];
   applyMode: (mode: 'chill' | 'buddy' | 'chaos') => void;
   onOpenAnimal: () => void;
   onOpenBubble: () => void;
   onUpload: () => void;
+  gotoWeather?: number;   // 값이 바뀌면 말풍선 팝오버를 열고 동네 입력 칸으로 간다(펫 퀵 메뉴의 "동네 정하기")
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!gotoWeather) return;
+    setOpenKey('bubble');
+    const id = window.setTimeout(() => {   // 팝오버가 열리고 자리를 잡은 뒤 동네 입력 칸에 포커스
+      const el = document.querySelector<HTMLElement>('.st-weather input, .st-weather button');
+      el?.focus();
+    }, 260);
+    return () => window.clearTimeout(id);
+  }, [gotoWeather]);
   const login = useLoginItem();
   const focus = useFocusMode();   // 초집중 모드(메인이 소유·저장: 트레이에서 바꿔도 같이 바뀐다)
   const [bubbleAdv, setBubbleAdv] = useState(false);   // 말풍선 팝오버의 "고급" 펼침

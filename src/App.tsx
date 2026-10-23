@@ -3,6 +3,7 @@ import SettingsPage from './pages/SettingsPage';
 import PetPage from './pages/PetPage';
 import YarPage from './pages/YarPage';
 import BreakTimePage from './pages/BreakTimePage';
+import QuickPage from './pages/QuickPage';
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Route path="/pet" element={<PetPage />} />
       <Route path="/yar" element={<YarPage />} />
       <Route path="/breaktime" element={<BreakTimePage />} />
+      <Route path="/quick" element={<QuickPage />} />
       <Route path="*" element={<Navigate to="/settings" replace />} />
     </Routes>
   );

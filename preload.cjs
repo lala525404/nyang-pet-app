@@ -68,6 +68,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // ★ 날씨 안부: 요청은 메인만 보낸다(좌표만 전달). 동의 전에는 null
   getWeather:       (lat, lon) => ipcRenderer.invoke('weather-get', { lat, lon }),
+  // ★ 펫 우클릭 퀵 메뉴: 퀵 창이 닫기·크기·동작을 메인에 알린다. 펫 창은 열림 상태를 받아 평소 말풍선을 쉬고, 설정창은 가야 할 위치를 받는다
+  quickClose:       () => ipcRenderer.send('quick-close'),
+  quickResize:      (width, height) => ipcRenderer.send('quick-resize', { width, height }),
+  quickAction:      (action) => ipcRenderer.send('quick-action', action),
+  getQuickAlarmSettings: () => ipcRenderer.invoke('quick-get-alarms'),
+  onQuickState:     (cb) => {
+    const handler = (_e, open) => cb(open === true);
+    ipcRenderer.on('quick-state', handler);
+    return () => ipcRenderer.removeListener('quick-state', handler);
+  },
+  onSettingsGoto:   (cb) => {
+    const handler = (_e, target) => cb(target);
+    ipcRenderer.on('settings-goto', handler);
+    return () => ipcRenderer.removeListener('settings-goto', handler);
+  },
+  takeSettingsGoto: () => ipcRenderer.invoke('settings-take-goto'),
   getPhotoState:    () => ipcRenderer.invoke('get-photo-state'),
   onPhotoState:     (cb) => {
     const handler = (_e, state) => cb(state);

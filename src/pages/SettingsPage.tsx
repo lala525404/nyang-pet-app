@@ -131,6 +131,19 @@ export default function SettingsPage() {
     };
   }, [apply]);
 
+  // 펫 퀵 메뉴에서 "동네 정하기"·"알람 설정 열기"로 열렸으면 그 위치로 간다. 이미 열려 있던 창은 메인이 바로 알리고, 새로 만든 창은 맡겨 둔 목적지를 가져온다.
+  const [weatherGoto, setWeatherGoto] = useState(0);
+  useEffect(() => {
+    const api = window.electronAPI;
+    const go = (t: { page?: 'home' | 'alarm'; focus?: 'weather-city' } | null) => {
+      if (!t) return;
+      if (t.page) setPage(t.page);
+      if (t.focus === 'weather-city') setWeatherGoto(n => n + 1);
+    };
+    api?.takeSettingsGoto?.().then(go).catch(() => {});
+    return api?.onSettingsGoto?.(go);
+  }, []);
+
   // 앱이 종료되기 직전에 메인이 저장을 요청하면 바로 적용하고 끝났다고 알린다
   useEffect(() => {
     const api = window.electronAPI;
@@ -272,7 +285,7 @@ export default function SettingsPage() {
 
         {page === 'home' && (
           <HomePane settings={settings} update={update} patch={patch} monitors={monitors} applyMode={applyMode}
-            onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onUpload={upload} />
+            onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onUpload={upload} gotoWeather={weatherGoto} />
         )}
         {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
         {page === 'help' && <HelpPane settings={settings} patch={patch} onReplayIntro={replayIntro} onReplayOnboarding={() => setOnboarding(true)} />}

@@ -32,11 +32,11 @@ const mk = (impl, opts = {}) => { const calls = []; let now = 1_000_000; const c
   return { svc, calls, clock }; };
 
 // ── 요청 모양 ───────────────────────────────────────────────────────────────
-t('요청 주소: 좌표는 소수점 2자리, 필요한 필드만(현재 4 + 시간별 5), 다른 키 없음, 풍속 m/s·unixtime', () => {
+t('요청 주소: 좌표는 소수점 2자리, 필요한 필드만(현재 4 + 시간별 5 + 일별 3), 다른 키 없음, 풍속 m/s·unixtime', () => {
   const u = new URL(W.buildUrl(37.7449, 127.0551));
   assert.strictEqual(u.origin + u.pathname, 'https://api.open-meteo.com/v1/forecast');
   assert.strictEqual(u.searchParams.get('latitude'), '37.74'); assert.strictEqual(u.searchParams.get('longitude'), '127.06');
-  assert.deepStrictEqual([...u.searchParams.keys()].sort(), ['current', 'forecast_days', 'hourly', 'latitude', 'longitude', 'timeformat', 'timezone', 'wind_speed_unit']);
+  assert.deepStrictEqual([...u.searchParams.keys()].sort(), ['current', 'daily', 'forecast_days', 'hourly', 'latitude', 'longitude', 'timeformat', 'timezone', 'wind_speed_unit']);
   assert.strictEqual(u.searchParams.get('current'), 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m');
   assert.strictEqual(u.searchParams.get('hourly'), 'temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m');
   assert.strictEqual(u.searchParams.get('timezone'), 'auto'); assert.strictEqual(u.searchParams.get('forecast_days'), '2');
@@ -49,7 +49,7 @@ t('요청에 좌표 외 개인정보·앱 식별자가 없다: 헤더는 Accept�
   const { url, o } = calls[0];
   assert.deepStrictEqual(Object.keys(o.headers), ['Accept']);
   for (const w of ['choeae', 'nyang', '최애', 'user', 'name', 'email', 'id=', 'appid', 'key=', 'token', 'photo', 'alarm']) assert.ok(!url.toLowerCase().includes(w), w);
-  assert.strictEqual(new URL(url).search.split('&').length, 8);
+  assert.strictEqual(new URL(url).search.split('&').length, 9);   // 좌표 2 + current + hourly + daily + 풍속 단위 + 시각 형식 + 시간대 + 예보 일수
   assert.strictEqual(url.startsWith('https://'), true);
 });
 t('응답 파싱: 실제 구조 → 현재 값 + 시간별 배열(ms), 모양이 다르면 null, 빠진 시간은 건너뜀', () => {

@@ -1,0 +1,74 @@
+/* 펫 우클릭 퀵 메뉴 창(/quick). 투명 창 안에 카드 하나만 그린다: 바깥 10px는 그림자 여백. 색은 tokens.css의 라이트/다크 토큰을 그대로 쓴다. */
+html:has(.qk-root), html:has(.qk-root) body, html:has(.qk-root) #root { background: transparent; overflow: hidden; }
+
+.qk-root {
+  --qk-danger: #C62828; --qk-danger-tint: #FDECEC;
+  width: 340px; padding: 10px; color: var(--ui-ink);
+  font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; user-select: none;
+}
+html[data-theme="dark"] .qk-root { --qk-danger: #FF8A80; --qk-danger-tint: #3A2022; color-scheme: dark; }
+.qk-root :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+
+.qk-card {
+  background: var(--ui-panel); border: 1px solid var(--ui-line); border-radius: var(--ui-r-panel); box-shadow: var(--ui-shadow-float);
+  padding: 12px; display: flex; flex-direction: column; gap: 12px;
+  animation: qk-in 150ms var(--ui-ease-out) both; transform-origin: bottom center;
+}
+@keyframes qk-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .qk-card { animation: none; } }
+
+/* 아이콘 격자: 한 줄 4개, 5개째부터 다음 줄(최대 8개). 항목이 늘면 카드가 자연스럽게 커진다 */
+.qk-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.qk-tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; min-height: 80px; padding: 8px 2px 6px;
+  border: 0; border-radius: var(--ui-r-inner); background: transparent; color: var(--ui-ink); font: inherit; cursor: pointer;
+  transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out);
+}
+.qk-tile:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .qk-tile:hover { background: var(--ui-item); } }
+.qk-ico { width: 40px; height: 40px; border-radius: 12px; background: var(--ui-track); display: grid; place-items: center; transition: background-color 160ms var(--ui-ease-out); }
+.qk-ico .ui-i { width: 20px; height: 20px; }
+.qk-label { font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--ui-sub); text-align: center; word-break: keep-all; }
+.qk-tile[data-danger] .qk-ico { background: var(--qk-danger-tint); color: var(--qk-danger); }
+.qk-tile[data-danger] .qk-label { color: var(--qk-danger); }
+.qk-tile[data-armed] { background: var(--qk-danger-tint); }
+.qk-tile[data-armed] .qk-label { font-size: 11px; font-weight: 700; }
+
+/* 카드 머리 */
+.qk-head { display: flex; align-items: center; gap: 4px; margin: -4px 0 -2px -6px; }
+.qk-title { font-size: 14px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qk-note { font-size: 13px; color: var(--ui-sub); padding: 4px 0 8px; text-align: center; }
+.qk-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0 4px; text-align: center; }
+.qk-empty p { font-size: 14px; }
+.qk-foot { align-self: stretch; gap: 8px; display: inline-flex; align-items: center; justify-content: center; }
+
+/* 날씨 카드 */
+.qk-now { display: flex; align-items: center; gap: 12px; padding: 4px 4px 0; }
+.qk-now-ico { width: 44px; height: 44px; flex: none; color: var(--ui-accent); }
+.qk-now-temp { display: flex; flex-direction: column; line-height: 1.2; }
+.qk-now-temp b { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.qk-now-temp span { font-size: 12px; color: var(--ui-sub); }
+.qk-now-text { margin-left: auto; font-size: 15px; font-weight: 600; }
+.qk-facts { list-style: none; display: flex; flex-direction: column; gap: 2px; background: var(--ui-item); border-radius: var(--ui-r-inner); padding: 8px 12px; }
+.qk-facts li { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; }
+.qk-facts li small { margin-left: auto; font-size: 12px; color: var(--ui-sub); }
+.qk-facts .ui-i { width: 16px; height: 16px; color: var(--ui-sub); flex: none; }
+.qk-hours { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.qk-hours li { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: var(--ui-r-inner); background: var(--ui-item); font-size: 12px; min-height: 76px; }
+.qk-hours li span { color: var(--ui-sub); font-size: 11px; white-space: nowrap; }
+.qk-hours li .ui-i { width: 18px; height: 18px; color: var(--ui-accent); }
+.qk-hours li b { font-size: 14px; }
+.qk-hours li small { font-size: 11px; color: var(--ui-sub); min-height: 15px; }
+.qk-stale { font-size: 12px; color: var(--ui-sub); text-align: center; }
+.qk-credit { font-size: 11px; color: var(--ui-sub); text-align: center; }
+
+/* 알람 카드 */
+.qk-alarms { list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 232px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.qk-alarms li { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: var(--ui-r-inner); background: var(--ui-item); }
+.qk-al-time { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; min-width: 66px; }
+.qk-al-title { font-size: 14px; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qk-al-until { flex: none; font-size: 12px; font-weight: 700; color: var(--ui-accent-ink); background: var(--ui-accent); padding: 2px 8px; border-radius: var(--ui-r-pill); }
+.qk-al-done { flex: none; font-size: 11px; color: var(--ui-sub); }
+.qk-alarms li[data-past] { opacity: 0.5; }
+.qk-alarms li[data-next] { background: var(--ui-accent-tint); box-shadow: inset 0 0 0 1.5px var(--ui-accent); }
