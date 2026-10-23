@@ -8,7 +8,7 @@ const TIPS: [LucideIcon, string][] = [
   [MousePointerClick, '클릭하면 반응해요 (2~3번 중 1번 파티클!)'],
   [Zap, '더블클릭하면 무조건 파티클 팡팡!'],
   [Eye, '마우스를 2초간 올려두면 버디가 도망가요'],
-  [SlidersHorizontal, '우클릭하면 설정창이 열려요'],
+  [SlidersHorizontal, '우클릭하면 메뉴가 쏟아져요 (메인 · 날씨 · 알람)'],
   [Megaphone, "'버디 부르기' 버튼으로 버디를 불러올 수 있어요"],
   [Calendar, '25일엔 월급 문구, 금요일엔 불금 문구가 나와요!'],
   [Moon, '마우스를 30초간 안 움직이면 버디가 낮잠 자요'],

@@ -574,7 +574,7 @@ export default function PetPage() {
     }, ms);
   }, []);
 
-  // 메인이 보내는 안내 말풍선(예: 온보딩 직후 "우클릭하면 설정을 열 수 있어요")
+  // 메인이 보내는 안내 말풍선(예: 온보딩 직후 "우클릭하면 메뉴가 쏟아져요")
   useEffect(() => window.electronAPI?.onShowBubble?.((text, ms) => { if (!focusRef.current.enabled) showBubble(text, 'happy', false, ms); }), [showBubble]);   // 초집중 모드에서는 안내 말풍선도 끈다
 
   // ── 파티클 ────────────────────────────────────────────────────────
@@ -967,7 +967,7 @@ export default function PetPage() {
     // 조사: 구역 이름은 모두 받침 "단"으로 끝나 "으로", 모니터만이면 번호 끝소리(3·6)에 따라 정한다
     const monitorNo = (d?.monitors.find(m => m.displayId === monitorRef.current)?.id ?? 0) + 1;
     const particle = zone !== 0 || monitorNo === 3 || monitorNo === 6 ? '으로' : '로';
-    showToast(`활동 구역이 ${label}${particle} 정해져 있어요. 우클릭해서 바꿀 수 있어요`, ZONE_HINT_TOAST_MS);
+    showToast(`활동 구역이 ${label}${particle} 정해져 있어요. 우클릭 메뉴의 메인에서 바꿀 수 있어요`, ZONE_HINT_TOAST_MS);
   }, [showToast]);
 
   useEffect(() => {

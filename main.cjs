@@ -167,12 +167,12 @@ const needsIntro = () => readFlags().introSeenVersion !== app.getVersion();
 let freshInstall = false;
 const entranceKind = () => (freshInstall ? 'new' : needsIntro() ? 'old' : '');
 
-// 설정창을 처음 닫을 때의 안내: 트레이(하트 아이콘) 위치를 OS별로 구체적으로 알려 준다. 설정은 버디를 우클릭해도 열린다.
+// 설정창을 처음 닫을 때의 안내: 트레이(하트 아이콘) 위치를 OS별로 구체적으로 알려 준다. 버디를 우클릭하면 메뉴가 쏟아지고, 거기서 메인(설정창)을 열 수 있다.
 const CLOSE_NOTICE = process.platform === 'darwin'
-  ? '버디는 계속 놀고 있어요. 설정은 버디 우클릭, 앱 종료는 화면 위 메뉴 막대 오른쪽의 하트 아이콘에서 해요'
-  : '버디는 계속 놀고 있어요. 설정은 버디 우클릭, 앱 종료는 작업 표시줄 오른쪽 ^ 안의 하트 아이콘에서 해요';
+  ? '버디는 계속 놀고 있어요. 버디를 우클릭하면 메뉴가 쏟아져요. 앱 종료는 화면 위 메뉴 막대 오른쪽의 하트 아이콘에서 해요'
+  : '버디는 계속 놀고 있어요. 버디를 우클릭하면 메뉴가 쏟아져요. 앱 종료는 작업 표시줄 오른쪽 ^ 안의 하트 아이콘에서 해요';
 const CLOSE_NOTICE_MS = 9000;
-const REOPEN_HINT = '나를 우클릭하면 설정을 열 수 있어요';
+const REOPEN_HINT = '나를 우클릭하면 메뉴가 쏟아져요 (메인 · 날씨 · 알람)';
 
 // 설정창을 처음 X로 닫을 때 버디 위에 한 번만 알려 준다. 버디가 숨겨져 있으면 안 보이므로 다음 기회로 미룬다.
 function maybeShowCloseNotice() {

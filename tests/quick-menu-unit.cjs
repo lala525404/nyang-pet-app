@@ -274,6 +274,14 @@ t('퀵 메뉴가 열린 동안 펫은 제자리(정적 확인): 초집중 모드
   assert.ok(/const handleMouseDown = \(e: React\.MouseEvent\) => \{\s*if \(e\.button !== 0\) return;\s*e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*isDragging\.current = true;/.test(pet), '드래그 시작 코드 그대로');
   assert.ok(/onMouseDown=\{handleMouseDown\}\s*onClick=\{handleCatClick\}\s*onMouseEnter=\{handleMouseEnter\}\s*onMouseLeave=\{handleMouseLeave\}/.test(pet), '클릭·호버 연결 그대로');
 });
+t('안내 문구: 우클릭이 설정을 바로 연다는 옛 문구가 없고, 새 동작("메뉴가 쏟아져요")으로 안내한다(첫 실행 말풍선·닫기 안내·온보딩·도움말·구역 토스트)', () => {
+  const main = read('main.cjs'), pet = read('src/pages/PetPage.tsx'), ob = read('src/components/Onboarding.tsx'), help = read('src/components/settings/HelpPane.tsx');
+  assert.ok(main.includes("const REOPEN_HINT = '나를 우클릭하면 메뉴가 쏟아져요 (메인 · 날씨 · 알람)';"));
+  assert.ok(/버디를 우클릭하면 메뉴가 쏟아져요/.test(main) && /메뉴 막대 오른쪽/.test(main) && /작업 표시줄 오른쪽 \^ 안의 하트 아이콘/.test(main), '닫기 안내(맥/Windows)');
+  assert.ok(ob.includes('버디를 우클릭해요') && ob.includes('메뉴가 쏟아져요'), '온보딩'); assert.ok(help.includes("'우클릭하면 메뉴가 쏟아져요 (메인 · 날씨 · 알람)'"), '도움말');
+  assert.ok(pet.includes('우클릭 메뉴의 메인에서 바꿀 수 있어요'), '활동 구역 토스트');
+  for (const [name, src] of [['main', main], ['pet', pet], ['onboarding', ob], ['help', help]]) { assert.ok(!/우클릭하면 설정(창|을)? ?(이 )?(열|열릴)/.test(src), `${name}: 옛 안내`); assert.ok(!/설정은 버디 우클릭/.test(src), `${name}: 옛 닫기 안내`); assert.ok(!src.includes(FFFD) && !/\?{3}/.test(src), `${name}: 깨짐`); }
+});
 t('화면: 아이콘은 이모지가 아니라 lucide, 새 홈 칩·설정 스위치 없음(칩 8개 유지), 한글 깨짐 없음', () => {
   const page = read('src/pages/QuickPage.tsx'), css = read('src/styles/quick.css'), home = read('src/components/settings/HomePane.tsx');
   assert.ok(!/[\u{1F000}-\u{1FFFF}☀-➿]/u.test(page), '이모지 없음'); assert.ok(/from 'lucide-react'/.test(page));
