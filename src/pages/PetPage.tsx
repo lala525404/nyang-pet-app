@@ -7,6 +7,11 @@ import { BUBBLE_GAP_RANGE, BUBBLE_SHOW_RANGE, bubbleIdleOf, cleanBubbleMessages,
 import type { BubbleIdle } from '../utils/settings';
 import { fortuneFor, phraseFor } from '../utils/fortune';
 import DayProgressBar from '../components/DayProgressBar';
+import PetAsk from '../components/PetAsk';
+import { cityById } from '../data/cities';
+import type { City } from '../data/cities';
+import { currentText, eveningText, morningText } from '../utils/weatherText';
+import type { WeatherData } from '../electron';
 import type { CustomShape } from '../components/CatEmoji';
 import { getAnimal } from '../data/animals';
 import FocusClock from '../components/FocusClock';
@@ -77,6 +82,7 @@ interface Particle {
   emoji: string; opacity: number; scale: number; rotation: number;
 }
 type IdleKind = 'message' | BubbleIdle;
+const BRIEFING_MS = 9000;   // 날씨 안내 말풍선 표시 시간
 interface BubbleStyle { bg: string; text: string; }
 interface Settings {
   distractEmoji: boolean;
@@ -92,6 +98,9 @@ interface Settings {
   bubbleGapSec: number;
   bubbleClock: boolean;
   bubbleIdle: BubbleIdle;
+  weatherEnabled: boolean;
+  weatherConsent: boolean;
+  weatherCityId: string;
   useCustomMode: boolean;
   customShape: CustomShape;
   moveSpeed: number;
@@ -117,7 +126,7 @@ const DEFAULT_SETTINGS: Settings = {
   distractEmoji: true, workStart: '09:00', workEnd: '18:00',
   animalId: 'cat', customImages: [null, null, null],
   distractInterval: 30, imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleIdle: 'clock',
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleIdle: 'clock', weatherEnabled: false, weatherConsent: false, weatherCityId: '',
   useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
@@ -340,6 +349,10 @@ export default function PetPage() {
   const [alertActive, setAlertActive] = useState(false);
   const [idleBubble, setIdleBubble] = useState<{ kind: IdleKind; text: string; key: number } | null>(null);
   const fortunePageRef = useRef(0);   // 운세 말풍선에서 지금 보여주는 줄(펫을 클릭하면 다음 줄)
+  const weatherRef = useRef<{ data: WeatherData; at: number } | null>(null);   // 메인이 가져온 마지막 날씨(말풍선 엔진·클릭이 읽는다)
+  const [askOpen, setAskOpen] = useState(false);          // 펫이 "어느 동네에 있어요?"를 묻는 중
+  const briefingUntilRef = useRef(0);                     // 아침·퇴근길 날씨 안내가 떠 있는 동안(이 시각까지) 졸림 방지 말풍선은 쉰다
+  const askDismissedRef = useRef(false);                 // "나중에"를 누르면 날씨를 다시 켜기 전까지 먼저 묻지 않는다(펫을 누르면 다시 묻는다)
   const alertRef = useRef(false);
   const toastActiveRef = useRef(false);
   const reloadSettingsRef = useRef<() => void>(() => {});
@@ -784,6 +797,7 @@ export default function PetPage() {
             kind = 'fortune'; idx = fortunePageRef.current % pages.length; text = pages[idx];
           }
           else if (idle === 'progress') { kind = 'progress'; text = ''; }   // 막대는 자기 안에서 분마다 갱신
+          else if (idle === 'weather' && cur.weatherEnabled === true && cur.weatherConsent === true && weatherRef.current) { kind = 'weather'; text = currentText(weatherRef.current.data, d); }   // 날씨가 없으면(꺼짐·도시 없음·아직 못 받음) 시계
           else { kind = 'clock'; text = clockText(); }
         }
       }
@@ -796,6 +810,81 @@ export default function PetPage() {
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, []);
+
+  // ★ 날씨: 켜짐 + 동의 + 도시가 모두 있을 때만 메인에서 받아 온다(요청은 메인이 하고 30분 캐시·실패 처리를 맡는다. 여기서는 1분마다 캐시를 살짝 확인할 뿐이다).
+  const weatherOn = settings.weatherEnabled === true && settings.weatherConsent === true;
+  const weatherCity = weatherOn ? cityById(settings.weatherCityId) : null;
+  const weatherCityId = weatherCity?.id ?? '';
+  useEffect(() => {
+    weatherRef.current = null;
+    if (!weatherCity) return;
+    let stopped = false;
+    const refresh = () => {
+      const last = weatherRef.current;
+      if (last && Date.now() - last.at < 15 * 60 * 1000) return;
+      window.electronAPI?.getWeather?.(weatherCity.lat, weatherCity.lon)
+        .then(r => { if (!stopped && r && r.data) weatherRef.current = { data: r.data, at: Date.now() }; })
+        .catch(() => {});   // 조용히 건너뜀
+    };
+    refresh();
+    const timer = setInterval(refresh, 60 * 1000);
+    return () => { stopped = true; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weatherCityId]);
+
+  // 아침(출근 30분 전~출근 후 90분)과 퇴근길(퇴근 30분 전~퇴근) 안내를 하루에 한 번씩. 초집중 모드·알림 중에는 미루고 다음 확인 때 다시 시도한다.
+  useEffect(() => {
+    const toMin = (hm: string) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hm || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const check = () => {
+      const cur = settingsRef.current;
+      const w = weatherRef.current;
+      if (!w || cur.bubbleEnabled === false || cur.weatherEnabled !== true || cur.weatherConsent !== true || !cityById(cur.weatherCityId)) return;
+      if (focusRef.current.enabled || alertRef.current || toastActiveRef.current) return;
+      const now = new Date(), n = now.getHours() * 60 + now.getMinutes();
+      const day = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+      let shown: { day?: string; morning?: boolean; evening?: boolean } = {};
+      try { shown = JSON.parse(localStorage.getItem('weatherShown') || '{}'); } catch {}
+      if (shown.day !== day) shown = { day };
+      const ws = toMin(cur.workStart), lv = toMin(cur.leaveTime);
+      let text: string | null = null;
+      if (ws !== null && !shown.morning && n >= ws - 30 && n <= ws + 90) { shown.morning = true; text = morningText(w.data, now); }
+      else if (lv !== null && !shown.evening && n >= lv - 30 && n <= lv) { shown.evening = true; text = eveningText(w.data, now); }
+      if (!text) return;
+      try { localStorage.setItem('weatherShown', JSON.stringify(shown)); } catch {}
+      briefingUntilRef.current = Date.now() + BRIEFING_MS;   // 졸림 방지 말풍선이 안내를 덮어쓰지 않게 잠시 비켜 준다
+      showBubble(text, 'happy', false, BRIEFING_MS);
+    };
+    const timer = setInterval(check, 30 * 1000);
+    return () => clearInterval(timer);
+  }, [showBubble]);
+
+  // 날씨를 켰는데 도시가 없으면 펫이 먼저 묻는다(초집중 모드·알림이 떠 있는 동안은 열지 않는다). 사용자가 입력칸을 눌러야 입력 포커스를 가져간다.
+  const askBlocked = focus.enabled || alertActive || !!toast;
+  useEffect(() => {
+    if (!weatherOn) { askDismissedRef.current = false; setAskOpen(false); return; }
+    if (askBlocked) { setAskOpen(false); return; }
+    if (!weatherCity && !askDismissedRef.current) setAskOpen(true);
+    if (weatherCity) setAskOpen(false);
+  }, [weatherOn, weatherCityId, askBlocked, weatherCity]);
+  useEffect(() => {
+    if (!askOpen) return;
+    window.electronAPI?.setPetInteractive?.(true);   // 클릭 통과 중에도 이 대화 동안만 입력을 받는다(대화가 닫히면 원래대로)
+    return () => { window.electronAPI?.setPetInteractive?.(false); };
+  }, [askOpen]);
+  const closeAsk = useCallback(() => { askDismissedRef.current = true; setAskOpen(false); }, []);
+  const pickCity = useCallback((c: City) => {
+    try {   // 날씨 키만 바꿔 저장한다(설정창이 열려 있으면 storage 이벤트로 같이 반영한다)
+      const raw = JSON.parse(localStorage.getItem('petSettings') || '{}');
+      raw.weatherCityId = c.id;
+      localStorage.setItem('petSettings', JSON.stringify(raw));
+      setSettings(s => ({ ...s, weatherCityId: c.id }));
+      window.electronAPI?.syncSettings({ ...DEFAULT_SETTINGS, ...raw });
+    } catch {}
+    setAskOpen(false);
+    const last = c.name.charCodeAt(c.name.length - 1);
+    const batchim = last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 !== 0;
+    showBubble(`${c.name}${batchim ? '이' : ''}군요! 날씨 알려드릴게요 ☀️`, 'happy', false, 5000);
+  }, [showBubble]);
 
   // ★ 졸림방지 - 항상 실행, 내부에서 최신 ref 참조
   useEffect(() => {
@@ -819,7 +908,7 @@ export default function PetPage() {
 
       if (custom && imgs.length > 0) {
         // 커스텀 모드: 말풍선 (사진 교체는 교체 주기 설정을 따라 메인이 따로 처리한다)
-        if (s.bubbleEnabled !== false) showBubble(pickOwnMessage() ?? getLegacyNag(), 'happy', true);
+        if (s.bubbleEnabled !== false && Date.now() >= briefingUntilRef.current) showBubble(pickOwnMessage() ?? getLegacyNag(), 'happy', true);
         // 1.5초 뒤 기습 이모지
         setTimeout(() => {
           if (!stateRef.current.escaping) {
@@ -831,13 +920,13 @@ export default function PetPage() {
         // 일반 모드
         if (Math.random() < 0.3) {
           setAmbushEmoji(rand(AMBUSH_EMOJIS));
-          if (s.bubbleEnabled !== false) showBubble(pickOwnMessage() ?? getLegacyNag(), 'surprised', true);
+          if (s.bubbleEnabled !== false && Date.now() >= briefingUntilRef.current) showBubble(pickOwnMessage() ?? getLegacyNag(), 'surprised', true);
           setTimeout(() => setAmbushEmoji(null), 1800);
         } else {
           const moods = ['happy','sleepy','party','love','cool','angry'];
           const newMood = rand(moods);
           setMood(newMood);
-          if (s.bubbleEnabled !== false) showBubble(pickOwnMessage() ?? getLegacyNag(), newMood, true);
+          if (s.bubbleEnabled !== false && Date.now() >= briefingUntilRef.current) showBubble(pickOwnMessage() ?? getLegacyNag(), newMood, true);
           setTimeout(() => setMood('normal'), 2000);
         }
       }
@@ -925,6 +1014,12 @@ export default function PetPage() {
       fortunePageRef.current += 1;
       return;
     }
+    const cur = settingsRef.current;
+    const weatherAsked = cur.weatherEnabled === true && cur.weatherConsent === true;
+    if (weatherAsked && !cityById(cur.weatherCityId) && !alertActive && !toast) {   // 도시가 아직 없으면 눌렀을 때 다시 묻는다
+      askDismissedRef.current = false; setAskOpen(true);
+      return;
+    }
     const now = Date.now();
     const isDoubleClick = now - lastClickTime.current < 400;
     lastClickTime.current = now;
@@ -939,7 +1034,9 @@ export default function PetPage() {
         clickCount.current = 0;
         spawnParticles(10);
       }
-      showBubble(rand(reactions), 'surprised');
+      // 날씨를 켜 둔 상태에서 한 번 누르면 지금 날씨 한 줄(아직 못 받았으면 평소 반응)
+      const w = weatherAsked ? weatherRef.current : null;
+      showBubble(w ? currentText(w.data, new Date()) : rand(reactions), w ? 'happy' : 'surprised');
     }
   };
 
@@ -961,6 +1058,7 @@ export default function PetPage() {
           <span>{toast.msg.replace(/(오전|오후) (?=\d)/g, '$1\u00A0')}</span>
         </div>
       )}
+      {askOpen && <PetAsk onPick={pickCity} onClose={closeAsk} />}
       <div className="pet-container">
         <div className="bubble-slot" style={{ marginBottom: `${-8 + (petSize - 100) * 0.3}px` }}>
             {shownBubble && (

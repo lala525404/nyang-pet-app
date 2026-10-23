@@ -16,8 +16,8 @@ export interface Alarm {
 }
 
 export type BuddyMode = 'chill' | 'buddy' | 'chaos' | 'custom';
-export type BubbleIdle = 'clock' | 'phrase' | 'fortune' | 'progress';
-export const BUBBLE_IDLE_KINDS: readonly BubbleIdle[] = ['clock', 'phrase', 'fortune', 'progress'];
+export type BubbleIdle = 'clock' | 'phrase' | 'fortune' | 'progress' | 'weather';
+export const BUBBLE_IDLE_KINDS: readonly BubbleIdle[] = ['clock', 'phrase', 'fortune', 'progress', 'weather'];
 // 저장값이 없거나 알 수 없는 값이면 시계
 export const bubbleIdleOf = (v: unknown): BubbleIdle => (BUBBLE_IDLE_KINDS as readonly unknown[]).includes(v) ? v as BubbleIdle : 'clock';
 
@@ -39,6 +39,9 @@ export interface PetSettings {
   bubbleGapSec: number;       // 메시지가 나오는 주기(초, 한 메시지가 나오고 다음 메시지가 나올 때까지)
   bubbleClock: boolean;       // 메시지가 없는 동안 빈 시간 말풍선 표시(false면 안 보임). 켜져 있을 때 무엇을 보일지는 bubbleIdle
   bubbleIdle: BubbleIdle;     // 빈 시간에 보여줄 것(v1.5.0). 저장값이 없으면 'clock'이라 예전 설정 그대로 시계가 나온다
+  weatherEnabled: boolean;    // 날씨(v1.5.1). 기본 꺼짐. 켜짐 + 동의가 둘 다 있어야 날씨 요청을 보낸다
+  weatherConsent: boolean;    // 선택한 도시의 대략적인 좌표가 Open-Meteo로 전송되는 것에 동의했는지(기본 false)
+  weatherCityId: string;      // 내장 도시 id(src/data/cities.ts). 빈 문자열이면 도시 없음
   introEnabled: boolean;      // 설정창 시작 인트로 보기(새 버전 첫 설정창에서만 한 번). 예전 설정에는 없으므로 기본값(켬)이 쓰인다
   moveSpeed: number;
   zone: number;
@@ -68,7 +71,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleIdle: 'clock', introEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, bubbleIdle: 'clock', weatherEnabled: false, weatherConsent: false, weatherCityId: '', introEnabled: true, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
   lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchPreAlertEnabled: false, leavePreAlertEnabled: false, alarms: [],

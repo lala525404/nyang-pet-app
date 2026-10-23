@@ -132,7 +132,7 @@ t('홈 칩은 8개 그대로, 말풍선 옵션 5종(시계·한마디·운세·�
   const src = read('src/components/settings/HomePane.tsx');
   assert.strictEqual((src.match(/^ {6}id: '/gm) || []).length, 8, '칩 8개');
   for (const w of ["'clock'", "'phrase'", "'fortune'", "'progress'", "'none'", '한마디', '운세', '하루 진행']) assert.ok(src.includes(w), w);
-  assert.ok(/v === 'none' \? patch\(\{ bubbleClock: false \}\)/.test(src), '없음 = 예전 bubbleClock=false');
+  assert.ok(/v === 'none'\) \{ patch\(\{ bubbleClock: false \}\)/.test(src), '없음 = 예전 bubbleClock=false');
 });
 t('버디 클릭: 초집중 모드가 먼저 막고, 운세가 떠 있을 때만 다음 줄로 넘긴다', () => {
   const src = read('src/pages/PetPage.tsx');

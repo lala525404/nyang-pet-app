@@ -7,15 +7,17 @@ import { Segmented, Switch, RangeInput } from '../ui';
 import { getAnimal } from '../../data/animals';
 import { BUBBLE_GAP_RANGE, BUBBLE_MAX_MESSAGES, BUBBLE_SHOW_RANGE, MODE_PRESETS, activePhotos, bubbleIdleOf, cleanBubbleMessages, clampTo, formatInterval } from '../../utils/settings';
 import type { BubbleIdle } from '../../utils/settings';
+import { cityById } from '../../data/cities';
 
 // 말풍선 "메시지가 없는 동안" 옵션: 칩 값 이름과 설명
-const IDLE_NAME: Record<string, string> = { clock: '시계', phrase: '한마디', fortune: '운세', progress: '하루 진행', none: '' };
+const IDLE_NAME: Record<string, string> = { clock: '시계', phrase: '한마디', fortune: '운세', progress: '하루 진행', weather: '날씨', none: '' };
 const IDLE_NOTE: Record<string, string> = {
-  clock: '메시지가 없는 동안에는 현재 시간을 보여줘요.',
-  phrase: '메시지가 없는 동안에는 짧은 한마디를 보여줘요. 30분마다 바뀌어요.',
-  fortune: '오늘의 운세를 보여줘요. 버디를 누르면 다음 줄이 나와요. 하루 동안 같은 결과예요.',
-  progress: '메시지가 없는 동안에는 오늘 하루가 얼마나 지났는지 보여줘요.',
-  none: '메시지가 없는 동안에는 말풍선이 숨겨져요.',
+  clock: '현재 시간을 보여줘요.',
+  phrase: '짧은 한마디를 보여줘요. 30분마다 바뀌어요.',
+  fortune: '오늘의 운세예요. 버디를 누르면 다음 줄이 나와요.',
+  progress: '오늘 하루가 얼마나 지났는지 보여줘요.',
+  weather: '지금 날씨를 보여줘요. 도시는 "날씨"에서 골라요.',
+  none: '말풍선이 숨겨져요.',
 };
 import { usePhotoState } from '../../hooks/usePhotoState';
 import { useLoginItem } from '../../hooks/useLoginItem';
@@ -168,11 +170,12 @@ function Chip({ id, label, value, end, open, onOpen, onClose, children }: {
   );
 }
 
-export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onOpenBubble, onUpload }: PaneProps & {
+export default function HomePane({ settings: s, update, patch, monitors, applyMode, onOpenAnimal, onOpenBubble, onOpenWeather, onUpload }: PaneProps & {
   monitors: Monitor[];
   applyMode: (mode: 'chill' | 'buddy' | 'chaos') => void;
   onOpenAnimal: () => void;
   onOpenBubble: () => void;
+  onOpenWeather: () => void;
   onUpload: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -208,6 +211,8 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
   const bubbleShow = clampTo(s.bubbleShowSec, BUBBLE_SHOW_RANGE, 5);
   const bubbleGap = clampTo(s.bubbleGapSec, BUBBLE_GAP_RANGE, 30);
   const idleValue = bubbleClock ? bubbleIdleOf(s.bubbleIdle) : 'none';
+  const weatherCity = cityById(s.weatherCityId);
+  const weatherLabel = s.weatherEnabled === true && s.weatherConsent === true ? (weatherCity ? weatherCity.name : '도시 없음') : '꺼짐';
   const bubbleValue = !bubbleOn ? '끔'
     : [bubbleCount ? `메시지 ${bubbleCount}개` : '', IDLE_NAME[idleValue]].filter(Boolean).join(' · ') || '없음';
   const chips: { id: string; label: string; value: string; body: ReactNode }[] = [
@@ -331,13 +336,23 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
           <p className="st-lab">메시지가 없는 동안</p>
           <div className="st-idle">
             <Segmented<string> label="메시지가 없는 동안 보여줄 것" value={idleValue}
-              onChange={v => (v === 'none' ? patch({ bubbleClock: false }) : patch({ bubbleClock: true, bubbleIdle: v as BubbleIdle }))}
-              options={[{ value: 'clock', label: '시계' }, { value: 'phrase', label: '한마디' }, { value: 'fortune', label: '운세' }, { value: 'progress', label: '하루 진행' }, { value: 'none', label: '없음' }]} />
+              onChange={v => {
+                if (v === 'none') { patch({ bubbleClock: false }); return; }
+                patch({ bubbleClock: true, bubbleIdle: v as BubbleIdle });
+                if (v === 'weather' && !(s.weatherEnabled === true && s.weatherConsent === true)) { setOpenKey(null); onOpenWeather(); }   // 날씨가 꺼져 있으면 켜는 곳(동의 안내)을 바로 연다
+              }}
+              options={[{ value: 'clock', label: '시계' }, { value: 'phrase', label: '한마디' }, { value: 'fortune', label: '운세' }, { value: 'progress', label: '하루 진행' }, { value: 'weather', label: '날씨' }, { value: 'none', label: '없음' }]} />
           </div>
           <p className="ui-note">{!bubbleOn ? '켜면 내 메시지와 선택한 내용이 말풍선으로 떠요.' : IDLE_NOTE[idleValue]}</p>
-          <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
-            메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
-          </button>
+          {/* 메시지 편집과 날씨 설정은 한 줄에 반반. 날씨는 새 칩이 아니라 이 팝오버에서 연다 */}
+          <div className="st-pop-btns">
+            <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenBubble(); }}>
+              메시지 편집 ({bubbleCount}/{BUBBLE_MAX_MESSAGES})
+            </button>
+            <button type="button" className="ui-btn" onClick={() => { setOpenKey(null); onOpenWeather(); }}>
+              날씨 · {weatherLabel}
+            </button>
+          </div>
           {/* 자주 쓰는 항목만 먼저 보이고, 표시 시간·간격은 "고급"을 눌러야 펼쳐진다. 높이는 부드럽게 바뀐다. */}
           {bubbleOn && (
             <div className="st-adv" data-open={bubbleAdv ? '' : undefined}>
@@ -354,6 +369,7 @@ export default function HomePane({ settings: s, update, patch, monitors, applyMo
               </div>
             </div>
           )}
+          <p className="ui-note st-credit">날씨 데이터: Open-Meteo (CC BY 4.0)</p>
         </>
       ),
     },
