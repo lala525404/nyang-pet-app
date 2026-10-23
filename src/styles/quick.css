@@ -1,74 +1,184 @@
-/* 펫 우클릭 퀵 메뉴 창(/quick). 투명 창 안에 카드 하나만 그린다: 바깥 10px는 그림자 여백. 색은 tokens.css의 라이트/다크 토큰을 그대로 쓴다. */
+/* 펫 우클릭 퀵 메뉴 창(/quick): 투명 창 안에 호(원형 버튼들)와 카드를 그린다. 색은 블랙 앤 화이트 두 가지뿐이고,
+   아래 --quick-bar-* 네 개(+ 그림자)만 바꾸면 모양 전체가 바뀐다. 라이트/다크는 앱의 테마(html[data-theme])를 그대로 따른다.
+   모션은 CSS 애니메이션뿐이다(rAF 루프 없음). */
 html:has(.qk-root), html:has(.qk-root) body, html:has(.qk-root) #root { background: transparent; overflow: hidden; }
 
 .qk-root {
-  --qk-danger: #C62828; --qk-danger-tint: #FDECEC;
-  width: 340px; padding: 10px; color: var(--ui-ink);
+  /* 라이트: 흰 버튼 + 검정 아이콘 + 옅은 회색 테두리 + 부드러운 그림자 */
+  --quick-bar-bg: #ffffff;
+  --quick-bar-fg: #111111;
+  --quick-bar-border: rgba(17, 17, 17, 0.12);
+  --quick-bar-hover: rgba(17, 17, 17, 0.08);
+  --quick-shadow: 0 6px 18px rgba(17, 17, 17, 0.14), 0 1px 3px rgba(17, 17, 17, 0.1);
+  --quick-confirm: #e5484d;   /* 종료 확인 단계에서만 쓰는 붉은색(이 한 곳만 색 허용) */
+  position: relative; color: var(--quick-bar-fg); user-select: none;
   font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
-  font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; user-select: none;
+  font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
 }
-html[data-theme="dark"] .qk-root { --qk-danger: #FF8A80; --qk-danger-tint: #3A2022; color-scheme: dark; }
-.qk-root :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+/* 다크: 검은 버튼 + 흰 아이콘 + 옅은 흰 테두리 + 부드러운 그림자 */
+html[data-theme="dark"] .qk-root {
+  --quick-bar-bg: #111111;
+  --quick-bar-fg: #ffffff;
+  --quick-bar-border: rgba(255, 255, 255, 0.16);
+  --quick-bar-hover: rgba(255, 255, 255, 0.14);
+  --quick-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+.qk-root :focus-visible { outline: 2px solid var(--quick-bar-fg); outline-offset: 2px; }   /* 포커스 링은 현재 모드의 아이콘 색 */
+.qk-i { width: 20px; height: 20px; flex: none; }
 
+/* ── 원형 버튼(호와 알약 바가 함께 쓴다) ── */
+.qk-face {
+  width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--quick-bar-border); background: var(--quick-bar-bg); color: var(--quick-bar-fg); box-shadow: var(--quick-shadow);
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  pointer-events: auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .qk-face:hover { transform: scale(1.1); box-shadow: inset 0 0 0 44px var(--quick-bar-hover), var(--quick-shadow); }   /* 배경이 살짝 진해지고 커진다 */
+}
+.qk-face:active { transform: scale(0.94); }
+.qk-face[data-active] { box-shadow: inset 0 0 0 44px var(--quick-bar-hover), var(--quick-shadow); }
+.qk-face[data-armed], .qk-face[data-armed]:hover { background: var(--quick-confirm); border-color: var(--quick-confirm); color: #ffffff; box-shadow: var(--quick-shadow); }
+.qk-face[data-armed] .qk-i { stroke-width: 2.2; }
+
+/* ── 호: 버튼이 펫 중심에서 쏟아져 나온다. 좌표·방향은 메인이 계산해 style로 준다 ── */
+.qk-root[data-mode="arc"] { width: 100vw; height: 100vh; overflow: hidden; }
+.qk-arc { position: absolute; inset: 0; pointer-events: none; }
+.qk-fx { position: absolute; width: 0; height: 0; pointer-events: none; }   /* left/top = 버튼 중심(최종 위치) */
+.qk-fy { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; pointer-events: none; }
+.qk-fb { width: 44px; height: 44px; pointer-events: none; }
+.qk-root[data-mode="arc"]:not([data-open]) .qk-fb { opacity: 0; }
+
+/* 열림(약 500ms): x는 포물선의 수평 이동, y는 솟았다가 떨어지며 통통 튕김, 버튼은 회전·확대·안착 직전 squash. --dx --dy(펫 중심→최종 위치) --rot --delay는 버튼마다 다르다 */
+.qk-root[data-mode="arc"][data-open]:not([data-closing]) .qk-fx { animation: qk-x 500ms var(--delay, 0ms) both; }
+.qk-root[data-mode="arc"][data-open]:not([data-closing]) .qk-fy { animation: qk-y 500ms var(--delay, 0ms) both; }
+.qk-root[data-mode="arc"][data-open]:not([data-closing]) .qk-fb { animation: qk-b 500ms var(--delay, 0ms) both; }
+@keyframes qk-x {
+  0% { transform: translateX(calc(var(--dx) * -1)); animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1); }
+  52%, 100% { transform: translateX(0); }
+}
+@keyframes qk-y {
+  0% { transform: translateY(calc(var(--dy) * -1)); animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1); }
+  50% { transform: translateY(-16px); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6); }
+  68% { transform: translateY(0); animation-timing-function: ease-out; }
+  78% { transform: translateY(-7px); animation-timing-function: ease-in; }
+  88% { transform: translateY(0); animation-timing-function: ease-out; }
+  94% { transform: translateY(-2px); animation-timing-function: ease-in; }
+  100% { transform: translateY(0); }
+}
+@keyframes qk-b {
+  0% { opacity: 0; transform: rotate(var(--rot)) scale(0.3); }
+  14% { opacity: 1; }
+  50% { transform: rotate(calc(var(--rot) * 0.45)) scale(1.08); }
+  66% { transform: rotate(0deg) scale(1.02); }
+  70% { transform: rotate(0deg) scale(1.14, 0.84); }   /* 안착 직전 squash */
+  80% { transform: scale(0.97, 1.05); }
+  92% { transform: scale(1.02, 0.98); }
+  100% { opacity: 1; transform: rotate(0deg) scale(1); }
+}
+/* 닫힘(0.15초): 모두 펫 중심으로 빨려 들어가며 작아져 사라진다 */
+.qk-root[data-mode="arc"][data-closing] .qk-fx { animation: qk-x-out 150ms ease-in both; }
+.qk-root[data-mode="arc"][data-closing] .qk-fy { animation: qk-y-out 150ms ease-in both; }
+.qk-root[data-mode="arc"][data-closing] .qk-fb { animation: qk-b-out 150ms ease-in both; }
+.qk-root[data-closing] .qk-face { pointer-events: none; }
+@keyframes qk-x-out { to { transform: translateX(calc(var(--dx) * -1)); } }
+@keyframes qk-y-out { to { transform: translateY(calc(var(--dy) * -1)); } }
+@keyframes qk-b-out { to { opacity: 0; transform: scale(0.2); } }
+
+/* 종료 확인 안내 말풍선: 종료 버튼 위(호) 또는 바 위(알약 바). 반대색으로 */
+.qk-hint {
+  position: absolute; display: grid; place-items: center; box-sizing: border-box; padding: 0 12px; border-radius: 999px; pointer-events: none;
+  background: var(--quick-bar-fg); color: var(--quick-bar-bg); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: var(--quick-shadow);
+  animation: qk-hint-in 140ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.qk-hint--flow { position: static; height: 32px; }
+@keyframes qk-hint-in { from { opacity: 0; transform: translateY(4px) scale(0.96); } to { opacity: 1; transform: none; } }
+
+/* ── 카드(날씨·알람): 호 바깥쪽에 붙는다. 배경은 버튼과 같은 색, 글자는 반대색, 강조는 굵기·불투명도로만 ── */
 .qk-card {
-  background: var(--ui-panel); border: 1px solid var(--ui-line); border-radius: var(--ui-r-panel); box-shadow: var(--ui-shadow-float);
-  padding: 12px; display: flex; flex-direction: column; gap: 12px;
-  animation: qk-in 150ms var(--ui-ease-out) both; transform-origin: bottom center;
+  position: absolute; width: 320px; box-sizing: border-box; padding: 14px; border-radius: 20px;
+  background: var(--quick-bar-bg); color: var(--quick-bar-fg); border: 1px solid var(--quick-bar-border); box-shadow: var(--quick-shadow);
+  display: flex; flex-direction: column; gap: 12px; pointer-events: auto;
+  animation: qk-card-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
-@keyframes qk-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .qk-card { animation: none; } }
+.qk-root[data-mode="arc"] .qk-card:not([data-placed]) { visibility: hidden; left: 0; top: 0; }   /* 메인이 자리를 정해 줄 때까지 숨겨 두고 크기만 잰다 */
+.qk-root[data-mode="bar"] .qk-card { position: static; }
+.qk-root[data-closing] .qk-card { animation: qk-card-out 120ms ease-in both; }
+@keyframes qk-card-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes qk-card-out { to { opacity: 0; } }
 
-/* 아이콘 격자: 한 줄 4개, 5개째부터 다음 줄(최대 8개). 항목이 늘면 카드가 자연스럽게 커진다 */
-.qk-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
-.qk-tile {
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; min-height: 80px; padding: 8px 2px 6px;
-  border: 0; border-radius: var(--ui-r-inner); background: transparent; color: var(--ui-ink); font: inherit; cursor: pointer;
-  transition: background-color 160ms var(--ui-ease-out), transform 140ms var(--ui-ease-out);
+.qk-iconbtn {
+  width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer; background: transparent; color: inherit;
+  transition: background-color 140ms cubic-bezier(0.23, 1, 0.32, 1), transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.qk-tile:active { transform: scale(0.97); }
-@media (hover: hover) and (pointer: fine) { .qk-tile:hover { background: var(--ui-item); } }
-.qk-ico { width: 40px; height: 40px; border-radius: 12px; background: var(--ui-track); display: grid; place-items: center; transition: background-color 160ms var(--ui-ease-out); }
-.qk-ico .ui-i { width: 20px; height: 20px; }
-.qk-label { font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--ui-sub); text-align: center; word-break: keep-all; }
-.qk-tile[data-danger] .qk-ico { background: var(--qk-danger-tint); color: var(--qk-danger); }
-.qk-tile[data-danger] .qk-label { color: var(--qk-danger); }
-.qk-tile[data-armed] { background: var(--qk-danger-tint); }
-.qk-tile[data-armed] .qk-label { font-size: 11px; font-weight: 700; }
+@media (hover: hover) and (pointer: fine) { .qk-iconbtn:hover { background: var(--quick-bar-hover); } }
+.qk-iconbtn:active { transform: scale(0.94); }
+.qk-btn {
+  min-height: 40px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  border: 1px solid var(--quick-bar-border); background: transparent; color: inherit; font: inherit; font-size: 14px; font-weight: 700;
+  transition: background-color 140ms cubic-bezier(0.23, 1, 0.32, 1), transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (hover: hover) and (pointer: fine) { .qk-btn:hover { background: var(--quick-bar-hover); } }
+.qk-btn:active { transform: scale(0.97); }
+.qk-btn--solid { background: var(--quick-bar-fg); color: var(--quick-bar-bg); border-color: var(--quick-bar-fg); }
+@media (hover: hover) and (pointer: fine) { .qk-btn--solid:hover { background: var(--quick-bar-fg); opacity: 0.88; } }
+.qk-foot { align-self: stretch; }
 
-/* 카드 머리 */
-.qk-head { display: flex; align-items: center; gap: 4px; margin: -4px 0 -2px -6px; }
-.qk-title { font-size: 14px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qk-note { font-size: 13px; color: var(--ui-sub); padding: 4px 0 8px; text-align: center; }
-.qk-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0 4px; text-align: center; }
-.qk-empty p { font-size: 14px; }
-.qk-foot { align-self: stretch; gap: 8px; display: inline-flex; align-items: center; justify-content: center; }
+.qk-head { display: flex; align-items: center; gap: 4px; margin: -6px 0 -2px -8px; }
+.qk-title { font-size: 14px; font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qk-note { font-size: 13px; opacity: 0.62; padding: 4px 0 8px; text-align: center; }
+.qk-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0; text-align: center; }
 
-/* 날씨 카드 */
+/* 날씨 */
 .qk-now { display: flex; align-items: center; gap: 12px; padding: 4px 4px 0; }
-.qk-now-ico { width: 44px; height: 44px; flex: none; color: var(--ui-accent); }
+.qk-now-ico { width: 44px; height: 44px; flex: none; }
 .qk-now-temp { display: flex; flex-direction: column; line-height: 1.2; }
-.qk-now-temp b { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
-.qk-now-temp span { font-size: 12px; color: var(--ui-sub); }
-.qk-now-text { margin-left: auto; font-size: 15px; font-weight: 600; }
-.qk-facts { list-style: none; display: flex; flex-direction: column; gap: 2px; background: var(--ui-item); border-radius: var(--ui-r-inner); padding: 8px 12px; }
+.qk-now-temp b { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.qk-now-temp span { font-size: 12px; opacity: 0.62; }
+.qk-now-text { margin-left: auto; font-size: 15px; font-weight: 700; }
+.qk-facts { list-style: none; display: flex; flex-direction: column; gap: 2px; background: var(--quick-bar-hover); border-radius: 12px; padding: 8px 12px; }
 .qk-facts li { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; }
-.qk-facts li small { margin-left: auto; font-size: 12px; color: var(--ui-sub); }
-.qk-facts .ui-i { width: 16px; height: 16px; color: var(--ui-sub); flex: none; }
+.qk-facts li small { margin-left: auto; font-size: 12px; opacity: 0.62; }
+.qk-facts .qk-i { width: 16px; height: 16px; opacity: 0.62; }
 .qk-hours { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
-.qk-hours li { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: var(--ui-r-inner); background: var(--ui-item); font-size: 12px; min-height: 76px; }
-.qk-hours li span { color: var(--ui-sub); font-size: 11px; white-space: nowrap; }
-.qk-hours li .ui-i { width: 18px; height: 18px; color: var(--ui-accent); }
-.qk-hours li b { font-size: 14px; }
-.qk-hours li small { font-size: 11px; color: var(--ui-sub); min-height: 15px; }
-.qk-stale { font-size: 12px; color: var(--ui-sub); text-align: center; }
-.qk-credit { font-size: 11px; color: var(--ui-sub); text-align: center; }
+.qk-hours li { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: 12px; background: var(--quick-bar-hover); font-size: 12px; min-height: 76px; }
+.qk-hours li span { opacity: 0.62; font-size: 11px; white-space: nowrap; }
+.qk-hours li .qk-i { width: 18px; height: 18px; }
+.qk-hours li b { font-size: 14px; font-weight: 800; }
+.qk-hours li small { font-size: 11px; opacity: 0.62; min-height: 15px; }
+.qk-stale { font-size: 12px; opacity: 0.62; text-align: center; }
+.qk-credit { font-size: 11px; opacity: 0.55; text-align: center; }
 
-/* 알람 카드 */
+/* 알람: 다음 알람은 굵게·진하게, 지난 알람은 흐리게(불투명도) */
 .qk-alarms { list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 232px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.qk-alarms li { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: var(--ui-r-inner); background: var(--ui-item); }
+.qk-alarms li { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 12px; background: var(--quick-bar-hover); opacity: 0.82; }
 .qk-al-time { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; min-width: 66px; }
 .qk-al-title { font-size: 14px; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qk-al-until { flex: none; font-size: 12px; font-weight: 700; color: var(--ui-accent-ink); background: var(--ui-accent); padding: 2px 8px; border-radius: var(--ui-r-pill); }
-.qk-al-done { flex: none; font-size: 11px; color: var(--ui-sub); }
-.qk-alarms li[data-past] { opacity: 0.5; }
-.qk-alarms li[data-next] { background: var(--ui-accent-tint); box-shadow: inset 0 0 0 1.5px var(--ui-accent); }
+.qk-al-until { flex: none; font-size: 13px; font-weight: 800; }
+.qk-al-done { flex: none; font-size: 11px; opacity: 0.8; }
+.qk-alarms li[data-next] { opacity: 1; font-weight: 800; }
+.qk-alarms li[data-next] .qk-al-time, .qk-alarms li[data-next] .qk-al-title { font-weight: 800; }
+.qk-alarms li[data-past] { opacity: 0.4; }
+
+/* ── 알약 바(7개 이상의 대체 경로) ── */
+.qk-root[data-mode="bar"] { width: max-content; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.qk-bar { display: flex; align-items: center; gap: var(--qk-gap, 6px); padding: 5px; border-radius: 999px; background: var(--quick-bar-bg); border: 1px solid var(--quick-bar-border); box-shadow: var(--quick-shadow); }
+.qk-slot { display: inline-flex; align-items: center; gap: var(--qk-gap, 6px); }
+.qk-bar .qk-face { border-color: transparent; background: transparent; box-shadow: none; }
+@media (hover: hover) and (pointer: fine) { .qk-bar .qk-face:hover { box-shadow: inset 0 0 0 44px var(--quick-bar-hover); } }
+.qk-bar .qk-face[data-active] { box-shadow: inset 0 0 0 44px var(--quick-bar-hover); }
+.qk-bar .qk-face[data-armed], .qk-bar .qk-face[data-armed]:hover { background: var(--quick-confirm); border-color: var(--quick-confirm); box-shadow: none; }
+.qk-sep { width: 1px; height: 22px; background: var(--quick-bar-border); }   /* 종료 앞의 얇은 구분선 */
+.qk-root[data-mode="bar"][data-side="above"] .qk-bar { transform-origin: 50% 100%; }
+.qk-root[data-mode="bar"][data-side="below"] .qk-bar { transform-origin: 50% 0; }
+.qk-root[data-mode="bar"][data-open]:not([data-closing]) .qk-bar { animation: qk-bar-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+.qk-root[data-mode="bar"][data-closing] .qk-bar { animation: qk-bar-out 150ms ease-in both; }
+@keyframes qk-bar-in { from { opacity: 0; transform: scaleX(0.7); } to { opacity: 1; transform: none; } }
+@keyframes qk-bar-out { to { opacity: 0; transform: scaleX(0.7); } }
+
+/* 움직임 줄이기: 모션 없이 최종 위치에 바로 보인다 */
+@media (prefers-reduced-motion: reduce) {
+  .qk-root *, .qk-root *::before { animation: none !important; transition: none !important; }
+  .qk-root[data-mode="arc"]:not([data-open]) .qk-fb { opacity: 1; }
+}

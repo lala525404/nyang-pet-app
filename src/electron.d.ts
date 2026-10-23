@@ -23,6 +23,12 @@ export interface WeatherData { temp: number; feels: number; code: number; wind: 
 
 // 펫 우클릭 퀵 메뉴: 퀵 창이 메인에 보내는 동작, 설정창을 특정 위치로 여는 목적지
 export type QuickAction = 'open' | 'weather-setup' | 'alarm-settings' | 'quit';
+// 메인이 계산해서 보내는 퀵 메뉴 배치. 호: 버튼 중심(창 안 좌표)과 펫 중심에서 버튼까지의 벡터, 카드·종료 안내 상자. 알약 바: 펫 위/아래만.
+export interface QuickBox { x: number; y: number; w: number; h: number }
+export type QuickLayout =
+  | { mode: 'arc'; dir: 'up' | 'down' | 'left' | 'right'; bounds: { x: number; y: number; width: number; height: number }; pet: { x: number; y: number };
+      buttons: { x: number; y: number; dx: number; dy: number }[]; card: QuickBox | null; hint: QuickBox; radius: number }
+  | { mode: 'bar'; side: 'above' | 'below' };
 export interface SettingsTarget { page?: 'home' | 'alarm'; focus?: 'weather-city' }
 export type QuickAlarmSettings = import('./utils/quickAlarms').QuickAlarmSettings;
 
@@ -53,7 +59,12 @@ interface ElectronAPI {
   onSettingsChanged: (cb: () => void) => () => void;
   getWeather: (lat: number, lon: number) => Promise<{ data: WeatherData; stale: boolean; at: number } | null>;
   quickClose: () => void;
+  quickInit: (count: number) => void;
+  quickCard: (size: { width: number; height: number } | null) => void;
   quickResize: (width: number, height: number) => void;
+  onQuickLayout: (cb: (layout: QuickLayout) => void) => () => void;
+  onQuickOpen: (cb: () => void) => () => void;
+  onQuickClosing: (cb: () => void) => () => void;
   quickAction: (action: QuickAction) => void;
   getQuickAlarmSettings: () => Promise<QuickAlarmSettings>;
   onQuickState: (cb: (open: boolean) => void) => () => void;

@@ -16,20 +16,89 @@ const FFFD = String.fromCharCode(0xFFFD);
 const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi, 0, 0);
 
 // ── 항목 배치·키보드 ─────────────────────────────────────────────────────────
-t('항목 배치: 종료는 항상 마지막, 항목이 늘면 최대 8개(종료 포함)까지만, 4개씩 줄바꿈', () => {
-  assert.strictEqual(M.QUICK_COLUMNS, 4); assert.strictEqual(M.QUICK_MAX_ITEMS, 8);
+t('항목 배치: 종료는 항상 마지막, 항목이 늘면 최대 8개(종료 포함)까지만, 호는 6개까지 7개부터 알약 바', () => {
+  assert.strictEqual(M.QUICK_MAX_ITEMS, 8); assert.strictEqual(M.QUICK_ARC_MAX, 6); assert.strictEqual(M.QUICK_ARC_MAX, Q.ARC_MAX, '화면과 메인의 호 최대 개수가 같다');
   assert.deepStrictEqual(M.layoutQuickItems(['a', 'b', 'c'], 'Q'), ['a', 'b', 'c', 'Q']);
   const seven = ['1', '2', '3', '4', '5', '6', '7']; assert.deepStrictEqual(M.layoutQuickItems(seven, 'Q'), [...seven, 'Q']);
   const nine = [...seven, '8', '9']; const l = M.layoutQuickItems(nine, 'Q'); assert.strictEqual(l.length, 8); assert.strictEqual(l[7], 'Q');
   assert.deepStrictEqual(M.layoutQuickItems([], 'Q'), ['Q']);
-  assert.strictEqual(M.quickRows(4), 1); assert.strictEqual(M.quickRows(5), 2); assert.strictEqual(M.quickRows(8), 2); assert.strictEqual(M.quickRows(9), 3);
+  for (const n of [1, 2, 3, 4, 5, 6]) assert.strictEqual(Q.modeFor(n), 'arc'); for (const n of [7, 8]) assert.strictEqual(Q.modeFor(n), 'bar');
 });
-t('키보드 이동: 좌우는 한 칸, 상하는 한 줄, 끝에서는 멈추고, 덜 찬 마지막 줄 아래로는 마지막 칸', () => {
+t('키보드 이동: 호·바는 한 줄 순서라 좌우·상하 모두 앞뒤 한 칸, 끝에서는 멈추고 Home/End', () => {
   assert.strictEqual(M.moveQuickFocus(0, 'ArrowRight', 4), 1); assert.strictEqual(M.moveQuickFocus(3, 'ArrowRight', 4), 3);
   assert.strictEqual(M.moveQuickFocus(0, 'ArrowLeft', 4), 0); assert.strictEqual(M.moveQuickFocus(2, 'ArrowLeft', 4), 1);
-  assert.strictEqual(M.moveQuickFocus(1, 'ArrowDown', 8), 5); assert.strictEqual(M.moveQuickFocus(5, 'ArrowUp', 8), 1); assert.strictEqual(M.moveQuickFocus(1, 'ArrowUp', 8), 1);
-  assert.strictEqual(M.moveQuickFocus(3, 'ArrowDown', 6), 5, '마지막 줄이 덜 찼으면 마지막 칸'); assert.strictEqual(M.moveQuickFocus(5, 'ArrowDown', 6), 5);
-  assert.strictEqual(M.moveQuickFocus(2, 'Home', 8), 0); assert.strictEqual(M.moveQuickFocus(2, 'End', 8), 7); assert.strictEqual(M.moveQuickFocus(0, 'x', 0), 0);
+  assert.strictEqual(M.moveQuickFocus(1, 'ArrowDown', 8), 2); assert.strictEqual(M.moveQuickFocus(5, 'ArrowUp', 8), 4); assert.strictEqual(M.moveQuickFocus(0, 'ArrowUp', 8), 0);
+  assert.strictEqual(M.moveQuickFocus(2, 'Home', 8), 0); assert.strictEqual(M.moveQuickFocus(2, 'End', 8), 7); assert.strictEqual(M.moveQuickFocus(2, 'x', 8), 2); assert.strictEqual(M.moveQuickFocus(0, 'ArrowRight', 0), 0);
+});
+t('알약 바 간격은 많을수록 줄고, 버튼마다 다른 비행 값(회전 -25~25도, 지연 0~120ms)이 순서대로 고정된다', () => {
+  assert.ok(M.quickGapPx(4) >= M.quickGapPx(6) && M.quickGapPx(6) >= M.quickGapPx(7) && M.quickGapPx(7) >= M.quickGapPx(8) && M.quickGapPx(8) > 0);
+  const seen = new Set();
+  for (let i = 0; i < 8; i++) { const f = M.flightVars(i), g = M.flightVars(i); assert.deepStrictEqual(f, g, '같은 순서는 항상 같은 값'); assert.ok(f.rot >= -25 && f.rot <= 25 && f.delay >= 0 && f.delay <= 120); seen.add(`${f.rot}/${f.delay}`); }
+  assert.ok(seen.size >= 6, '버튼마다 서로 다른 각도·지연');
+});
+
+// ── 호 배치(방사형) ──────────────────────────────────────────────────────────
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const inside = (b, w) => b.x >= w.x && b.y >= w.y && b.x + b.width <= w.x + w.width && b.y + b.height <= w.y + w.height;
+t('호 각도: 4개는 위쪽 180도에 균등, 5·6개는 호를 넓히고(210·240도), 마지막(종료)이 호의 가장 바깥 끝', () => {
+  assert.deepStrictEqual([4, 5, 6].map(Q.arcSpanDeg), [180, 210, 240]);
+  const up4 = Q.arcAngles(4, 'up'); assert.deepStrictEqual(up4.map(Math.round), [-180, -120, -60, 0]);
+  const gaps = (a) => a.slice(1).map((v, i) => Math.round((v - a[i]) * 1000) / 1000); for (const n of [2, 3, 4, 5, 6]) { const g = gaps(Q.arcAngles(n, 'up')); assert.ok(g.every(x => Math.abs(x - g[0]) < 1e-9), `${n}개 균등`); }
+  const up6 = Q.arcAngles(6, 'up'); assert.ok(Math.abs(up6[5] - up6[0] - 240) < 1e-9 && Math.abs((up6[0] + up6[5]) / 2 + 90) < 1e-9, '가운데가 위쪽');
+  for (const [dir, c] of [['up', -90], ['down', 90], ['left', 180], ['right', 0]]) { const a = Q.arcAngles(4, dir); assert.ok(Math.abs((a[0] + a[3]) / 2 - c) < 1e-9, dir); }
+  assert.deepStrictEqual(Q.arcAngles(1, 'up'), [-90]);
+});
+t('호 반지름은 펫 크기에 비례, 버튼은 모두 같은 반지름 위·서로 겹치지 않음(2~6개)', () => {
+  assert.ok(Q.arcRadius(150) > Q.arcRadius(100) && Q.arcRadius(100) > Q.arcRadius(70)); assert.ok(Math.abs(Q.arcRadius(200) / Q.arcRadius(100) - 2) < 0.02);
+  const work = { x: 0, y: 0, width: 3000, height: 2000 }, origin = { x: 1500, y: 1000 };
+  for (const n of [2, 3, 4, 5, 6]) for (const size of [70, 100, 150]) {
+    const l = Q.layoutArc({ count: n, sizePct: size, origin, work, dir: 'up' }); const c = { x: l.bounds.x + l.pet.x + l.shift.x, y: l.bounds.y + l.pet.y + l.shift.y };
+    for (const b of l.buttons) assert.ok(Math.abs(dist({ x: b.x, y: b.y }, l.pet) - l.radius) < 1.5, `반지름 ${n}/${size}`);
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert.ok(dist(l.buttons[i], l.buttons[j]) >= Q.BTN + 8, `겹침 ${n}개 ${i}-${j}`);
+    assert.strictEqual(l.buttons.length, n); assert.ok(inside({ x: l.bounds.x, y: l.bounds.y, width: l.bounds.width, height: l.bounds.height }, work)); void c;
+  }
+});
+t('방향 선택: 펫이 아래쪽이면 위, 가장자리에서는 아래→왼쪽→오른쪽으로 돌려 호가 화면 안에 완전히 들어온다', () => {
+  const work = { x: 0, y: 33, width: 1728, height: 1084 };
+  const pick = (pet, n = 4) => Q.layoutArc({ count: n, sizePct: 100, origin: Q.petCenter({ ...pet, width: 240, height: 230 }, 100), work });
+  assert.strictEqual(pick({ x: 700, y: 850 }).dir, 'up'); assert.strictEqual(pick({ x: 700, y: 400 }).dir, 'up');
+  const topEdge = Q.layoutArc({ count: 4, sizePct: 100, origin: { x: 700, y: 70 }, work }); assert.strictEqual(topEdge.dir, 'down', '펫 중심이 위쪽 가장자리 가까이면 아래로(펫 창은 화면 위 가장자리에서도 중심이 160px 아래라 실제로는 드묾)');
+  const tl = pick({ x: 0, y: 33 }); assert.strictEqual(tl.dir, 'right', '왼쪽 위 구석: 오른쪽으로'); const tr = pick({ x: 1488, y: 33 }); assert.strictEqual(tr.dir, 'left', '오른쪽 위 구석: 왼쪽으로');
+  const left = pick({ x: 0, y: 300 }); assert.ok(['up', 'down', 'right'].includes(left.dir)); const right = pick({ x: 1488, y: 300 }); assert.ok(['up', 'down', 'left'].includes(right.dir));
+  for (const [px, py] of [[0, 33], [1488, 33], [0, 854], [1488, 854], [700, 33], [700, 854], [0, 400], [1488, 400], [-100, 500], [5000, 5000]]) for (const n of [4, 5, 6]) {
+    const l = pick({ x: px, y: py }, n);
+    for (const b of l.buttons) assert.ok(b.x - 22 >= 0 && b.y - 22 >= 0 && b.x + 22 <= l.bounds.width && b.y + 22 <= l.bounds.height, `버튼이 창 밖 ${px},${py},${n}`);
+    assert.ok(l.pet.x >= 0 && l.pet.y >= 0 && l.pet.x <= l.bounds.width && l.pet.y <= l.bounds.height, '시작점(펫 중심)은 창 안');
+    if (Math.abs(px) < 3000 && Math.abs(py) < 3000) assert.ok(l.bounds.x >= work.x - 0 && l.bounds.y >= work.y && l.bounds.x + l.bounds.width <= work.x + work.width && l.bounds.y + l.bounds.height <= work.y + work.height, `화면 안 ${px},${py},${n}`);
+  }
+});
+t('다중 모니터: 펫이 있는 모니터 기준으로 호가 놓이고(음수 좌표 포함), 모니터 경계를 넘지 않는다', () => {
+  const left = { workArea: { x: -1920, y: 0, width: 1920, height: 1040 } }, main = { workArea: { x: 0, y: 0, width: 1920, height: 1040 } };
+  const pet = { x: -240, y: 400, width: 240, height: 230 };   // 왼쪽 모니터의 오른쪽 가장자리
+  const work = Q.pickWorkArea(pet, [left, main]); assert.deepStrictEqual(work, left.workArea);
+  const l = Q.layoutArc({ count: 4, sizePct: 100, origin: Q.petCenter(pet, 100), work });
+  assert.ok(l.bounds.x >= -1920 && l.bounds.x + l.bounds.width <= 0, `왼쪽 모니터 안: ${JSON.stringify(l.bounds)}`);
+});
+t('카드(날씨·알람)는 호 바깥쪽에 붙고 호와 겹치지 않으며, 카드를 열고 닫아도 방향은 그대로', () => {
+  const work = { x: 0, y: 33, width: 1728, height: 1084 };
+  const origin = Q.petCenter({ x: 700, y: 850, width: 240, height: 230 }, 100);
+  const base = Q.layoutArc({ count: 4, sizePct: 100, origin, work });
+  const withCard = Q.layoutArc({ count: 4, sizePct: 100, origin, work, card: { w: 320, h: 420 }, dir: base.dir });
+  assert.strictEqual(withCard.dir, base.dir); assert.ok(withCard.card && withCard.card.w === 320 && withCard.card.h === 420);
+  assert.ok(withCard.card.y + withCard.card.h <= Math.min(...withCard.buttons.map(b => b.y - 22)) + 0.5, '위로 열린 호의 카드는 호 위쪽');
+  for (const b of withCard.buttons) assert.ok(!(b.x + 22 > withCard.card.x && b.x - 22 < withCard.card.x + withCard.card.w && b.y + 22 > withCard.card.y && b.y - 22 < withCard.card.y + withCard.card.h), '카드와 버튼이 겹치지 않음');
+  assert.ok(inside(withCard.bounds, work)); assert.ok(withCard.card.x >= 0 && withCard.card.x + withCard.card.w <= withCard.bounds.width);
+  for (const dir of ['down', 'left', 'right']) { const l = Q.layoutArc({ count: 4, sizePct: 100, origin: { x: 800, y: 500 }, work: { x: 0, y: 0, width: 2000, height: 1400 }, card: { w: 320, h: 300 }, dir });
+    for (const b of l.buttons) assert.ok(!(b.x + 22 > l.card.x && b.x - 22 < l.card.x + l.card.w && b.y + 22 > l.card.y && b.y - 22 < l.card.y + l.card.h), `${dir} 카드 겹침`); }
+  assert.deepStrictEqual(Q.clampCard(320, 420), { w: 320, h: 420 }); assert.deepStrictEqual(Q.clampCard(5000, 5000), { w: 420, h: 680 }); assert.strictEqual(Q.clampCard(0, 10), null); assert.strictEqual(Q.clampCard(NaN, 10), null);
+});
+t('종료 확인 안내 말풍선: 종료 버튼 위(창 안), 위가 모자라면 아래, 가로는 창 안', () => {
+  const work = { x: 0, y: 33, width: 1728, height: 1084 };
+  for (const [px, py] of [[700, 850], [0, 33], [1488, 33], [1488, 854], [0, 854]]) {
+    const l = Q.layoutArc({ count: 4, sizePct: 100, origin: Q.petCenter({ x: px, y: py, width: 240, height: 230 }, 100), work }); const q = l.buttons[3], h = l.hint;
+    assert.ok(h.x >= 0 && h.x + h.w <= l.bounds.width, `가로 안 ${px},${py}`); assert.ok(h.y >= 0, `세로 안 ${px},${py}`);
+    assert.ok(h.y + h.h <= q.y - 22 + 1 || h.y >= q.y + 22 - 1, '종료 버튼 위 또는 아래(버튼을 가리지 않음)');
+  }
 });
 
 // ── 창 위치 ──────────────────────────────────────────────────────────────────
@@ -165,7 +234,7 @@ t('연결: 우클릭 → 퀵 메뉴, 종료는 정상 종료 경로(requestQuit:
   assert.ok(/ipcMain\.on\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main));
   assert.ok(/if \(action === 'quit'\) \{ requestQuit\(\); return; \}/.test(main));
   assert.ok(/quitTimer = setTimeout\(\(\) => app\.exit\(0\), QUIT_TIMEOUT_MS\)/.test(main) && /QUIT_TIMEOUT_MS = 2000/.test(main) && /app\.quit\(\)/.test(main), '정상 종료를 먼저, 2초 안에 안 끝나면 강제');
-  assert.ok(/const fromQuick = \(e\) =>/.test(main) && (main.match(/fromQuick\(e\)/g) || []).length === 4, '닫기·크기·알람 읽기·동작 4곳 모두 퀵 창이 보낸 것인지 확인');
+  assert.ok(/const fromQuick = \(e\) =>/.test(main) && (main.match(/fromQuick\(e\)/g) || []).length === 6, '닫기·첫 알림·카드·크기·알람 읽기·동작 6곳 모두 퀵 창이 보낸 것인지 확인');
   assert.ok(/win\.on\('blur'/.test(main) && /closeQuickMenu\(\)/.test(main), '포커스를 잃으면 닫힘');
   assert.ok(/if \(quickWindow && !quickWindow\.isDestroyed\(\)\) return;/.test(main.slice(main.indexOf('function startAlwaysOnTopKeepAlive'), main.indexOf('function stopAlwaysOnTopKeepAlive'))), '퀵 메뉴가 열려 있는 동안 항상 위 재설정은 쉰다(맥에서 포커스를 가져가 메뉴가 닫히는 문제)');
   assert.ok(/quickWindow = null;/.test(main.slice(main.indexOf('function finishQuit'), main.indexOf('function requestQuit'))), '종료 때 퀵 창도 정리');
@@ -174,6 +243,22 @@ t('연결: 우클릭 → 퀵 메뉴, 종료는 정상 종료 경로(requestQuit:
   assert.ok(/layoutQuickItems\(ITEMS, QUIT\)/.test(page) && /key === 'Escape'/.test(page) && /api\(\)\?\.quickClose\(\)/.test(page));
   assert.ok(!/fetch\(|XMLHttpRequest/.test(page), '렌더러는 네트워크를 쓰지 않는다(메인이 한다)');
   assert.ok(/s\.weatherConsent \? s\.weatherCityId : ''/.test(page) && /if \(!c\) \{ setPhase\('none'\); return; \}/.test(page), '동네나 동의가 없으면 날씨 요청을 하지 않는다');
+});
+t('방사형 모션·색(정적 확인): CSS 애니메이션만(rAF 루프 없음), 열림 약 500ms·닫힘 150ms, 버튼별 --dx --dy --rot --delay, 움직임 줄이기, 색 변수 4개, 붉은색은 종료 확인 한 곳', () => {
+  const css = read('src/styles/quick.css'), page = read('src/pages/QuickPage.tsx'), main = read('main.cjs');
+  assert.ok(!/requestAnimationFrame\(\s*function|setInterval\(|loop/.test(page.replace(/\/\/.*$/gm, '').replace(/const id = requestAnimationFrame\(\(\) => \{[\s\S]*?\}\);\s*return \(\) => cancelAnimationFrame\(id\);/, '')), '애니메이션을 돌리는 rAF/setInterval 루프 없음(포커스 이동용 rAF 한 번만)');
+  assert.ok(/animation: qk-x 500ms var\(--delay, 0ms\) both/.test(css) && /animation: qk-y 500ms/.test(css) && /animation: qk-b 500ms/.test(css), '열림 500ms');
+  assert.ok(/qk-x-out 150ms/.test(css) && /qk-y-out 150ms/.test(css) && /qk-b-out 150ms/.test(css), '닫힘 150ms'); assert.ok(Q.QUICK_CLOSE_MS >= 150 && Q.QUICK_CLOSE_MS <= 200);
+  for (const v of ['--dx', '--dy', '--rot', '--delay']) assert.ok(css.includes(v) && page.includes(`'${v}'`), v);
+  assert.ok(/prefers-reduced-motion: reduce[\s\S]*animation: none !important/.test(css), '움직임 줄이기: 모션 없이 최종 위치');
+  for (const v of ['--quick-bar-bg', '--quick-bar-fg', '--quick-bar-border', '--quick-bar-hover']) { assert.ok(css.includes(`${v}:`), v); assert.ok(css.indexOf(`html[data-theme="dark"] .qk-root`) > 0); }
+  assert.ok(/--quick-bar-bg: #ffffff;/.test(css) && /--quick-bar-fg: #111111;/.test(css) && /--quick-bar-bg: #111111;/.test(css) && /--quick-bar-fg: #ffffff;/.test(css), '라이트 흰 버튼+검정 아이콘, 다크 검은 버튼+흰 아이콘');
+  assert.ok(/rgba\(17, 17, 17, 0\.08\)/.test(css) && /rgba\(255, 255, 255, 0\.14\)/.test(css), '호버: 라이트 검정 8%, 다크 흰색 14%');
+  assert.ok(!/gradient|blur\(/.test(css), '그라데이션·번짐 없음'); assert.ok(/--quick-confirm: #e5484d/.test(css) && (css.match(/#e5484d/gi) || []).length === 1, '붉은색은 종료 확인 한 곳');
+  assert.ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(/#e5484d|#ffffff|#111111|#fff\b/gi, '')), '그 밖의 색 없음(블랙 앤 화이트)');
+  assert.ok(/'quick-open'/.test(main) && /'quick-closing'/.test(main) && /QUICK_CLOSE_MS/.test(main), '열림·닫힘 모션은 메인이 신호를 주고 닫힘 뒤에 창을 없앤다');
+  assert.ok(/ipcMain\.on\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main) && /closeQuickMenu\(true\); return; \}   \/\/ 열려 있을 때의 우클릭은 닫는다/.test(main), '재우클릭은 닫는다');
+  assert.ok(/if \(st && st\.closing\) return;/.test(main) && /\(quickState && quickState\.closing\)\) return;/.test(main), '닫히는 중의 반복 닫기·눌림은 무시(상태가 꼬이지 않음)');
 });
 t('화면: 아이콘은 이모지가 아니라 lucide, 새 홈 칩·설정 스위치 없음(칩 8개 유지), 한글 깨짐 없음', () => {
   const page = read('src/pages/QuickPage.tsx'), css = read('src/styles/quick.css'), home = read('src/components/settings/HomePane.tsx');

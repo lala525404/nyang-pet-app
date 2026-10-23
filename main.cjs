@@ -721,17 +721,49 @@ let pendingGoto = null;   // 설정창이 막 만들어지는 중이면 가야 �
 function notifyQuickState(open) {
   if (petWindow && !petWindow.isDestroyed()) { try { petWindow.webContents.send('quick-state', open); } catch {} }
 }
-function closeQuickMenu() {
-  const w = quickWindow;
-  quickWindow = null;
+// 퀵 창 상태: mode('arc' 호 | 'bar' 알약 바), count(버튼 수), card({w,h}|null), closing(닫힘 모션 중), closeTimer
+let quickState = null;
+let petSizePct = 100;   // 설정의 버디 크기(%): 호 반지름이 펫 크기에 비례한다(sync-settings가 갱신)
+function destroyQuickNow() {
+  const w = quickWindow, st = quickState;
+  quickWindow = null; quickState = null;
+  if (st && st.closeTimer) clearTimeout(st.closeTimer);
   if (w && !w.isDestroyed()) { try { w.destroy(); } catch {} }
   notifyQuickState(false);
 }
+// 닫기: animate면 닫힘 모션(0.15초) 뒤에 창을 없앤다. 닫기는 열림 알림을 바로 거두므로 펫은 즉시 원래 움직임으로 돌아온다. 이미 닫히는 중이면 animate여도 그대로 둔다(연타·재우클릭에 꼬이지 않게).
+function closeQuickMenu(animate = false) {
+  if (!quickWindow || quickWindow.isDestroyed()) { destroyQuickNow(); return; }
+  const st = quickState;
+  if (!animate || !quickWindow.isVisible()) { destroyQuickNow(); return; }
+  if (st && st.closing) return;
+  if (st) st.closing = true;
+  notifyQuickState(false);
+  try { quickWindow.webContents.send('quick-closing'); } catch {}
+  if (st) st.closeTimer = setTimeout(destroyQuickNow, quickMenu.QUICK_CLOSE_MS);
+}
+// 펫 창 위치는 우클릭한 순간의 값을 쓴다(페이지가 뜨는 동안 펫이 조금 움직여도 호는 우클릭한 자리 기준)
+const quickWork = () => {
+  const pet = (quickState && quickState.pet) || petWindow.getBounds();
+  return { pet, work: quickMenu.pickWorkArea(pet, screen.getAllDisplays()) || screen.getPrimaryDisplay().workArea };
+};
+// 알약 바 모드: 렌더러가 잰 크기로 펫 위/아래에 놓는다
 function placeQuick(size) {
   if (!quickWindow || quickWindow.isDestroyed() || !petWindow || petWindow.isDestroyed()) return;
-  const pet = petWindow.getBounds();
-  const work = quickMenu.pickWorkArea(pet, screen.getAllDisplays()) || screen.getPrimaryDisplay().workArea;
-  quickWindow.setBounds(quickMenu.placeQuickWindow(pet, size, work));
+  const { pet, work } = quickWork();
+  const p = quickMenu.placeQuickWindow(pet, size, work);
+  quickWindow.setBounds({ x: p.x, y: p.y, width: p.width, height: p.height });
+  try { quickWindow.webContents.send('quick-layout', { mode: 'bar', side: p.side }); } catch {}
+}
+// 호 모드: 펫 중심에서 호와 카드를 계산해 창을 놓고, 버튼 좌표를 렌더러에 보낸다
+function layoutQuickArc() {
+  if (!quickWindow || quickWindow.isDestroyed() || !petWindow || petWindow.isDestroyed() || !quickState) return;
+  const { pet, work } = quickWork();
+  const origin = quickMenu.petCenter(pet, petSizePct);
+  const lay = quickMenu.layoutArc({ count: quickState.count, sizePct: petSizePct, origin, work, card: quickState.card, dir: quickState.dir || null });
+  quickState.dir = lay.dir;   // 카드를 열고 닫아도 방향은 바뀌지 않는다(버튼이 튀지 않게)
+  quickWindow.setBounds(lay.bounds);
+  try { quickWindow.webContents.send('quick-layout', lay); } catch {}
 }
 function showQuick() {
   if (!quickWindow || quickWindow.isDestroyed() || quickWindow.isVisible()) return;
@@ -739,10 +771,11 @@ function showQuick() {
   quickWindow.setAlwaysOnTop(true, 'screen-saver');
   quickWindow.show();
   quickWindow.focus();
+  try { quickWindow.webContents.send('quick-open'); } catch {}   // 이제 열림 모션을 시작한다
 }
 function openQuickMenu() {
   if (isQuitting || !petWindow || petWindow.isDestroyed()) return;
-  if (quickWindow && !quickWindow.isDestroyed()) { quickWindow.focus(); return; }
+  if (quickWindow && !quickWindow.isDestroyed()) { closeQuickMenu(true); return; }   // 열려 있을 때의 우클릭은 닫는다(닫히는 중이면 그대로)
   const size = { width: quickMenu.QUICK_W, height: quickMenu.QUICK_INITIAL_H };
   const win = new BrowserWindow({
     width: size.width, height: size.height, show: false,
@@ -751,26 +784,45 @@ function openQuickMenu() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
   quickWindow = win;
-  placeQuick(size);
+  const petAtOpen = petWindow.getBounds();
+  quickState = { mode: null, count: 0, card: null, dir: null, closing: false, closeTimer: null, pet: petAtOpen };
+  win.setBounds({ x: petAtOpen.x, y: petAtOpen.y, width: size.width, height: size.height });   // 첫 알림(quick-init) 전의 임시 자리
   win.loadURL(getPageURL('/quick'));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
-  // 첫 크기 알림(quick-resize)이 오면 보여 준다. 안 오면 잠시 뒤에라도 보여 준다.
+  // 렌더러의 첫 알림(quick-init: 버튼 수)이 오면 배치해서 보여 준다. 안 오면 잠시 뒤에라도 보여 준다.
   setTimeout(() => { if (quickWindow === win) showQuick(); }, quickMenu.QUICK_SHOW_FALLBACK_MS);
   win.on('blur', () => {
     if (quickWindow !== win) return;
     if (Date.now() - quickShownAt < quickMenu.QUICK_BLUR_GRACE_MS) { try { win.focus(); } catch {} return; }
-    closeQuickMenu();
+    closeQuickMenu(true);   // 바깥 클릭·다른 창으로 포커스 이동(펫을 잡아 끌기 시작해도 포커스가 옮겨 가서 닫힌다)
   });
-  win.on('closed', () => { if (quickWindow === win) { quickWindow = null; notifyQuickState(false); } });
+  win.on('closed', () => { if (quickWindow === win) destroyQuickNow(); });
   notifyQuickState(true);
 }
 ipcMain.on('pet-right-click', () => openQuickMenu());
 
 const fromQuick = (e) => !!quickWindow && !quickWindow.isDestroyed() && e.sender === quickWindow.webContents;
-ipcMain.on('quick-close', (e) => { if (fromQuick(e)) closeQuickMenu(); });
+ipcMain.on('quick-close', (e) => { if (fromQuick(e)) closeQuickMenu(true); });
+// 첫 알림: 버튼 수를 받아 호(6개까지) 또는 알약 바(7개 이상)로 정한다
+ipcMain.on('quick-init', (e, info) => {
+  if (!fromQuick(e) || !quickState || quickState.mode) return;
+  const n = info && Number.isInteger(info.count) ? Math.min(Math.max(info.count, 1), 12) : 4;
+  quickState.count = n; quickState.mode = quickMenu.modeFor(n);
+  if (quickState.mode === 'arc') {
+    layoutQuickArc();
+    setTimeout(() => { if (quickWindow && quickState) showQuick(); }, 40);   // 렌더러가 좌표를 그린 뒤에 보여 준다
+  }
+});
+// 호 모드: 카드(날씨·알람)가 열리고 닫힐 때 크기를 알린다(null이면 카드 없음)
+ipcMain.on('quick-card', (e, size) => {
+  if (!fromQuick(e) || !quickState || quickState.mode !== 'arc') return;
+  quickState.card = size ? quickMenu.clampCard(size.width, size.height) : null;
+  layoutQuickArc();
+});
+// 알약 바 모드: 내용 크기 알림
 ipcMain.on('quick-resize', (e, size) => {
-  if (!fromQuick(e)) return;
+  if (!fromQuick(e) || !quickState || quickState.mode === 'arc') return;
   const s = size && quickMenu.clampQuickSize(size.width, size.height);
   if (!s) return;
   placeQuick(s);
@@ -778,7 +830,7 @@ ipcMain.on('quick-resize', (e, size) => {
 });
 ipcMain.handle('quick-get-alarms', (e) => (fromQuick(e) ? quickMenu.quickAlarmSettings(alarms.resolveAlarmSettings, alarmSettings) : null));   // 스케줄러가 쓰는 값을 읽기만 한다
 ipcMain.on('quick-action', (e, action) => {
-  if (!fromQuick(e) || !quickMenu.isQuickAction(action)) return;
+  if (!fromQuick(e) || !quickMenu.isQuickAction(action) || (quickState && quickState.closing)) return;   // 닫히는 중의 눌림은 무시
   closeQuickMenu();
   if (action === 'quit') { requestQuit(); return; }   // 정상 종료 경로(저장·정리 후 app.quit, 막히면 QUIT_TIMEOUT_MS 뒤 app.exit)
   openSettingsTo(quickMenu.settingsTargetFor(action));
@@ -868,6 +920,7 @@ ipcMain.handle('weather-get', async (_e, req) => {
 
 // ★ 앱 시작시 설정 동기화 - PetPage에서 설정 로드 후 호출
 ipcMain.on('sync-settings', (_e, settings) => {
+  if (settings && Number.isFinite(Number(settings.size))) petSizePct = Math.min(200, Math.max(50, Number(settings.size)));   // 퀵 메뉴 호 반지름이 펫 크기에 비례한다
   if (settings && typeof settings.weatherConsent === 'boolean') weatherService.setConsent(settings.weatherConsent && typeof settings.weatherCityId === 'string' && settings.weatherCityId !== '');
   configurePhotoRotation(settings);
   // 버디 창이 2초 폴링을 기다리지 않고 바로 새 설정을 읽게 한다
