@@ -9,9 +9,19 @@ export type AlarmRepeat =
 
 export const MAX_ALARMS = 50;
 
-// "알람 추가" 버튼으로 만드는 새 알람: 반복 기본값은 "특정 날짜 한 번"(날짜는 오늘). 캘린더 빈 칸에서 만드는 알람도 그 날짜 하루짜리라 같은 모양이다.
-export function newAlarm(id: string, today: Date, time = '09:00'): Alarm {
-  return { id, time, enabled: true, repeat: { kind: 'date', date: ymd(today) } };
+// 새 알람의 기본 시각: 지금보다 뒤인 가장 가까운 30분 단위(09:46 → 10:00, 10:00 정각 → 10:30). 초는 무시한다.
+// 23:30 이후는 그날 안에 들어갈 30분 칸이 없어서 다음 날 00:00이 된다(날짜도 함께 내일로 넘어간다. 오늘 23:59로 두면 23:59 이후에 바로 "완료"가 되기 때문).
+export function nextHalfHour(now: Date): { date: Date; time: string } {
+  const next = (Math.floor((now.getHours() * 60 + now.getMinutes()) / 30) + 1) * 30;
+  const rolled = next >= 24 * 60;
+  return { date: rolled ? addDays(now, 1) : startOfDay(now), time: pad2(Math.floor((next % (24 * 60)) / 60)) + ':' + pad2(next % 60) };
+}
+
+// "알람 추가" 버튼으로 만드는 새 알람: 반복 기본값은 "특정 날짜 한 번"(기본은 오늘, 시각은 지금 뒤의 30분 단위라 바로 "완료"가 되지 않는다).
+// 캘린더 빈 칸에서 만드는 알람은 이 함수를 쓰지 않고 그 칸의 날짜·시각 그대로다.
+export function newAlarm(id: string, now: Date): Alarm {
+  const { date, time } = nextHalfHour(now);
+  return { id, time, enabled: true, repeat: { kind: 'date', date: ymd(date) } };
 }
 export const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;   // 화면 순서: 월~일

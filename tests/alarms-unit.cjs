@@ -432,12 +432,32 @@ t('지난 날짜 칸 화면 연결(정적 확인): 만들기 전에 막고 안�
 t('v1.4.1 새 알람 기본값: "알람 추가"는 오늘 하루짜리(특정 날짜 한 번), 캘린더 빈 칸 알람도 그 날짜 하루짜리', () => {
   const today = new Date(2026, 9, 23, 14, 5);
   const a = S.newAlarm('x1', today);
-  assert.deepStrictEqual(a, { id: 'x1', time: '09:00', enabled: true, repeat: { kind: 'date', date: '2026-10-23' } });
+  assert.deepStrictEqual(a, { id: 'x1', time: '14:30', enabled: true, repeat: { kind: 'date', date: '2026-10-23' } });
   assert.strictEqual(S.occursOn(a, today), true); assert.strictEqual(S.occursOn(a, new Date(2026, 9, 24)), false, '내일은 울리지 않는다');
   assert.strictEqual(S.repeatSummary(a), S.repeatSummary({ repeat: { kind: 'date', date: '2026-10-23' } }));
-  assert.strictEqual(S.newAlarm('x2', new Date(2026, 0, 5), '18:30').repeat.date, '2026-01-05', '월·일은 0으로 채운다');
+  assert.strictEqual(S.newAlarm('x2', new Date(2026, 0, 5, 8, 0)).repeat.date, '2026-01-05', '월·일은 0으로 채운다');
   const pane = fs.readFileSync(path.join(root, 'src/components/settings/AlarmPane.tsx'), 'utf8');
   assert.match(pane, /repeat: \{ kind: 'date', date: ymd\(day\) \}/, '캘린더 빈 칸 알람은 그 날짜 하루짜리 그대로');
+  assert.match(pane, /const draft: Alarm = \{ id: newId\(\), time, enabled: true, repeat/, '캘린더 빈 칸 알람은 칸의 시각 그대로(기본 시간 규칙을 쓰지 않는다)');
+});
+t('새 알람 기본 시간: 지금 뒤의 가장 가까운 30분 단위(경계값·자정 넘김)', () => {
+  const N = (h, m, s = 0, day = 23) => S.nextHalfHour(new Date(2026, 9, day, h, m, s));
+  const eq = (h, m, time, date = '2026-10-23', s = 0) => { const r = N(h, m, s); assert.deepStrictEqual([r.time, S.ymd(r.date)], [time, date], `${h}:${m}:${s}`); };
+  eq(9, 46, '10:00'); eq(10, 0, '10:30'); eq(10, 0, '10:30', '2026-10-23', 59);   // 정각이면 다음 칸(현재와 같은 시각은 과거 취급)
+  eq(9, 0, '09:30'); eq(9, 29, '09:30'); eq(9, 30, '10:00'); eq(9, 59, '10:00');
+  eq(0, 0, '00:30'); eq(0, 1, '00:30');
+  eq(23, 0, '23:30'); eq(23, 29, '23:30');
+  eq(23, 30, '00:00', '2026-10-24'); eq(23, 40, '00:00', '2026-10-24'); eq(23, 45, '00:00', '2026-10-24'); eq(23, 59, '00:00', '2026-10-24');   // 오늘 안에 칸이 없으면 내일 00:00
+  const m = N(23, 59, 0, 31); assert.strictEqual(S.ymd(m.date), '2026-11-01', '월말은 다음 달 1일로');
+  const y = S.nextHalfHour(new Date(2026, 11, 31, 23, 50)); assert.deepStrictEqual([y.time, S.ymd(y.date)], ['00:00', '2027-01-01'], '연말도 다음 해로');
+  // 하루 24시간을 1분 단위로 훑어도: 시각은 항상 :00/:30, 새 알람은 만든 순간 "완료"가 아니고, 30분 안에 있다
+  for (let min = 0; min < 24 * 60; min++) {
+    const now = new Date(2026, 9, 23, Math.floor(min / 60), min % 60, 30), a = S.newAlarm('s', now);
+    assert.match(a.time, /^\d\d:(00|30)$/); assert.strictEqual(S.isPastOneShot(a, now), false, `${a.time} @ ${min}`);
+    const [h, mm] = a.time.split(':').map(Number), at = new Date(S.parseYmd(a.repeat.date).getTime()); at.setHours(h, mm, 0, 0);
+    const wait = (at.getTime() - now.getTime()) / 60000; assert.ok(wait > 0 && wait <= 30, `${a.time} @ ${min}: ${wait}분 뒤`);
+  }
+  assert.strictEqual(S.newAlarm('z', new Date(2026, 9, 23, 9, 46)).time, '10:00');
 });
 t('v1.4.1 홈/알람 탭 정리(정적 확인): 홈은 근무 시작·점심·퇴근 시간만, 알림 상세는 알람 탭, 저장 값은 하나', () => {
   const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
