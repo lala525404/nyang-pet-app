@@ -88,6 +88,11 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 .st-lab { font-size: 12px; color: var(--ui-sub); }
 .st-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .st-stack { display: flex; flex-direction: column; gap: 12px; }
+/* 사진 관리: 버디 모양 · 사진 교체를 한 줄에 반반. 세그먼트 높이 40px(버튼 34 + 안쪽 여백 3×2), 좁아도 줄바꿈 없이 들어가게 글자·여백을 조금 줄인다 */
+.st-photo-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.st-photo-opts[data-single] { grid-template-columns: minmax(0, 1fr); }
+.st-photo-opts .st-stack { gap: 4px; min-width: 0; }
+.st-photo-opts .ui-seg button { min-height: 34px; padding: 0 8px; font-size: 13px; }
 .st-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .st-field-label { font-size: 12px; line-height: 18px; color: var(--ui-sub); }
 

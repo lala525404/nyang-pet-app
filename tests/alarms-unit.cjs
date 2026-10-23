@@ -505,7 +505,12 @@ t('v1.4.1 홈/알람 탭 정리(정적 확인): 홈은 근무 시작·점심·�
   assert.ok(home.includes("data-dots={custom && images.length >= 2 ? '' : undefined}") && /\.st-side\[data-dots\] \.st-stage \{ min-height: 180px; \}/.test(read('src/styles/settings.css')), '사진 점 줄이 생겨도 홈 카드 높이가 동물 펫과 같다(작은 창에서 안 잘림)');
   const animalModal = read('src/components/settings/AnimalModal.tsx');
   assert.ok(animalModal.includes('imageRotateEnabled') && animalModal.includes('imageRotateInterval') && animalModal.includes('<p className="st-lab">사진 교체</p>') && animalModal.includes('activeCount >= 2'), '사진 교체는 사진 관리 화면에서, 2장 이상일 때만');
-  assert.ok(animalModal.indexOf('버디 모양') < animalModal.indexOf('사진 교체</p>'), '모양 줄 바로 아래');
+  assert.ok(animalModal.indexOf('버디 모양') < animalModal.indexOf('사진 교체</p>'), '왼쪽 모양, 오른쪽 사진 교체');
+  assert.match(animalModal, /<div className="st-photo-opts" data-single=\{activeCount < 2 \? '' : undefined\}>/, '한 줄 반반, 사진 1장이면 모양만(한 칸)');
+  assert.match(animalModal, /\{activeCount >= 2 && \(\s*<div className="st-stack">\s*<p className="st-lab">사진 교체<\/p>/, '1장이면 사진 교체 칸을 그리지 않는다');
+  assert.match(animalModal, /\{activeCount >= 2 && rotateEnabled && \(\s*<div className="ui-range-row">/, '교체 주기 슬라이더는 사진 2장 이상 + 교체 켬일 때만');
+  const photoCss = read('src/styles/settings.css');
+  assert.match(photoCss, /\.st-photo-opts \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/); assert.match(photoCss, /\.st-photo-opts \.ui-seg button \{ min-height: 34px;/, '세그먼트 40px');
   assert.ok(/imageRotateInterval: 60, imageRotateEnabled: true/.test(read('src/utils/settings.ts')), '사진 교체 저장 키·기본값 그대로');
   // 모양(customShape)은 사진 버디에만 적용된다(CatEmoji의 customImage 분기 안에서만). 홈 칩에서 빼고 사진 올리기(자르기)·사진 관리에서 고른다. 저장 키·기본값('round')은 그대로.
   const catEmoji = read('src/components/CatEmoji.tsx'), animal = read('src/components/settings/AnimalModal.tsx'), crop = read('src/components/CropModal.tsx');
