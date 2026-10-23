@@ -113,6 +113,16 @@ html, body, #root {
   animation: catFloat 3s ease-in-out infinite;
   transition: width 0.12s ease, height 0.12s ease, font-size 0.12s ease, filter 0.12s ease;
 }
+/* 대화 보호 중(말 걸기·답변·날씨 안내 중과 직후): 펫은 제자리에서 통통 튀는 가벼운 바운스만 한다(위치는 그대로) */
+.cat-wrapper[data-hold] .cat-emoji { animation: catBoing 1.1s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes catBoing {
+  0%, 100% { transform: translateY(0) scale(1.04, 0.94); }
+  25%      { transform: translateY(-9px) scale(0.96, 1.06); }
+  50%      { transform: translateY(0) scale(1.05, 0.93); }
+  75%      { transform: translateY(-5px) scale(0.98, 1.03); }
+}
+@media (prefers-reduced-motion: reduce) { .cat-wrapper[data-hold] .cat-emoji { animation: catFloat 3s ease-in-out infinite; } }
+.bubble[data-answer] { pointer-events: auto; }   /* 답변 말풍선 위에 마우스가 있으면 사라지지 않는다 */
 .cat-area:hover .cat-emoji {
   filter: drop-shadow(0 6px 18px rgba(0,0,0,0.32));
   width: 68px;

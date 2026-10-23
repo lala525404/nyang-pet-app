@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setFocusMode:     (change) => ipcRenderer.invoke('focus-set', change),
   reportFocusAnchor:(x, y) => ipcRenderer.send('focus-anchor', { x, y }),
   setPetInteractive:(v) => ipcRenderer.send('pet-interactive', v),
+  setPetProtect:    (v) => ipcRenderer.send('pet-protect', v === true),
   onFocusMode:      (cb) => {
     const handler = (_e, state) => cb(state);
     ipcRenderer.on('focus-state', handler);

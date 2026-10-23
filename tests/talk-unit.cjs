@@ -281,7 +281,7 @@ t('클릭 우선순위: 더블클릭 → 말 걸기, 운세가 떠 있으면 다
   const pet = read('src/pages/PetPage.tsx'), click = pet.slice(pet.indexOf('const handleCatClick'), pet.indexOf('const currentCustomImage'));
   assert.ok(click.indexOf('isDoubleClick') < click.indexOf("idleBubble?.kind === 'fortune'") && click.indexOf("idleBubble?.kind === 'fortune'") < click.indexOf("idleBubble?.kind === 'weather'") && click.indexOf("idleBubble?.kind === 'weather'") < click.indexOf('showBubble(rand(reactions)'));
   assert.ok(/openTalk\('menu'\)/.test(click) && !/spawnParticles\(14\)/.test(click), '예전 더블클릭 놀람 반응은 말 걸기로 대체');
-  assert.ok(/weatherPageRef\.current < last/.test(click) && /weatherPageRef\.current \+= 1/.test(click));
+  assert.ok(/weatherPageRef\.current < lines\.length - 1/.test(click) && /weatherPageRef\.current \+= 1/.test(click));
   const WT = load('src/utils/weatherText.ts', { '../data/weatherText': load('src/data/weatherText.ts'), './fortune': F });
   const lines = WT.weatherLines({ temp: 12, feels: 10, code: 3, max: 18, min: 9, pop: 30, precip: 0 }, TODAY);
   assert.strictEqual(lines.length, 3); assert.ok(/구름|12°/.test(lines[0]) && lines[1] === '오늘 최고 18° / 최저 9°' && lines[2] === '비 올 확률은 30%예요');

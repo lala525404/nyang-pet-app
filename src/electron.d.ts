@@ -55,6 +55,7 @@ interface ElectronAPI {
   setFocusMode: (change: { enabled?: boolean; seconds?: boolean }) => Promise<FocusModeState>;
   reportFocusAnchor: (x: number, y: number) => void;
   setPetInteractive: (interactive: boolean) => void;
+  setPetProtect: (protect: boolean) => void;
   onFocusMode: (cb: (state: FocusModeState) => void) => () => void;
   getLoginItem: () => Promise<LoginItemState>;
   setLoginItem: (enabled: boolean) => Promise<LoginItemState>;

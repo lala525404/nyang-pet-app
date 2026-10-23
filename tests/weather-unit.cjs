@@ -213,9 +213,10 @@ t('표시: 출근 전후(-30~+90분)·퇴근 30분 전 하루 한 번(날씨가 
   assert.ok(/cur\.weatherEnabled !== true \|\| cur\.weatherConsent !== true/.test(pet), '날씨가 꺼져 있으면 안내에서 빠진다');
   assert.ok(/focusRef\.current\.enabled \|\| alertRef\.current \|\| toastActiveRef\.current\) return;/.test(pet), '초집중·알림 중에는 미룬다');
   assert.ok(/cur\.bubbleEnabled === false/.test(pet), '말풍선 사용을 끄면 안내도 없다');
-  assert.ok(/BRIEFING_MS \+ BRIEFING_GUARD_MS/.test(pet) && /const guarded = now < briefingUntilRef\.current/.test(pet), '안내 직후 보호 시간에는 엔진도 쉰다');
-  assert.strictEqual((pet.match(/bubbleEnabled !== false && nagOk\(\)/g) || []).length, 3, '졸림 방지 말풍선 3곳이 안내를 덮어쓰지 않는다');
-  assert.ok(/const nagOk = \(\) => Date\.now\(\) >= Math\.max\(briefingUntilRef\.current, forceRef\.current\?\.until \?\? 0\)/.test(pet));
+  assert.ok(/showBubble\(text, 'happy', false, BRIEFING_MS, LEVEL\.BRIEFING\)/.test(pet), '아침·퇴근길 안내는 3순위');
+  assert.ok(/!lowBlocked/.test(pet), '안내 직후 보호 시간에는 엔진도 쉰다');
+  assert.strictEqual((pet.match(/bubbleEnabled !== false && nagOk\(\)/g) || []).length, 3, '졸림 방지 말풍선 3곳이 보호 중에는 뜨지 않는다');
+  assert.ok(/const nagOk = \(\) => !isProt\(\)/.test(pet));
 });
 t('위치 자동 감지 없음: geolocation·IP 조회 코드가 없다', () => {
   for (const f of ['main.cjs', 'weather.cjs', 'src/pages/PetPage.tsx', 'src/components/PetTalk.tsx', 'src/utils/talk.ts', 'src/utils/citySearch.ts']) assert.ok(!/geolocation|ipapi|ipinfo|ip-api|getCurrentPosition/i.test(read(f)), f);

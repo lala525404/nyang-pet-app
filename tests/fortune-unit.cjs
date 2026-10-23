@@ -145,7 +145,7 @@ t('버디 클릭: 더블클릭이 말 걸기를 열고, 한 번 클릭은 운세
 });
 t('초집중 모드: 시계는 버디 위, 진행 바(compact)는 버디 바로 아래, 1분 갱신·애니메이션 없음, 창 아래 안쪽 여유', () => {
   const pet = read('src/pages/PetPage.tsx'), bar = read('src/components/DayProgressBar.tsx'), css = read('src/styles/pet.css');
-  const iClock = pet.indexOf('<FocusClock'), iCat = pet.indexOf('<div className="cat-wrapper">'), iBar = pet.indexOf('<DayProgressBar compact');
+  const iClock = pet.indexOf('<FocusClock'), iCat = pet.indexOf('<div className="cat-wrapper"'), iBar = pet.indexOf('<DayProgressBar compact');
   assert.ok(iClock > 0 && iClock < iCat && iCat < iBar, '시계 → 버디 → 진행 바');
   assert.ok(/\.pet-root\[data-focus\] \{[^}]*padding-bottom: 16px/.test(css), '창 아래 여유');
   assert.ok(/focus\.enabled && !alertActive && <DayProgressBar compact/.test(pet));

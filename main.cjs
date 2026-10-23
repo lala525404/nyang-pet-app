@@ -19,7 +19,8 @@ let tray = null;
 let updater = null;       // 자동 업데이트(initUpdater에서 만든다)
 let focusState = { enabled: false, seconds: false, anchor: null };   // 초집중 모드 상태(시작할 때 파일에서 읽는다)
 let petInteractive = false;   // 초집중 모드에서 마우스가 버디 위인지(버디 창이 알려 준다)
-let yarDesired = 0;           // 설정이 원하는 야르 간격(분). 초집중 모드 중에는 멈추지만 값은 기억한다
+let petProtect = false;        // 버디 창이 알려 주는 대화 보호 상태(말 걸기·답변·날씨 안내 중과 직후). 알람·미리 알림은 이 값과 상관없이 항상 울린다
+let yarDesired = 0;          // 설정이 원하는 야르 간격(분). 초집중 모드 중에는 멈추지만 값은 기억한다
 let silentUntil = 0;       // 로그인 자동 실행으로 켜졌으면, 이 시각 전의 맥 'activate'(실행 직후에도 오는 이벤트)로는 설정창을 띄우지 않는다
 const SILENT_ACTIVATE_MS = 5000;
 // 버디 창은 말풍선이 들어갈 크기로 고정한다. 말풍선이 뜨고 질 때 창 크기를 바꾸면 버디가 화면에서 25·40px씩 튀었다.
@@ -113,6 +114,7 @@ function startYarTimer(intervalMinutes) {
   yarMinutes = intervalMinutes || 0;
   if (!intervalMinutes) return;
   yarTimer = setInterval(() => {
+    if (petProtect) return;   // 펫과 대화 중·답변이 떠 있는 동안과 그 직후에는 야르 타임을 건너뛴다(대기 없이 다음 주기에)
     createYarWindow();
   }, intervalMinutes * 60 * 1000);
 }
@@ -266,7 +268,7 @@ function createPetWindow() {
   petWindow.setAlwaysOnTop(alwaysOnTopFlag, 'screen-saver');
   petWindow.loadURL(getPageURL(freshInstall ? '/pet?fresh=1' : '/pet'));
   applyPetMouse();   // 초집중 모드로 시작하면 처음부터 클릭 통과
-  petWindow.on('closed', () => { petWindow = null; stopAlwaysOnTopKeepAlive(); });
+  petWindow.on('closed', () => { petWindow = null; petProtect = false; stopAlwaysOnTopKeepAlive(); });
   resumeAlwaysOnTopKeepAlive();
 }
 
@@ -542,6 +544,7 @@ function updateFocus(change) {
 ipcMain.handle('focus-get', () => ({ ...focusState }));
 ipcMain.handle('focus-set', (_e, change) => updateFocus({ enabled: change && change.enabled, seconds: change && change.seconds }));
 ipcMain.on('focus-anchor', (_e, p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) updateFocus({ anchor: { x: p.x, y: p.y } }); });
+ipcMain.on('pet-protect', (_e, v) => { petProtect = v === true; });
 ipcMain.on('pet-interactive', (_e, v) => { const next = v === true; if (next === petInteractive) return; petInteractive = next; applyPetMouse(); });
 
 // ★ 컴퓨터를 켜면 자동 실행(로그인 항목). 판단 로직은 login-item.cjs(단위 테스트됨). 상태는 저장하지 않고 항상 OS에서 읽는다.
