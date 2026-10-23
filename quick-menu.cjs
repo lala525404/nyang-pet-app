@@ -23,6 +23,7 @@ const QUICK_MAX = { w: 560, h: 700 };
 const QUICK_SHOW_FALLBACK_MS = 600;   // 첫 알림이 안 와도 이때는 보여 준다
 const QUICK_BLUR_GRACE_MS = 250;      // 열린 직후의 포커스 흔들림으로는 닫지 않는다
 const QUICK_CLOSE_MS = 170;           // 닫힘 모션(0.15초) 뒤에 창을 없앤다
+const QUICK_FULL_CLICK_MS = 700;      // 열린 직후(버튼이 날아가는 동안)는 창 전체가 클릭을 받는다 → 안착 전에도 누를 수 있다. 그 뒤에는 버튼·카드 위에서만 받는다
 const CARD_MAX = { w: 420, h: 680 };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -201,7 +202,7 @@ function quickAlarmSettings(resolveAlarmSettings, alarmSettings) {
 
 module.exports = {
   BTN, SHADOW_PAD, CARD_GAP, ARC_MAX, RADIUS_PER_PET, HINT, DIRS, PET_WIN,
-  QUICK_W, QUICK_INITIAL_H, QUICK_MIN, QUICK_MAX, QUICK_SHOW_FALLBACK_MS, QUICK_BLUR_GRACE_MS, QUICK_CLOSE_MS, QUICK_ACTIONS,
+  QUICK_W, QUICK_INITIAL_H, QUICK_MIN, QUICK_MAX, QUICK_SHOW_FALLBACK_MS, QUICK_BLUR_GRACE_MS, QUICK_CLOSE_MS, QUICK_FULL_CLICK_MS, QUICK_ACTIONS,
   clampQuickSize, clampCard, modeFor, arcSpanDeg, arcRadius, arcAngles, petCenter, chooseDirection, layoutArc,
   placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
 };

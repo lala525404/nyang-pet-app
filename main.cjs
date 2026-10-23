@@ -270,7 +270,9 @@ function createPetWindow() {
   petWindow.setAlwaysOnTop(alwaysOnTopFlag, 'screen-saver');
   petWindow.loadURL(getPageURL(freshInstall ? '/pet?fresh=1' : '/pet'));
   applyPetMouse();   // 초집중 모드로 시작하면 처음부터 클릭 통과
-  petWindow.on('closed', () => { petWindow = null; stopAlwaysOnTopKeepAlive(); });
+  petRegions = []; petCT = { interactive: true, miss: 0 };   // 새 창은 영역을 알려 줄 때까지 전부 받는다
+  startClickThrough();
+  petWindow.on('closed', () => { petWindow = null; petRegions = []; stopAlwaysOnTopKeepAlive(); });
   resumeAlwaysOnTopKeepAlive();
 }
 
@@ -419,6 +421,7 @@ function createTray() {
 // isQuitting → 설정창 저장 → 모든 창·트레이 정리 → app.quit. 어디선가 막혀도 2초 뒤에는 app.exit으로 끝낸다.
 function stopAllTimers() {
   stopAlwaysOnTopKeepAlive();
+  stopClickThrough();
   stopYarTimer();
   stopBreakTimeChecker();
   stopPhotoRotation();
@@ -511,10 +514,39 @@ const focusMode = require('./focus-mode.cjs');
 const focusFile = () => path.join(app.getPath('userData'), 'focus-mode.json');
 let trayMenuBuilder = null;          // 초집중 켜기/끄기 글자가 바뀌면 트레이 메뉴를 다시 만든다
 function rebuildTrayMenu() { if (tray && trayMenuBuilder) { try { tray.setContextMenu(trayMenuBuilder()); } catch {} } }
-// 클릭 통과: 모드가 켜져 있고 마우스가 버디 위가 아니면 버디 창의 클릭이 아래 창으로 통과한다(mouse move는 계속 받아 버디 위인지 알아낸다)
+// 클릭 통과: 펫 창은 보이는 펫보다 훨씬 커서(240×230 대 76px), 투명한 부분이 펫 주변 클릭을 막았다. 그래서 창은 평소 클릭을 통과시키고,
+// 마우스가 실제 보이는 요소(펫 원·말풍선·토스트) 위에 있을 때만 받는다. 판정은 메인이 커서 위치와 창 위치로 한다(click-through.cjs, 단위 테스트됨).
+// 초집중 모드는 예전처럼 렌더러가 알려 주는 "버디 위인지"(petInteractive)도 함께 쓴다(둘 중 하나라도 위면 받는다). 비상 스위치: CHOEAE_DISABLE_CLICKTHROUGH=1 이면 예전 동작.
+const clickThrough = require('./click-through.cjs');
+const clickThroughOn = clickThrough.isEnabled(process.env);
+let petRegions = [];                              // 렌더러가 알려 준 보이는 요소 영역(창 안 좌표). 비어 있으면(아직 모르면) 항상 받는다
+let petCT = { interactive: true, miss: 0 };       // 펫 창의 현재 판정(처음에는 연다)
 function applyPetMouse() {
-  if (petWindow && !petWindow.isDestroyed()) { try { petWindow.setIgnoreMouseEvents(focusMode.ignoreMouse(focusState, petInteractive), { forward: true }); } catch {} }
+  if (petWindow && !petWindow.isDestroyed()) {
+    try { petWindow.setIgnoreMouseEvents(clickThrough.shouldIgnore({ enabled: clickThroughOn, focusEnabled: focusState.enabled, rendererInteractive: petInteractive, hit: petCT.interactive }), { forward: true }); } catch {}
+  }
 }
+let clickThroughTimer = null;
+function pollClickThrough() {
+  let cursor = null;
+  try { cursor = screen.getCursorScreenPoint(); } catch { return; }
+  if (petWindow && !petWindow.isDestroyed() && petWindow.isVisible()) {
+    const next = clickThrough.step(petCT, { cursor, bounds: petWindow.getBounds(), regions: petRegions, dragging: !!petWindow._dragging });
+    const changed = next.interactive !== petCT.interactive;
+    petCT = next;
+    if (changed) applyPetMouse();
+  }
+  // 퀵 메뉴 창(호 모드): 버튼·카드 위에서만 받는다. 열림 모션 동안(버튼이 날아가는 중)은 전부 받아서 안착 전에도 누를 수 있다.
+  if (quickWindow && !quickWindow.isDestroyed() && quickState && quickState.regions && !quickState.closing) {
+    const full = Date.now() - quickShownAt < quickMenu.QUICK_FULL_CLICK_MS;
+    const prev = quickState.ct || { interactive: true, miss: 0 };
+    const next = full ? { interactive: true, miss: 0 } : clickThrough.step(prev, { cursor, bounds: quickWindow.getBounds(), regions: quickState.regions });
+    quickState.ct = next;
+    if (next.interactive !== prev.interactive) { try { quickWindow.setIgnoreMouseEvents(!next.interactive, { forward: true }); } catch {} }
+  }
+}
+function startClickThrough() { if (clickThroughOn && !clickThroughTimer) clickThroughTimer = setInterval(pollClickThrough, clickThrough.POLL_MS); }
+function stopClickThrough() { if (clickThroughTimer) { clearInterval(clickThroughTimer); clickThroughTimer = null; } }
 function applyYar() { setYarMinutes(focusMode.effectiveYarMinutes(focusState, yarDesired)); }   // 모드 중에는 야르 타임을 멈추고, 끄면 원래 간격으로 돌아간다
 function broadcastFocus() {
   for (const w of [settingsWindow, petWindow]) if (w && !w.isDestroyed()) { try { w.webContents.send('focus-state', { ...focusState }); } catch {} }
@@ -531,6 +563,12 @@ ipcMain.handle('focus-get', () => ({ ...focusState }));
 ipcMain.handle('focus-set', (_e, change) => updateFocus({ enabled: change && change.enabled, seconds: change && change.seconds }));
 ipcMain.on('focus-anchor', (_e, p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) updateFocus({ anchor: { x: p.x, y: p.y } }); });
 ipcMain.on('pet-interactive', (_e, v) => { const next = v === true; if (next === petInteractive) return; petInteractive = next; applyPetMouse(); });
+// 클릭 통과: 버디 창이 보이는 요소(펫 원·말풍선·토스트)의 영역을 알려 준다(바뀔 때만)
+ipcMain.on('pet-regions', (e, list) => {
+  if (!petWindow || petWindow.isDestroyed() || e.sender !== petWindow.webContents) return;
+  const r = clickThrough.sanitizeRegions(list);
+  if (r) petRegions = r;
+});
 
 // ★ 컴퓨터를 켜면 자동 실행(로그인 항목). 판단 로직은 login-item.cjs(단위 테스트됨). 상태는 저장하지 않고 항상 OS에서 읽는다.
 const loginItem = require('./login-item.cjs');
@@ -762,6 +800,7 @@ function layoutQuickArc() {
   const origin = quickMenu.petCenter(pet, petSizePct);
   const lay = quickMenu.layoutArc({ count: quickState.count, sizePct: petSizePct, origin, work, card: quickState.card, dir: quickState.dir || null });
   quickState.dir = lay.dir;   // 카드를 열고 닫아도 방향은 바뀌지 않는다(버튼이 튀지 않게)
+  quickState.regions = clickThroughOn ? clickThrough.quickRegions(lay) : null;   // 버튼·카드 위에서만 클릭을 받는다(스위치가 꺼져 있으면 창 전체)
   quickWindow.setBounds(lay.bounds);
   try { quickWindow.webContents.send('quick-layout', lay); } catch {}
 }

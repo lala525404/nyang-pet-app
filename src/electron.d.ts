@@ -59,6 +59,7 @@ interface ElectronAPI {
   onSettingsChanged: (cb: () => void) => () => void;
   getWeather: (lat: number, lon: number) => Promise<{ data: WeatherData; stale: boolean; at: number } | null>;
   quickClose: () => void;
+  setPetRegions: (regions: unknown[]) => void;
   quickInit: (count: number) => void;
   quickCard: (size: { width: number; height: number } | null) => void;
   quickResize: (width: number, height: number) => void;

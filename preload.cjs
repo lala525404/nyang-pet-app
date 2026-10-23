@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getWeather:       (lat, lon) => ipcRenderer.invoke('weather-get', { lat, lon }),
   // ★ 펫 우클릭 퀵 메뉴: 퀵 창이 닫기·크기·동작을 메인에 알린다. 펫 창은 열림 상태를 받아 평소 말풍선을 쉬고, 설정창은 가야 할 위치를 받는다
   quickClose:       () => ipcRenderer.send('quick-close'),
+  setPetRegions:    (regions) => ipcRenderer.send('pet-regions', regions),   // 클릭 통과: 보이는 요소의 영역
   quickInit:        (count) => ipcRenderer.send('quick-init', { count }),
   quickCard:        (size) => ipcRenderer.send('quick-card', size ? { width: size.width, height: size.height } : null),
   quickResize:      (width, height) => ipcRenderer.send('quick-resize', { width, height }),

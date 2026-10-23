@@ -139,7 +139,8 @@ t('연결(정적 확인): 시작 때 상태 복원(창보다 먼저), 켜면 클
   const main = read('main.cjs'), pre = read('preload.cjs'), home = read('src/components/settings/HomePane.tsx'), pkg = JSON.parse(read('package.json'));
   assert.ok(main.indexOf('focusState = focusMode.loadFocus(focusFile());') < main.indexOf('createPetWindow();\r\n    createTray();') || main.indexOf('focusState = focusMode.loadFocus(focusFile());') < main.indexOf('createPetWindow();\n    createTray();'), '상태 복원이 창·트레이 생성보다 먼저');
   assert.match(main, /if \(r\.enabledChanged\) \{ petInteractive = false; applyPetMouse\(\); applyYar\(\); rebuildTrayMenu\(\); \}/);
-  assert.match(main, /petWindow\.setIgnoreMouseEvents\(focusMode\.ignoreMouse\(focusState, petInteractive\), \{ forward: true \}\)/); assert.match(main, /applyPetMouse\(\);\s*\/\/ 초집중 모드로 시작하면 처음부터 클릭 통과/);
+  assert.match(main, /petWindow\.setIgnoreMouseEvents\(clickThrough\.shouldIgnore\(\{ enabled: clickThroughOn, focusEnabled: focusState\.enabled, rendererInteractive: petInteractive, hit: petCT\.interactive \}\), \{ forward: true \}\)/);   // 초집중 판정(petInteractive)은 그대로 쓰고, 비상 스위치를 끄면 예전과 같다(tests/click-through-unit.cjs가 두 식이 같음을 확인)
+  assert.match(main, /applyPetMouse\(\);\s*\/\/ 초집중 모드로 시작하면 처음부터 클릭 통과/);
   assert.match(main, /label: focusMode\.trayLabel\(focusState\.enabled\),[^\n]*\s*click: \(\) => updateFocus\(\{ enabled: !focusState\.enabled \}\),/);
   for (const ch of ['focus-get', 'focus-set', 'focus-anchor', 'pet-interactive']) { assert.ok(main.includes(`'${ch}'`), `main ${ch}`); assert.ok(pre.includes(`'${ch}'`), `preload ${ch}`); }
   for (const s of ['getFocusMode', 'setFocusMode', 'reportFocusAnchor', 'setPetInteractive', 'onFocusMode']) assert.ok(pre.includes(s), s);

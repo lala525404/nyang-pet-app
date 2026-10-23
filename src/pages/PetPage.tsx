@@ -465,6 +465,31 @@ export default function PetPage() {
     return () => { window.removeEventListener('mousemove', onMove); document.removeEventListener('mouseleave', onLeave); };
   }, [focus.enabled]);
 
+  // 클릭 통과 영역 알림: 보이는 요소(펫 원·말풍선·토스트)의 창 안 좌표를 메인에 알린다(바뀔 때만). 메인은 커서가 이 영역 안일 때만 이 창이 클릭을 받게 한다.
+  // 펫이 움직여도 창 안에서의 위치는 같고(창이 함께 움직인다), 판정은 메인이 커서와 창 위치로 하므로 여기서는 말풍선·토스트가 뜨고 질 때와 크기 변경만 알리면 된다.
+  useEffect(() => {
+    const api = window.electronAPI;
+    let last = '';
+    const r0 = (n: number) => Math.round(n);
+    const send = () => {
+      const list: unknown[] = [];
+      const cat = document.querySelector<HTMLElement>('.cat-area');
+      if (cat) {   // 클릭을 받는 원(회전·확대는 중심이 그대로라 레이아웃 크기와 중심만 쓴다)
+        const b = cat.getBoundingClientRect();
+        list.push({ kind: 'ellipse', cx: r0(b.left + b.width / 2), cy: r0(b.top + b.height / 2), rx: r0(cat.offsetWidth / 2), ry: r0(cat.offsetHeight / 2) });
+      }
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>('.bubble, .pet-toast'))) {
+        const b = el.getBoundingClientRect();
+        if (b.width > 0 && b.height > 0) list.push({ kind: 'rect', x: r0(b.left), y: r0(b.top), w: r0(b.width), h: r0(b.height) });
+      }
+      const key = JSON.stringify(list);
+      if (key !== last) { last = key; api?.setPetRegions?.(list); }
+    };
+    send();
+    const timer = setInterval(send, 250);
+    return () => clearInterval(timer);
+  }, []);
+
   const rand = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
   const activeImages = useMemo(
