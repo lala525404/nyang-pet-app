@@ -359,7 +359,7 @@ t('바 위치: 보이는 바와 펫 이미지 사이는 QUICK_BAR_GAP_PX(위·�
   const visBox = (r) => ({ top: r.y + Q.QUICK_WIN_PAD, bottom: r.y + r.height - Q.QUICK_WIN_PAD });
   // 펫 이미지: 창 240×230의 아래 17px 위, 76px(호버 80px) 가운데
   const img0 = Q.petImageRect({ x: 0, y: 0, width: 240, height: 230 }, 100); assert.ok(Math.abs(img0.width - 80.17) < 0.05 && Math.abs(img0.x + img0.width / 2 - 120) < 0.01); assert.ok(Math.abs(img0.y + img0.height - (230 - 17 + 2)) < 0.1, '호버 확대는 가운데 기준(아래로 2px)');
-  const rest = Q.petImageRect({ x: 0, y: 0, width: 240, height: 230 }, 100, { hover: false }); assert.ok(Math.abs(rest.width - 76.16) < 0.01 && Math.abs(rest.y + rest.height - 213) < 0.01);
+  const rest = Q.petImageRect({ x: 0, y: 0, width: 240, height: 230 }, 100, { hover: false }); assert.ok(Math.abs(rest.width - 76.16) < 0.01 && Math.abs(rest.y + rest.height - 213) < 0.2);
   for (const [px, py, pct] of [[700, 600, 100], [123, 456, 100], [1000, 800, 50], [1200, 700, 200], [300, 333, 150]]) {
     const pet = { x: px, y: py, width: 240, height: 230 }, img = Q.petImageRect(pet, pct), r = Q.placeQuickWindow(pet, size, work, { sizePct: pct });
     assert.strictEqual(r.side, 'above'); assert.ok(Math.abs(img.y - visBox(r).bottom - 6) <= 1, `위 배치 간격 6px: ${px},${py},${pct}`);
@@ -414,16 +414,21 @@ t('창 좌표 검증: setBounds에는 항상 정수·유한한 값만(NaN·undef
 t('초집중 모드 바 위치: 모드별 펫 이미지 위치(시계·남은 근무시간만큼 위로), 위 배치 간격 6px, 아래 배치는 시계·진행바 아래, 측정값 검증·모드 전환', () => {
   const W = { x: 0, y: 0, width: 1920, height: 1040 }, size = { width: 340, height: 140 };
   const pet = { x: 700, y: 500, width: 240, height: 230 }, F = Q.PET_FOCUS;
-  assert.deepStrictEqual({ ...F }, { clockPx: 22, leavePx: 35 });
+  assert.deepStrictEqual({ ...F }, { wrapperPx: 110, clockH: 20, gapPx: 6, leavePx: 35 });
+  assert.strictEqual(Q.focusClockShift(100), 3, '64px 이미지: 시계 20 + 이미지와의 간격 6 - 빈 칸 23');
+  assert.strictEqual(Q.focusClockShift(50), 20 + 6 + (32 - 110) / 2); assert.strictEqual(Q.focusClockShift(200), 20 + 6 + (128 - 110) / 2);
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src/styles/pet.css'), 'utf8'), petTsx = fs.readFileSync(path.join(__dirname, '..', 'src/pages/PetPage.tsx'), 'utf8');
+  assert.ok(/\.pet-root\[data-focus\] \.focus-clock \{ margin-top: calc\(\(var\(--pet-emoji, 64px\) - 110px\) \/ 2 \+ 6px\); \}/.test(css), 'CSS 식 = PET_FOCUS(wrapperPx 110, gapPx 6)');
+  assert.ok(/'--pet-emoji' as string\]: `\$\{Math\.round\(64 \* \(petSize \/ 100\)\)\}px`/.test(petTsx), 'PetPage가 이미지 크기를 CSS 변수로 넘긴다');
   const nrm = Q.petImageRect(pet, 100, { hover: false }), clk = Q.petImageRect(pet, 100, { hover: false, focus: true });
   assert.ok(Math.abs((nrm.y + nrm.height / 2) - (500 + 175)) < 0.2, '평소: 창 안 중심 y≈175');
-  assert.ok(Math.abs((nrm.y - clk.y) - (F.clockPx + F.leavePx)) < 0.01, '초집중(상수): 시계+남은 근무시간(57px)만큼 위(겹침 방지 쪽 가정)');
-  // 렌더러 측정값(창 안 좌표): 시계만(153)·시계+남은 근무시간(118)·평소(175)
-  for (const [cy, focus] of [[175, false], [153, true], [118, true]]) {
+  assert.ok(Math.abs((nrm.y - clk.y) - (3 + F.leavePx)) < 0.01, '초집중(상수): 시계(3px)+남은 근무시간(35px)만큼 위(겹침 방지 쪽 가정)');
+  // 렌더러 측정값(창 안 좌표): 시계만(172)·시계+남은 근무시간(137)·평소(175)
+  for (const [cy, focus] of [[175, false], [172, true], [137, true]]) {
     const r = Q.petImageRect(pet, 100, { hover: false, focus, measured: { cx: 120, cy } }); assert.ok(r.measured, `${cy}`); assert.ok(Math.abs(r.y + r.height / 2 - (500 + cy)) < 0.01 && Math.abs(r.x + r.width / 2 - 820) < 0.01, `측정값 ${cy}`);
   }
   // 위 배치: 어느 쪽 측정이든 보이는 바와 이미지(호버 80px) 사이는 6px
-  for (const [cy, focus] of [[175, false], [153, true], [118, true], [undefined, true], [undefined, false]]) {
+  for (const [cy, focus] of [[175, false], [172, true], [137, true], [undefined, true], [undefined, false]]) {
     const o = { sizePct: 100, focus, measured: cy === undefined ? undefined : { cx: 120, cy } }, img = Q.petImageRect(pet, 100, o), r = Q.placeQuickWindow(pet, size, W, o);
     assert.strictEqual(r.side, 'above'); assert.ok(Math.abs(img.y - (r.y + r.height - Q.QUICK_WIN_PAD) - Q.QUICK_BAR_GAP_PX) <= 1, `위 간격 6px cy=${cy} focus=${focus}`);
   }
@@ -431,7 +436,7 @@ t('초집중 모드 바 위치: 모드별 펫 이미지 위치(시계·남은 �
   const top = { x: 700, y: -150, width: 240, height: 230 };
   const bn = Q.placeQuickWindow(top, size, W, { sizePct: 100 }), imgN = Q.petImageRect(top, 100);
   assert.strictEqual(bn.side, 'below'); assert.ok(Math.abs((bn.y + Q.QUICK_WIN_PAD) - (imgN.y + imgN.height) - 6) <= 1, '평소 아래 간격 6px');
-  for (const m of [undefined, { cx: 120, cy: 118 }, { cx: 120, cy: 153 }]) {
+  for (const m of [undefined, { cx: 120, cy: 137 }, { cx: 120, cy: 172 }]) {
     const bf = Q.placeQuickWindow(top, size, W, { sizePct: 100, focus: true, measured: m });
     assert.strictEqual(bf.side, 'below'); const barTop = bf.y + Q.QUICK_WIN_PAD, stackBottom = top.y + top.height;
     assert.ok(barTop >= stackBottom + Q.QUICK_BAR_GAP_PX - 1, `시계·진행바(펫 창 아래 끝 ${stackBottom})와 겹치지 않는다: 바 위 ${barTop}`);
@@ -441,12 +446,13 @@ t('초집중 모드 바 위치: 모드별 펫 이미지 위치(시계·남은 �
   for (const bad of [null, undefined, {}, { cx: NaN, cy: 100 }, { cx: 120, cy: Infinity }, { cx: '120', cy: '118' }, { cx: 120, cy: -5 }, { cx: 400, cy: 118 }, { cx: 120, cy: 900 }, { cx: 120, cy: 30 }, { cx: 120, cy: 215 }]) {
     const r = Q.petImageRect(pet, 100, { focus: true, measured: bad }); assert.strictEqual(r.measured, false, JSON.stringify(bad)); assert.strictEqual(r.y, base.y, '상수로 대체');
   }
-  // 모드가 바뀐 직후: 이전 모드에서 잰 값은 버린다(평소 175를 초집중에서, 초집중 118/153을 평소에서)
-  assert.strictEqual(Q.petImageRect(pet, 100, { focus: true, measured: { cx: 120, cy: 175 } }).measured, false, '평소에서 잰 값은 초집중에서 버림');
-  assert.strictEqual(Q.petImageRect(pet, 100, { focus: false, measured: { cx: 120, cy: 118 } }).measured, false, '초집중에서 잰 값은 평소에서 버림');
-  assert.strictEqual(Q.petImageRect(pet, 100, { focus: false, measured: { cx: 120, cy: 153 } }).measured, false);
+  // 모드가 바뀐 직후: 이전 모드에서 잰 값은 버린다(평소 175를 초집중에서, 초집중 137/172를 평소에서)
+  const stale = Q.petImageRect(pet, 100, { focus: true, measured: { cx: 120, cy: 175 } }); assert.ok(Math.abs(stale.y + stale.height / 2 - (500 + 175)) < 0.01 && Math.abs(175 - 172) <= 3, '평소(175)와 초집중 시계만(172)은 3px 차이라 구분하지 않아도 어긋남이 3px 이내(메인은 모드 전환 때 측정값을 어차피 버린다)');
+  assert.strictEqual(Q.petImageRect(pet, 100, { focus: true, measured: { cx: 120, cy: 215 } }).measured, false, '범위 밖 값은 초집중에서 버림');
+  assert.strictEqual(Q.petImageRect(pet, 100, { focus: false, measured: { cx: 120, cy: 137 } }).measured, false, '초집중에서 잰 값은 평소에서 버림');
+  assert.strictEqual(Q.petImageRect(pet, 100, { focus: false, measured: { cx: 120, cy: 160 } }).measured, false, '평소 범위(175±8) 밖');
   // 반환값은 setBounds에 넘길 수 있는 정수
-  for (const o of [{ focus: true }, { focus: true, measured: { cx: 120.4, cy: 118.6 } }, { focus: false }]) for (const tp of [pet, top]) { const r = Q.placeQuickWindow(tp, size, W, o); assert.ok(Q.safeBounds(r) && Number.isInteger(r.y) && Number.isInteger(r.x), JSON.stringify(o)); }
+  for (const o of [{ focus: true }, { focus: true, measured: { cx: 120.4, cy: 137.6 } }, { focus: false }]) for (const tp of [pet, top]) { const r = Q.placeQuickWindow(tp, size, W, o); assert.ok(Q.safeBounds(r) && Number.isInteger(r.y) && Number.isInteger(r.x), JSON.stringify(o)); }
   // 연결(정적 확인): 메인은 열릴 때의 모드와 측정값을 고정하고, 모드가 바뀌면 측정값을 버린다
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8');
   assert.ok(/if \(r\.enabledChanged\) \{ petInteractive = false; petMeasured = null;/.test(main), '모드 전환 때 측정값 폐기');

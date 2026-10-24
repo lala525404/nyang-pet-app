@@ -1037,7 +1037,7 @@ export default function PetPage() {
     : null;
 
   return (
-    <div className="pet-root" data-focus={focus.enabled ? '' : undefined}>
+    <div className="pet-root" data-focus={focus.enabled ? '' : undefined} style={{ ['--pet-emoji' as string]: `${Math.round(64 * (petSize / 100))}px` } as React.CSSProperties}>
       {toast && (
         <div className="pet-toast" role="status" key={toast.id}>
           <Bell className="pet-toast-icon" strokeWidth={1.5} aria-hidden />

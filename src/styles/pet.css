@@ -239,6 +239,10 @@ html, body, #root {
   background: color-mix(in srgb, var(--ui-panel) 58%, transparent);
   pointer-events: none; user-select: none;
 }
+/* 펫 영역(.cat-wrapper)은 110px 정사각형이라 이미지 아래에 (110 - 이미지)/2 만큼 빈 칸이 있다(64px 이미지면 23px). 초집중 모드에서는 그 빈 칸 위로 시계를 끌어올려
+   이미지 아래 끝과 시계 사이를 6px로 맞춘다(빈 칸은 클릭 영역일 뿐이고 시계는 마우스를 통과시키므로 클릭 동작은 그대로). --pet-emoji는 PetPage가 이미지 크기(64×크기%)로 넣는다.
+   퀵 바 위치 계산(quick-menu.cjs PET_FOCUS)과 같은 식이어야 한다. 남은 근무시간 줄은 숨겨지면 DOM에서 빠진다(자리를 차지하지 않는다). */
+.pet-root[data-focus] .focus-clock { margin-top: calc((var(--pet-emoji, 64px) - 110px) / 2 + 6px); }
 /* 시계 바로 아래 한 덩어리: 하루 진행바 + "퇴근까지 2시간 15분". 시계와 같은 알약 모양에 조금 더 작게 */
 .focus-leave {
   display: flex; flex-direction: column; align-items: center; gap: 3px;

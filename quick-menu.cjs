@@ -97,15 +97,18 @@ function petCenter(pet, sizePct) {
 // 펫 창 bounds → 보이는 펫 이미지의 사각형(화면 좌표). 펫 창은 240×230이고 보이는 이미지는 그 아래쪽 가운데의 약 76px(64×크기%×1.19)다.
 // 호버 확대(80px)를 기준으로 한다: 확대돼도 바와 겹치지 않는다. 펫이 움직이거나 순간이동해도 창 위치(pet)에서 바로 계산하므로 어긋나지 않는다.
 //
-// 초집중 모드는 펫 아래에 시계(20px+위 여백 2px)와 남은 근무시간 묶음(위 2px+27px+아래 6px)이 붙어 있어서, 아래 정렬된 펫이 그만큼 위로 올라간다
-// (실측: 평소 중심 y=175, 초집중 시계만 153, 시계+남은 근무시간 118 / 창 230px). 모드별 값은 PET_FOCUS 한 곳에서 관리한다.
-const PET_FOCUS = { clockPx: 22, leavePx: 35 };
-const PET_FOCUS_TOLERANCE_PX = 18;   // 측정값을 받아들이는 오차(둥둥·박동 애니메이션 여유)
+// 펫 영역(.cat-wrapper)은 크기와 상관없이 창 아래에 놓인 110px 정사각형이고 이미지는 그 가운데다(평소 창 안 중심 y = 230 - 55 = 175).
+// 초집중 모드는 그 아래에 시계(20px, 위 여백은 pet.css가 이미지 아래 끝과 6px가 되도록 (이미지-110)/2+6)와 남은 근무시간 묶음(위 2px+27px+아래 6px = 35px)이 붙어서,
+// 아래 정렬된 펫이 그만큼 위로 올라간다. 모드별 값은 PET_FOCUS 한 곳에서 관리하고, pet.css의 `.pet-root[data-focus] .focus-clock` margin-top과 같은 식이어야 한다.
+const PET_FOCUS = { wrapperPx: 110, clockH: 20, gapPx: 6, leavePx: 35 };
+const PET_FOCUS_TOLERANCE_PX = 8;    // 측정값을 받아들이는 오차(평소 모드는 둥둥 애니메이션 ±3px 여유, 초집중은 애니메이션이 없다)
+// 초집중에서 시계가 차지하는 높이(위 여백 포함): 이미지 크기(64×크기%)에 따라 여백이 달라진다
+const focusClockShift = (sizePct) => PET_FOCUS.clockH + PET_FOCUS.gapPx + (Math.round(PET_BASE_PX * clampN(Number(sizePct) || 100, 50, 200) / 100) - PET_FOCUS.wrapperPx) / 2;
 // 렌더러가 측정해 보낸 펫 원의 중심(창 안 좌표)을 검증: 숫자·창 안·현재 모드에서 나올 수 있는 범위일 때만 쓴다(모드 전환 직전의 오래된 값·이상한 값은 버린다)
-function validMeasuredCenter(measured, pet, normalCy, focus) {
+function validMeasuredCenter(measured, pet, normalCy, focus, shift = 0) {
   if (!measured || !isNum(measured.cx) || !isNum(measured.cy)) return null;
   if (measured.cx < 0 || measured.cx > pet.width || measured.cy < 0 || measured.cy > pet.height) return null;
-  const hi = normalCy - (focus ? PET_FOCUS.clockPx : 0) + PET_FOCUS_TOLERANCE_PX, lo = normalCy - (focus ? PET_FOCUS.clockPx + PET_FOCUS.leavePx : 0) - PET_FOCUS_TOLERANCE_PX;
+  const hi = normalCy - (focus ? shift : 0) + PET_FOCUS_TOLERANCE_PX, lo = normalCy - (focus ? shift + PET_FOCUS.leavePx : 0) - PET_FOCUS_TOLERANCE_PX;
   return measured.cy >= lo && measured.cy <= hi ? { cx: measured.cx, cy: measured.cy } : null;
 }
 // opts: { hover = true, focus = false(초집중 모드), measured = { cx, cy }(렌더러가 알려 준 펫 원 중심, 창 안 좌표) }
@@ -113,10 +116,11 @@ function petImageRect(pet, sizePct, opts = {}) {
   const hover = opts.hover !== false, focus = opts.focus === true;
   const base = PET_BASE_PX * clampN(Number(sizePct) || 100, 50, 200) / 100 * PET_WIN.emojiRatio;
   const size = hover ? base * PET_HOVER_RATIO : base;
-  const normalCy = pet.y + pet.height - PET_WIN.bottom - base / 2;   // 평소 모드: 아래에서 17px 위에 가운데
+  const normalCy = pet.y + pet.height - PET_FOCUS.wrapperPx / 2;   // 평소 모드: 110px 펫 영역의 가운데(창 아래에서 55px 위)
+  const shift = focusClockShift(sizePct);
   // 초집중: 측정값이 있으면 그것, 없으면 상수(남은 근무시간까지 보이는 경우를 가정: 겹침 방지가 우선)
-  const m = validMeasuredCenter(opts.measured, pet, normalCy - pet.y, focus);
-  const cy = m ? pet.y + m.cy : normalCy - (focus ? PET_FOCUS.clockPx + PET_FOCUS.leavePx : 0);   // 확대는 이미지 가운데 기준
+  const m = validMeasuredCenter(opts.measured, pet, normalCy - pet.y, focus, shift);
+  const cy = m ? pet.y + m.cy : normalCy - (focus ? shift + PET_FOCUS.leavePx : 0);   // 확대는 이미지 가운데 기준
   const cx = m ? pet.x + m.cx : pet.x + pet.width / 2;
   return { x: cx - size / 2, y: cy - size / 2, width: size, height: size, measured: !!m };
 }
@@ -286,5 +290,5 @@ module.exports = {
   QUICK_MENU_LAYOUT, barMaxWidth, BTN, SHADOW_PAD, CARD_GAP, ARC_MAX, RADIUS_PER_PET, HINT, DIRS, PET_WIN,
   QUICK_W, QUICK_INITIAL_H, QUICK_MIN, QUICK_MAX, QUICK_SHOW_FALLBACK_MS, QUICK_BLUR_GRACE_MS, QUICK_CLOSE_MS, QUICK_FULL_CLICK_MS, QUICK_ACTIONS,
   clampQuickSize, clampCard, modeFor, arcSpanDeg, arcRadius, arcAngles, petCenter, chooseDirection, layoutArc,
-  toInt, safePoint, safeBounds, boundsOrFallback, defaultNearPet, QUICK_BAR_GAP_PX, QUICK_WIN_PAD, PET_HOVER_RATIO, PET_FOCUS, validMeasuredCenter, petImageRect, placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
+  toInt, safePoint, safeBounds, boundsOrFallback, defaultNearPet, QUICK_BAR_GAP_PX, QUICK_WIN_PAD, PET_HOVER_RATIO, PET_FOCUS, focusClockShift, validMeasuredCenter, petImageRect, placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
 };
