@@ -250,9 +250,10 @@ t('오늘 알람 목록: 켜진 것만, 시각순, 이름 없으면 종류 이�
   const now = at(2026, 10, 23, 13, 30);   // 금요일
   const s = { lunchOn: true, leaveOn: true, lunchTime: '12:00', leaveTime: '18:00', alarms: [al({ id: 'a', time: '09:00', name: '스탠드업' }), al({ id: 'b', time: '15:30' }), al({ id: 'c', time: '14:00', name: '디자인 리뷰', enabled: false }), al({ id: 'd', time: '13:30', name: '지금' })] };
   const list = QA.todayAlarmList(s, now);
-  assert.deepStrictEqual(list.map(x => `${x.time} ${x.title}`), ['09:00 스탠드업', '12:00 점심', '13:30 지금', '15:30 알람', '18:00 퇴근'], '꺼진 알람(14:00)은 빠진다');
-  assert.deepStrictEqual(list.map(x => x.past), [true, true, false, false, false], '지금 이 분은 지난 게 아니다');
-  assert.deepStrictEqual(list.map(x => x.next), [false, false, true, false, false]); assert.strictEqual(list[2].minutesUntil, 0); assert.strictEqual(list[3].minutesUntil, null);
+  assert.deepStrictEqual(list.map(x => `${x.time} ${x.title}`), ['09:00 스탠드업', '13:30 지금', '15:30 알람'], '꺼진 알람(14:00)은 빠지고, 점심·퇴근 기본 알림은 켜져 있어도 목록에 없다(표시만 뺀다)');
+  assert.deepStrictEqual(list.map(x => x.past), [true, false, false], '지금 이 분은 지난 게 아니다');
+  assert.deepStrictEqual(list.map(x => x.next), [false, true, false], '다음 알람 강조는 직접 설정한 알람만 기준'); assert.strictEqual(list[1].minutesUntil, 0); assert.strictEqual(list[2].minutesUntil, null);
+  assert.ok(list.every(x => x.kind === 'alarm'));
   const later = QA.todayAlarmList(s, at(2026, 10, 23, 13, 31)); assert.strictEqual(later.find(x => x.next).title, '알람'); assert.strictEqual(later.find(x => x.next).minutesUntil, 119);
   const done = QA.todayAlarmList(s, at(2026, 10, 23, 23, 0)); assert.ok(done.every(x => x.past && !x.next), '모두 지난 뒤에는 다음 알람이 없다');
 });
@@ -273,14 +274,18 @@ t('오늘 판정은 스케줄러(alarms.cjs)와 같다: 요일·날짜·그 주�
     const due = A.dueActions({ alarms: [a] }, new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10, 0), fired).some(x => x.card === 'alarm');
     assert.strictEqual(QA.todayAlarmList({ lunchOn: false, leaveOn: false, lunchTime: '12:00', leaveTime: '18:00', alarms: [a] }, day).length === 1, due);
   }
-  const sat = QA.todayAlarmList({ lunchOn: true, leaveOn: false, lunchTime: '12:00', leaveTime: '18:00', alarms: [] }, at(2026, 10, 24)); assert.deepStrictEqual(sat.map(x => x.title), ['점심']);
+  const sat = QA.todayAlarmList({ lunchOn: true, leaveOn: true, lunchTime: '12:00', leaveTime: '18:00', alarms: [] }, at(2026, 10, 24)); assert.deepStrictEqual(sat, [], '점심·퇴근 기본 알림은 표시하지 않는다(알람이 하나도 없으면 빈 목록)');
+  // 기본 알림이 울리는 동작은 그대로(표시만 뺐다): 스케줄러는 여전히 점심 카드를 낸다
+  assert.ok(A.dueActions({ lunchEnabled: true, lunchTime: '12:00', alarms: [] }, at(2026, 10, 24, 12, 0), new Set()).some(x => x.card === 'lunch'), '점심 알림은 그대로 울린다');
   const resolved = A.resolveAlarmSettings({ lunchEnabled: true, leaveEnabled: false, lunchTime: '11:40', leaveTime: '17:30', alarms: [al({ id: 'z', time: '08:00' })] });
   const q = Q.quickAlarmSettings(A.resolveAlarmSettings, { lunchEnabled: true, leaveEnabled: false, lunchTime: '11:40', leaveTime: '17:30', alarms: [al({ id: 'z', time: '08:00' })] });
   assert.deepStrictEqual(q, { lunchOn: resolved.lunchOn, leaveOn: resolved.leaveOn, lunchTime: resolved.lunchTime, leaveTime: resolved.leaveTime, alarms: resolved.alarms });
 });
 t('알람이 없거나 설정을 못 읽으면 빈 목록, 문구·남은 시간 표기', () => {
   assert.deepStrictEqual(QA.todayAlarmList(null, new Date()), []); assert.deepStrictEqual(QA.todayAlarmList({ lunchOn: false, leaveOn: false, lunchTime: '12:00', leaveTime: '18:00', alarms: [] }, new Date()), []);
-  assert.strictEqual(QA.NO_ALARM_TEXT, '오늘은 알람이 없어요');
+  assert.strictEqual(QA.NO_ALARM_TEXT, '오늘 직접 설정한 알람이 없어요');
+  assert.strictEqual(QA.noAlarmText(at(2026, 10, 24), at(2026, 10, 24, 9, 0)), '오늘 직접 설정한 알람이 없어요'); assert.strictEqual(QA.noAlarmText(at(2026, 10, 25), at(2026, 10, 24, 9, 0)), '10월 25일에 설정한 알람이 없어요');
+  assert.ok(!/기본 알림|점심|퇴근/.test(QA.NO_ALARM_TEXT + QA.noAlarmText(at(2026, 10, 25), at(2026, 10, 24))), '기본 알림이 켜져 있다는 안내는 넣지 않는다');
   assert.strictEqual(QA.untilText(0), '지금'); assert.strictEqual(QA.untilText(5), '5분 뒤'); assert.strictEqual(QA.untilText(60), '1시간 뒤'); assert.strictEqual(QA.untilText(135), '2시간 15분 뒤');
 });
 

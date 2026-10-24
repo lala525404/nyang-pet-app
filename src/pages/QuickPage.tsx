@@ -9,7 +9,7 @@ import { cityLabel } from '../utils/citySearch';
 import { loadSettings, formatTime } from '../utils/settings';
 import { QUIT_CONFIRM_MS, SPARKLE_COOLDOWN_MS, SPARKLE_LIFETIME_MS, barRows, canSparkle, flightVars, layoutQuickItems, moveQuickFocus, quickGapPx, sparkleBurst, sparkleEdgeBurst, sparkleRoom } from '../utils/quickMenu';
 import type { Sparkle } from '../utils/quickMenu';
-import { NO_ALARM_DAY_TEXT, NO_ALARM_TEXT, dayTitle, todayAlarmList, untilText } from '../utils/quickAlarms';
+import { dayTitle, noAlarmText, todayAlarmList, untilText } from '../utils/quickAlarms';
 import { parseAlarmCommand } from '../utils/alarmCommand';
 import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, newAlarmId, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
 import type { CreateCommand, Target } from '../utils/alarmChat';
@@ -156,12 +156,11 @@ function AlarmCard({ onBack, day }: { onBack: () => void; day?: string }) {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day]);
-  const isToday = !shown || dayTitle(shown, new Date()) === '오늘 알람';
   return (
     <>
       <CardHead title={shown ? dayTitle(shown, new Date()) : '오늘 알람'} onBack={onBack} />
       {items === null ? <p className="qk-note" role="status">불러오는 중이에요…</p> : items.length === 0 ? (
-        <p className="qk-note">{isToday ? NO_ALARM_TEXT : NO_ALARM_DAY_TEXT}</p>
+        <p className="qk-note">{noAlarmText(shown ?? new Date(), new Date())}</p>
       ) : (
         <ul className="qk-alarms">
           {items.map(a => (

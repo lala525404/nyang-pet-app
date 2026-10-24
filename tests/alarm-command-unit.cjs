@@ -358,11 +358,11 @@ t('연결: 퀵 메뉴에 "대화하기"(message-circle, 툴팁·aria-label)가 �
 });
 t('조회 카드(날짜 지정): 그날 알람을 같은 형식으로, 오늘이 아니면 지난·다음 표시 없음, 제목은 오늘/내일/날짜', () => {
   const s = { lunchOn: true, leaveOn: false, lunchTime: '12:00', leaveTime: '18:00', alarms: [al('a', '09:00', { name: '아침', repeat: { kind: 'date', date: '2026-10-25' } }), al('b', '15:00', { repeat: { kind: 'weekly', days: [0] } }), al('c', '08:00', { repeat: { kind: 'date', date: '2026-10-26' } })] };
-  const sun = QA.todayAlarmList(s, NOW, D(2026, 10, 25)); assert.deepStrictEqual(sun.map(x => x.time), ['09:00', '12:00', '15:00']); assert.ok(sun.every(x => !x.past && !x.next), '오늘이 아니면 지난·다음 표시 없음');
-  const today = QA.todayAlarmList(s, NOW); assert.deepStrictEqual(today.map(x => x.title), ['점심']); assert.ok(today[0].past, '오늘은 지난 알람 표시');
-  assert.strictEqual(QA.todayAlarmList(s, NOW, D(2026, 10, 27)).length, 1, '10-27은 점심만(매일)');
+  const sun = QA.todayAlarmList(s, NOW, D(2026, 10, 25)); assert.deepStrictEqual(sun.map(x => x.time), ['09:00', '15:00'], '직접 설정한 알람만(점심 기본 알림은 켜져 있어도 빠진다)'); assert.ok(sun.every(x => !x.past && !x.next), '오늘이 아니면 지난·다음 표시 없음');
+  assert.deepStrictEqual(QA.todayAlarmList(s, NOW), [], '오늘(토)은 직접 설정한 알람이 없다 → 빈 목록(안내 문구가 나온다)');
+  assert.strictEqual(QA.todayAlarmList(s, NOW, D(2026, 10, 27)).length, 0, '10-27: 직접 설정한 알람 없음');
   assert.strictEqual(QA.dayTitle(D(2026, 10, 24), NOW), '오늘 알람'); assert.strictEqual(QA.dayTitle(D(2026, 10, 25), NOW), '내일 알람 · 10월 25일(일)'); assert.strictEqual(QA.dayTitle(D(2026, 10, 30), NOW), '10월 30일(금) 알람');
-  assert.strictEqual(QA.NO_ALARM_DAY_TEXT, '이 날은 알람이 없어요');
+  assert.strictEqual(QA.noAlarmText(D(2026, 10, 25), NOW), '10월 25일에 설정한 알람이 없어요');
 });
 
 (async () => { let fail = 0; for (const [name, fn] of queue) { try { await fn(); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + (e && e.message)); } } if (fail) { console.log(`\n${fail}개 실패 / ${queue.length}개`); process.exit(1); } console.log(`  ok  알람 대화 ${queue.length}개 검사(해석 사례 ${cases.length}개 포함)\n\n${queue.length}개 통과`); })();

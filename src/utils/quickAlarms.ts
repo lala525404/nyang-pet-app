@@ -4,7 +4,8 @@ import { alarmTitle } from './alarmText';
 
 // 퀵 메뉴의 "오늘 울리는 알람" 목록(화면과 분리해 시험한다: tests/quick-menu-unit.cjs).
 // 오늘 울리는지는 스케줄러(alarms.cjs의 dueActions)와 같은 규칙이다: 켜져 있고, 반복(요일·날짜·그 주만)이 오늘에 해당하고, "오늘만 건너뛰기"가 아닐 때.
-// 점심·퇴근 알림은 켜져 있으면 요일과 상관없이 매일 울린다. 읽기만 하고 알람 설정이나 스케줄러는 바꾸지 않는다.
+// 목록에는 사용자가 직접 설정한 알람(설정의 alarms 항목: 캘린더·알람 화면·알람 대화로 만든 것)만 보인다.
+// 점심·퇴근 기본 알림은 표시만 뺀다(울리는 동작과 설정은 그대로이고, "점심 알람 꺼줘" 같은 끄기 흐름도 그대로다). 읽기만 하고 알람 설정이나 스케줄러는 바꾸지 않는다.
 
 export interface QuickAlarmSettings { lunchOn: boolean; leaveOn: boolean; lunchTime: string; leaveTime: string; alarms: Alarm[] }
 
@@ -28,8 +29,6 @@ export function todayAlarmList(s: QuickAlarmSettings | null, now: Date, day: Dat
   const sameDay = day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth() && day.getDate() === now.getDate();
   const nowMin = sameDay ? now.getHours() * 60 + now.getMinutes() : -1;
   const raw: { id: string; time: string; title: string; kind: TodayAlarmItem['kind']; order: number }[] = [];
-  if (s.lunchOn && isTime(s.lunchTime)) raw.push({ id: 'lunch', time: normTime(s.lunchTime), title: '점심', kind: 'lunch', order: 0 });
-  if (s.leaveOn && isTime(s.leaveTime)) raw.push({ id: 'leave', time: normTime(s.leaveTime), title: '퇴근', kind: 'leave', order: 0 });
   for (const a of s.alarms ?? []) {
     if (!a || !a.enabled || !isTime(a.time)) continue;
     if (!occursOn(a, day) || isSkipped(a, day)) continue;
@@ -53,9 +52,13 @@ export function untilText(minutes: number): string {
   return m ? `${h}시간 ${m}분 뒤` : `${h}시간 뒤`;
 }
 
-export const NO_ALARM_TEXT = '오늘은 알람이 없어요';
-// 날짜를 지정한 조회의 제목·빈 문구: "10월 25일(일) 알람" / "이 날은 알람이 없어요"
-export const NO_ALARM_DAY_TEXT = '이 날은 알람이 없어요';
+// 보여 줄 알람이 없을 때의 안내(기본 알림이 켜져 있다는 말은 넣지 않는다): 오늘은 "오늘 직접 설정한 알람이 없어요", 날짜를 지정하면 "10월 25일에 설정한 알람이 없어요"
+export const NO_ALARM_TEXT = '오늘 직접 설정한 알람이 없어요';
+export function noAlarmText(day: Date, now: Date): string {
+  const same = day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth() && day.getDate() === now.getDate();
+  return same ? NO_ALARM_TEXT : `${day.getMonth() + 1}월 ${day.getDate()}일에 설정한 알람이 없어요`;
+}
+// 날짜를 지정한 조회의 제목: "10월 25일(일) 알람"
 export function dayTitle(day: Date, now: Date): string {
   const diff = Math.round((new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
   const label = ['일', '월', '화', '수', '목', '금', '토'][day.getDay()];
