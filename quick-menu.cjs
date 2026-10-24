@@ -33,6 +33,36 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const clampN = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const rad = (deg) => (deg * Math.PI) / 180;
 
+// ── 창에 넘기는 좌표 검증 ────────────────────────────────────────────────────
+// BrowserWindow.setBounds/setPosition은 정수가 아니거나 NaN·Infinity·문자열이 들어오면 예외를 던진다("conversion failure").
+// 창에 값을 넘기기 전에 반드시 이 함수들을 거친다: 유한한 숫자만 받아 정수로 반올림하고, 못 쓰는 값이면 null(문자열·undefined·NaN·±Infinity 모두).
+const toInt = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
+// 점(x, y): 둘 다 쓸 수 있어야 한다. 음수 좌표(보조 모니터)는 허용
+function safePoint(p) {
+  if (!p || typeof p !== 'object') return null;
+  const x = toInt(p.x), y = toInt(p.y);
+  return x === null || y === null ? null : { x, y };
+}
+// 사각형: 폭·높이는 1 이상이어야 한다(0·음수는 거절)
+function safeBounds(b) {
+  const pt = safePoint(b);
+  if (!pt) return null;
+  const width = toInt(b.width), height = toInt(b.height);
+  return width === null || height === null || width < 1 || height < 1 ? null : { ...pt, width, height };
+}
+// 쓸 수 있는 값이면 정수화한 값, 아니면 fallback들을 차례로 시도(마지막 정상 위치 → 펫 근처 기본 위치). 모두 안 되면 null(호출하는 쪽은 창을 그대로 둔다)
+function boundsOrFallback(b, ...fallbacks) {
+  for (const c of [b, ...fallbacks]) { const s = safeBounds(c); if (s) return { bounds: s, used: c === b ? 'given' : 'fallback' }; }
+  return null;
+}
+// 펫 창 옆에 놓는 기본 위치(렌더러 값이 전혀 없을 때): 펫 창 위, 크기는 안전한 기본값
+function defaultNearPet(pet, size) {
+  const p = safePoint(pet) || { x: 0, y: 0 };
+  const w = toInt(size && size.width), h = toInt(size && size.height);
+  const width = w !== null && w >= 1 ? w : QUICK_W, height = h !== null && h >= 1 ? h : QUICK_INITIAL_H;
+  return { x: p.x, y: p.y - height, width, height };
+}
+
 // 렌더러가 알려 준 크기를 허용 범위로 맞춘다. 숫자가 아니면 null
 function clampQuickSize(w, h) {
   if (!isNum(w) || !isNum(h)) return null;
@@ -178,7 +208,8 @@ function placeQuickWindow(pet, size, work, opts = {}) {
   let x = Math.round(pet.x + pet.width / 2 - w / 2);
   x = Math.max(work.x, Math.min(x, work.x + work.width - w));
   y = Math.max(work.y, Math.min(y, work.y + work.height - h));
-  return { x, y, width: w, height: h, side };
+  // 보이는 이미지 위치는 소수(76.16px 등)라 y가 소수가 될 수 있다 → 창 좌표는 항상 정수로(setBounds는 소수를 거절한다)
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h), side };
 }
 
 // 펫 창 중심에서 가장 가까운 모니터를 고른다(다중 모니터: 펫이 있는 모니터 안에 둔다). displays: [{ workArea }]
@@ -235,5 +266,5 @@ module.exports = {
   QUICK_MENU_LAYOUT, barMaxWidth, BTN, SHADOW_PAD, CARD_GAP, ARC_MAX, RADIUS_PER_PET, HINT, DIRS, PET_WIN,
   QUICK_W, QUICK_INITIAL_H, QUICK_MIN, QUICK_MAX, QUICK_SHOW_FALLBACK_MS, QUICK_BLUR_GRACE_MS, QUICK_CLOSE_MS, QUICK_FULL_CLICK_MS, QUICK_ACTIONS,
   clampQuickSize, clampCard, modeFor, arcSpanDeg, arcRadius, arcAngles, petCenter, chooseDirection, layoutArc,
-  QUICK_BAR_GAP_PX, QUICK_WIN_PAD, PET_HOVER_RATIO, petImageRect, placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
+  toInt, safePoint, safeBounds, boundsOrFallback, defaultNearPet, QUICK_BAR_GAP_PX, QUICK_WIN_PAD, PET_HOVER_RATIO, petImageRect, placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
 };

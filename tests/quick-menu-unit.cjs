@@ -377,5 +377,39 @@ t('바 위치: 보이는 바와 펫 이미지 사이는 QUICK_BAR_GAP_PX(위·�
   const tiny = Q.placeQuickWindow({ x: 0, y: 0, width: 240, height: 230 }, { width: 340, height: 640 }, { x: 0, y: 0, width: 300, height: 400 }); assert.ok(tiny.y >= 0 && tiny.y + tiny.height <= 400);
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8'); assert.ok(/placeQuickWindow\(pet, size, work, \{ sizePct: petSizePct \}\)/.test(main));
 });
+t('창 좌표 검증: setBounds에는 항상 정수·유한한 값만(NaN·undefined·Infinity·소수·음수·문자열·크기 0), 못 쓰면 마지막 정상 위치 → 펫 근처 기본 위치', () => {
+  const ok = { x: 10, y: 20, width: 300, height: 100 };
+  assert.deepStrictEqual(Q.safeBounds(ok), ok, '정상값 그대로');
+  assert.deepStrictEqual(Q.safeBounds({ x: 10.4, y: 20.6, width: 300.5, height: 99.5 }), { x: 10, y: 21, width: 301, height: 100 }, '소수는 반올림');
+  assert.deepStrictEqual(Q.safeBounds({ x: -1920, y: -30.2, width: 340, height: 140 }), { x: -1920, y: -30, width: 340, height: 140 }, '음수 좌표(보조 모니터)는 허용');
+  for (const bad of [null, undefined, 5, 'x', [], {}, { x: NaN, y: 0, width: 1, height: 1 }, { x: 0, y: undefined, width: 1, height: 1 }, { x: 0, y: 0, width: Infinity, height: 1 }, { x: 0, y: -Infinity, width: 1, height: 1 },
+    { x: '10', y: '20', width: '300', height: '100' }, { x: 0, y: 0, width: 0, height: 100 }, { x: 0, y: 0, width: 100, height: 0 }, { x: 0, y: 0, width: -5, height: 10 }, { x: 0, y: 0, width: NaN, height: NaN }, { x: null, y: 0, width: 1, height: 1 }]) {
+    assert.strictEqual(Q.safeBounds(bad), null, JSON.stringify(bad) + ' ' + String(bad));
+  }
+  assert.deepStrictEqual(Q.safePoint({ x: 1.5, y: -2.5 }), { x: 2, y: -2 }); for (const bad of [null, {}, { x: NaN, y: 1 }, { x: 1, y: Infinity }, { x: '1', y: 2 }, { x: 1 }]) assert.strictEqual(Q.safePoint(bad), null);
+  // 대체: 주어진 값 → 마지막 정상 위치 → 펫 근처 기본 위치
+  assert.deepStrictEqual(Q.boundsOrFallback(ok, { x: 1, y: 1, width: 5, height: 5 }), { bounds: ok, used: 'given' });
+  const last = { x: 100, y: 200, width: 340, height: 120 };
+  assert.deepStrictEqual(Q.boundsOrFallback({ x: NaN, y: 0, width: 340, height: 120 }, last), { bounds: last, used: 'fallback' });
+  assert.deepStrictEqual(Q.boundsOrFallback(undefined, undefined, Q.defaultNearPet({ x: 700, y: 600, width: 240, height: 230 }, { width: 0, height: NaN })), { bounds: { x: 700, y: 600 - Q.QUICK_INITIAL_H, width: Q.QUICK_W, height: Q.QUICK_INITIAL_H }, used: 'fallback' }, '카드 크기 0·NaN이면 기본 크기');
+  assert.strictEqual(Q.boundsOrFallback(undefined, undefined), null);
+  // 이번 오류의 원인: 보이는 이미지 오프셋이 소수라 placeQuickWindow의 y가 소수가 됐다 → 이제 항상 정수
+  const work = { x: 0, y: 33, width: 1728, height: 1084 };
+  for (let i = 0; i < 400; i++) {
+    const pet = { x: 17 + i * 3, y: -150 + i * 3, width: 240, height: 230 }, size = { width: 300 + (i % 70), height: 60 + (i % 90) };
+    for (const pct of [undefined, 50, 77, 100, 133, 200]) {
+      const p = Q.placeQuickWindow(pet, size, work, { sizePct: pct }); for (const k of ['x', 'y', 'width', 'height']) assert.ok(Number.isInteger(p[k]), `${k}=${p[k]} ${i} ${pct}`);
+      assert.ok(Q.safeBounds(p), 'setBounds에 넘길 수 있는 값');
+    }
+  }
+  // 입력이 망가져도 예외 없이 null로 떨어진다
+  for (const pet of [{ x: NaN, y: 0, width: 240, height: 230 }, {}, undefined]) { let r; assert.doesNotThrow(() => { try { r = Q.placeQuickWindow(pet || {}, { width: 300, height: 100 }, work, { sizePct: 'abc' }); } catch { r = null; } }); assert.ok(!r || !Q.safeBounds(r) || Number.isInteger(r.y)); }
+  // 연결(정적 확인): 퀵 창·펫 창의 setBounds/setPosition은 검증을 거친다
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8');
+  assert.ok(!/quickWindow\.setBounds\(/.test(main.replace(/try \{ quickWindow\.setBounds\(r\.bounds\); \}/, '')) && !/\bwin\.setBounds\(\{ x: petAtOpen/.test(main), '퀵 창 setBounds는 setQuickBounds 한 곳');
+  assert.ok(/function setQuickBounds[\s\S]*?boundsOrFallback[\s\S]*?console\.warn/.test(main));
+  assert.ok(/ipcMain\.on\('move-pet-window'[\s\S]*?quickMenu\.safePoint\(pos\)/.test(main) && /ipcMain\.on\('resize-pet-window'[\s\S]*?quickMenu\.safeBounds\(/.test(main));
+  assert.ok(!/console\.warn\([^)]*\$\{/.test(main.slice(main.indexOf('function setQuickBounds'), main.indexOf('function placeQuick('))), '경고에 값 전체를 출력하지 않는다');
+});
 
 (async () => { let fail = 0; for (const [name, fn] of queue) { try { await fn(); console.log('  ok  ' + name); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + (e && e.message)); } } if (fail) { console.log(`\n${fail}개 실패`); process.exit(1); } console.log(`\n${queue.length}개 통과`); })();

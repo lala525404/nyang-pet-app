@@ -658,15 +658,19 @@ ipcMain.on('hide-pet', () => {
   if (petWindow && !petWindow.isDestroyed()) { petWindow.hide(); stopAlwaysOnTopKeepAlive(); }
 });
 ipcMain.on('set-always-on-top', (_e, flag) => setPetAlwaysOnTop(flag));
-ipcMain.on('resize-pet-window', (_e, { width, height }) => {
+ipcMain.on('resize-pet-window', (_e, size) => {
   if (petWindow && !petWindow.isDestroyed()) {
     const [x, y] = petWindow.getPosition();
-    petWindow.setBounds({ x, y, width: Math.round(width), height: Math.round(height) }, false);
+    const b = quickMenu.safeBounds({ x, y, width: size && size.width, height: size && size.height });   // NaN·문자열·0 크기는 무시(예외 방지)
+    if (!b) { console.warn('[pet] 창 크기 값이 올바르지 않아 건너뛰었어요'); return; }
+    petWindow.setBounds(b, false);
   }
 });
-ipcMain.on('move-pet-window', (_e, { x, y }) => {
+ipcMain.on('move-pet-window', (_e, pos) => {
   if (petWindow && !petWindow.isDestroyed() && !petWindow._dragging) {
-    petWindow.setPosition(Math.round(x), Math.round(y), false);
+    const p = quickMenu.safePoint(pos);   // NaN·undefined·문자열이면 무시(예외 방지). 정상 값은 예전과 같이 정수로 반올림
+    if (!p) { console.warn('[pet] 창 위치 값이 올바르지 않아 건너뛰었어요'); return; }
+    petWindow.setPosition(p.x, p.y, false);
   }
 });
 ipcMain.on('call-pet', () => {
@@ -785,12 +789,23 @@ const quickWork = () => {
   const pet = (quickState && quickState.pet) || petWindow.getBounds();
   return { pet, work: quickMenu.pickWorkArea(pet, screen.getAllDisplays()) || screen.getPrimaryDisplay().workArea };
 };
+// 퀵 창의 setBounds는 이 함수로만 부른다: 값이 정수가 아니거나 NaN·Infinity·문자열이면 예외가 나므로 먼저 정수화·검사하고,
+// 못 쓰는 값이면 마지막 정상 위치 → 펫 근처 기본 위치 순으로 바꿔 쓴다. 예외는 던지지 않고 한 줄만 남긴다(값은 출력하지 않는다).
+function setQuickBounds(raw, pet, size) {
+  if (!quickWindow || quickWindow.isDestroyed()) return false;
+  const r = quickMenu.boundsOrFallback(raw, quickState && quickState.lastBounds, quickMenu.defaultNearPet(pet, size));
+  if (!r) { console.warn('[quick] 창 위치 값이 올바르지 않아 건너뛰었어요'); return false; }
+  if (r.used === 'fallback') console.warn('[quick] 창 위치 값이 올바르지 않아 마지막 정상 위치(또는 펫 근처)를 썼어요');
+  try { quickWindow.setBounds(r.bounds); } catch { console.warn('[quick] 창 위치를 바꾸지 못했어요'); return false; }
+  if (quickState && r.used === 'given') quickState.lastBounds = r.bounds;
+  return true;
+}
 // 알약 바 모드: 렌더러가 잰 크기로 펫 위/아래에 놓는다
 function placeQuick(size) {
   if (!quickWindow || quickWindow.isDestroyed() || !petWindow || petWindow.isDestroyed()) return;
   const { pet, work } = quickWork();
   const p = quickMenu.placeQuickWindow(pet, size, work, { sizePct: petSizePct });
-  quickWindow.setBounds({ x: p.x, y: p.y, width: p.width, height: p.height });
+  setQuickBounds(p, pet, size);
   try { quickWindow.webContents.send('quick-layout', { mode: 'bar', side: p.side, maxWidth: quickMenu.barMaxWidth(work) }); } catch {}
 }
 // 호 모드: 펫 중심에서 호와 카드를 계산해 창을 놓고, 버튼 좌표를 렌더러에 보낸다
@@ -801,7 +816,7 @@ function layoutQuickArc() {
   const lay = quickMenu.layoutArc({ count: quickState.count, sizePct: petSizePct, origin, work, card: quickState.card, dir: quickState.dir || null });
   quickState.dir = lay.dir;   // 카드를 열고 닫아도 방향은 바뀌지 않는다(버튼이 튀지 않게)
   quickState.regions = clickThroughOn ? clickThrough.quickRegions(lay) : null;   // 버튼·카드 위에서만 클릭을 받는다(스위치가 꺼져 있으면 창 전체)
-  quickWindow.setBounds(lay.bounds);
+  setQuickBounds(lay.bounds, pet, null);
   try { quickWindow.webContents.send('quick-layout', lay); } catch {}
 }
 function showQuick() {
@@ -825,7 +840,7 @@ function openQuickMenu() {
   quickWindow = win;
   const petAtOpen = petWindow.getBounds();
   quickState = { mode: null, count: 0, card: null, dir: null, closing: false, closeTimer: null, pet: petAtOpen };
-  win.setBounds({ x: petAtOpen.x, y: petAtOpen.y, width: size.width, height: size.height });   // 첫 알림(quick-init) 전의 임시 자리
+  setQuickBounds({ x: petAtOpen.x, y: petAtOpen.y, width: size.width, height: size.height }, petAtOpen, size);   // 첫 알림(quick-init) 전의 임시 자리
   win.loadURL(getPageURL('/quick'));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
