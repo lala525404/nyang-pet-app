@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { AlarmClock, Bell, Check, ChevronLeft, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Droplets, LayoutDashboard, Power, Sun, Thermometer, Wind } from 'lucide-react';
+import { AlarmClock, Bell, Check, ChevronLeft, MessageCircle, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Droplets, LayoutDashboard, Power, Sun, Thermometer, Wind } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import '../styles/quick.css';
 import { cityById } from '../data/cities';
@@ -9,7 +9,13 @@ import { cityLabel } from '../utils/citySearch';
 import { loadSettings, formatTime } from '../utils/settings';
 import { QUIT_CONFIRM_MS, SPARKLE_COOLDOWN_MS, SPARKLE_LIFETIME_MS, barRows, canSparkle, flightVars, layoutQuickItems, moveQuickFocus, quickGapPx, sparkleBurst, sparkleEdgeBurst, sparkleRoom } from '../utils/quickMenu';
 import type { Sparkle } from '../utils/quickMenu';
-import { NO_ALARM_TEXT, todayAlarmList, untilText } from '../utils/quickAlarms';
+import { NO_ALARM_DAY_TEXT, NO_ALARM_TEXT, dayTitle, todayAlarmList, untilText } from '../utils/quickAlarms';
+import { parseAlarmCommand } from '../utils/alarmCommand';
+import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, newAlarmId, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
+import type { CreateCommand, Target } from '../utils/alarmChat';
+import { applyToStoredSettings } from '../utils/alarmStore';
+import type { Alarm } from '../utils/settings';
+import { parseYmd } from '../utils/alarmSchedule';
 import type { QuickAlarmSettings, TodayAlarmItem } from '../utils/quickAlarms';
 import {
   WEATHER_CREDIT_TEXT, WEATHER_SETUP_TEXT, formatTemp, formatWind, hourLabel, staleText, threeHourly, todayDay, weatherLabel, windText,
@@ -22,13 +28,14 @@ import type { QuickLayout, WeatherData } from '../electron';
 // 닫기: Esc · 바깥 클릭·포커스 잃음(메인이 처리) · 펫을 잡아 끌기 시작. 닫힐 때는 0.15초 동안 펫 중심으로 빨려 들어간다.
 // 새 항목은 아래 ITEMS 배열에 추가만 하면 된다(최대 8개, 종료는 항상 마지막). 색은 quick.css의 --quick-bar-* 네 개로 한 곳에서 바꾼다.
 
-type View = 'menu' | 'weather' | 'alarm';
+type View = 'menu' | 'weather' | 'alarm' | 'chat';
 interface Entry { id: string; label: string; tip: string; Icon: LucideIcon; danger?: boolean }
 
 const ITEMS: Entry[] = [
   { id: 'open', label: '메인', tip: '메인 창 열기', Icon: LayoutDashboard },
   { id: 'weather', label: '날씨', tip: '오늘 날씨 보기', Icon: CloudSun },
   { id: 'alarm', label: '알람', tip: '오늘 알람 보기', Icon: Bell },
+  { id: 'chat', label: '대화하기', tip: '대화하기', Icon: MessageCircle },   // 말로 알람 만들기·취소·조회(종료 바로 앞)
 ];
 const QUIT: Entry = { id: 'quit', label: '종료', tip: '종료하면 알람이 울리지 않아요', Icon: Power, danger: true };
 const ICON_STROKE = 1.7;   // 모든 버튼의 아이콘은 같은 크기·획 두께
@@ -40,10 +47,10 @@ const WEATHER_ICONS: Record<WeatherIcon, LucideIcon> = {
 
 const api = () => window.electronAPI;
 
-function CardHead({ title, onBack }: { title: string; onBack: () => void }) {
+function CardHead({ title, onBack, focusBack = true }: { title: string; onBack: () => void; focusBack?: boolean }) {
   return (
     <header className="qk-head">
-      <button type="button" className="qk-iconbtn" onClick={onBack} aria-label="뒤로" data-autofocus>
+      <button type="button" className="qk-iconbtn" onClick={onBack} aria-label="뒤로" data-autofocus={focusBack ? '' : undefined}>
         <ChevronLeft className="qk-i" strokeWidth={ICON_STROKE} aria-hidden />
       </button>
       <h2 className="qk-title">{title}</h2>
@@ -135,22 +142,26 @@ function WeatherCard({ onBack }: { onBack: () => void }) {
   );
 }
 
-function AlarmCard({ onBack }: { onBack: () => void }) {
+// 오늘 알람 카드. day를 주면(알람 대화의 조회) 그날의 알람을 같은 카드 형식으로 보여 준다.
+function AlarmCard({ onBack, day }: { onBack: () => void; day?: string }) {
   const [items, setItems] = useState<TodayAlarmItem[] | null>(null);
+  const shown = day ? parseYmd(day) : null;
   useEffect(() => {
     let cancelled = false;
     (async () => {
       let s: QuickAlarmSettings | null = null;
       try { s = (await api()?.getQuickAlarmSettings?.()) ?? null; } catch { s = null; }
-      if (!cancelled) setItems(todayAlarmList(s, new Date()));
+      if (!cancelled) setItems(todayAlarmList(s, new Date(), shown ?? undefined));
     })();
     return () => { cancelled = true; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day]);
+  const isToday = !shown || dayTitle(shown, new Date()) === '오늘 알람';
   return (
     <>
-      <CardHead title="오늘 알람" onBack={onBack} />
+      <CardHead title={shown ? dayTitle(shown, new Date()) : '오늘 알람'} onBack={onBack} />
       {items === null ? <p className="qk-note" role="status">불러오는 중이에요…</p> : items.length === 0 ? (
-        <p className="qk-note">{NO_ALARM_TEXT}</p>
+        <p className="qk-note">{isToday ? NO_ALARM_TEXT : NO_ALARM_DAY_TEXT}</p>
       ) : (
         <ul className="qk-alarms">
           {items.map(a => (
@@ -170,11 +181,168 @@ function AlarmCard({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ── 알람 대화: 입력칸 → (해석) → 확인 카드 → 결과(+되돌리기). 규칙 기반 해석, 외부 연결 없음. 입력한 문장은 이 화면의 상태로만 있고 제출하면 바로 비운다(저장·기록 없음). ──
+type ChatStep =
+  | { s: 'input' }
+  | { s: 'reject'; reason: string }
+  | { s: 'unknown' }
+  | { s: 'create'; cmd: CreateCommand }
+  | { s: 'pick'; targets: Target[] }
+  | { s: 'delete'; targets: Target[]; stage: 1 | 2; all: boolean }
+  | { s: 'done'; text: string; undo: (() => void) | null };
+
+const REASON_LIMIT = '알람은 최대 50개까지 만들 수 있어요';
+const REASON_NO_SETTINGS = '설정을 한 번 저장한 뒤에 다시 해 보세요';
+const REASON_NOT_FOUND = '찾는 알람이 없어요';
+const applyReason = (r: 'no-settings' | 'save' | 'limit') => (r === 'limit' ? REASON_LIMIT : r === 'no-settings' ? REASON_NO_SETTINGS : '저장하지 못했어요');
+
+function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (day: string) => void }) {
+  const [text, setText] = useState('');
+  const [step, setStep] = useState<ChatStep>({ s: 'input' });
+  const inputRef = useRef<HTMLInputElement>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+  useEffect(() => { if (step.s === 'input' || step.s === 'unknown' || step.s === 'reject') inputRef.current?.focus(); }, [step.s]);
+
+  const goInput = () => { if (undoTimer.current) clearTimeout(undoTimer.current); setStep({ s: 'input' }); };
+  const finish = (message: string, undo: (() => void) | null) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setStep({ s: 'done', text: message, undo });
+    if (undo) undoTimer.current = setTimeout(() => setStep(cur => (cur.s === 'done' ? { ...cur, undo: null } : cur)), UNDO_MS);   // 되돌리기는 10초 동안만
+  };
+  const deleteContext = () => { const s = loadSettings(); return { alarms: s.alarms, lunchOn: s.lunchEnabled, leaveOn: s.leaveEnabled, lunchTime: s.lunchTime, leaveTime: s.leaveTime }; };
+
+  const submit = () => {
+    const now = new Date();
+    const cmd = parseAlarmCommand(text, now);
+    setText('');   // 제출하면 입력 문장은 바로 비운다
+    if (cmd.kind === 'unknown') { setStep({ s: 'unknown' }); return; }
+    if (cmd.kind === 'reject') { setStep({ s: 'reject', reason: cmd.reason }); return; }
+    if (cmd.kind === 'query') { onShowDay(cmd.date); return; }   // 조회는 기존 알람 카드를 날짜만 바꿔서 재사용
+    if (cmd.kind === 'create') { setStep({ s: 'create', cmd }); return; }
+    const targets = findTargets(cmd, deleteContext(), now);
+    if (!targets.length) { setStep({ s: 'reject', reason: REASON_NOT_FOUND }); return; }
+    if (cmd.all) setStep({ s: 'delete', targets, stage: 1, all: true });
+    else if (targets.length === 1) setStep({ s: 'delete', targets, stage: 1, all: false });
+    else setStep({ s: 'pick', targets });
+  };
+
+  const doCreate = (cmd: CreateCommand) => {
+    const [h, m] = cmd.time.split(':').map(Number);
+    const day = parseYmd(cmd.date);
+    if (new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime() <= Date.now()) { setStep({ s: 'reject', reason: '이미 지난 시간이에요' }); return; }   // 확인하는 사이에 지났을 수 있다
+    const alarm = buildAlarm(cmd, newAlarmId());
+    const r = applyToStoredSettings(s => { const x = withAlarmAdded(s, alarm); return x.ok ? x.settings : null; });
+    if (!r.ok) { setStep({ s: 'reject', reason: applyReason(r.reason) }); return; }
+    finish('만들었어요', () => { applyToStoredSettings(s => withAlarmsRemoved(s, [alarm.id])); setStep({ s: 'done', text: '되돌렸어요', undo: null }); });
+  };
+  const doDelete = (targets: Target[]) => {
+    const alarms: Alarm[] = targets.flatMap(t => (t.kind === 'alarm' ? [t.alarm] : []));
+    const defaults = targets.flatMap(t => (t.kind === 'alarm' ? [] : [t.kind]));
+    const r = applyToStoredSettings(s => { let x = withAlarmsRemoved(s, alarms.map(a => a.id)); for (const d of defaults) x = withDefaultOff(x, d); return x; });
+    if (!r.ok) { setStep({ s: 'reject', reason: applyReason(r.reason) }); return; }
+    const msg = defaults.length && !alarms.length ? '꺼 두었어요' : '지웠어요';
+    finish(msg, () => { applyToStoredSettings(s => { let x = withAlarmsRestored(s, alarms); for (const d of defaults) x = withDefaultOn(x, d); return x; }); setStep({ s: 'done', text: '되돌렸어요', undo: null }); });
+  };
+
+  const Actions = ({ ok, okLabel, onOk, cancelLabel = '취소' }: { ok?: boolean; okLabel: string; onOk: () => void; cancelLabel?: string }) => (
+    <div className="qk-chat-actions">
+      <button type="button" className="qk-btn" onClick={goInput}>{cancelLabel}</button>
+      <button type="button" className="qk-btn qk-btn--solid" onClick={onOk} data-autofocus={ok ? '' : undefined} autoFocus>{okLabel}</button>
+    </div>
+  );
+
+  let body: JSX.Element;
+  if (step.s === 'create') {
+    const q = createQuestion(step.cmd);
+    body = (
+      <div className="qk-chat-confirm" role="group" aria-label={q.question}>
+        <p className="qk-chat-head">{q.head}</p>
+        <p className="qk-chat-big">{q.big}</p>
+        {step.cmd.title && <p className="qk-chat-title">‘{step.cmd.title}’</p>}
+        {q.note && <p className="qk-note qk-chat-note">{q.note}</p>}
+        <p className="qk-chat-q">알람을 만들까요?</p>
+        <Actions okLabel="만들기" onOk={() => doCreate(step.cmd)} />
+      </div>
+    );
+  } else if (step.s === 'pick') {
+    body = (
+      <div className="qk-chat-pick">
+        <p className="qk-chat-q">어느 알람인가요?</p>
+        <ul>{step.targets.map((t, i) => (
+          <li key={t.kind === 'alarm' ? t.alarm.id : t.kind}>
+            <button type="button" className="qk-chat-row" onClick={() => setStep({ s: 'delete', targets: [t], stage: 1, all: false })} data-autofocus={i === 0 ? '' : undefined}>{t.label}</button>
+          </li>))}
+        </ul>
+        <button type="button" className="qk-btn" onClick={goInput}>취소</button>
+      </div>
+    );
+  } else if (step.s === 'delete') {
+    const t = step.targets, only = t.length === 1 ? t[0] : null;
+    const defaultOnly = t.every(x => x.kind !== 'alarm');
+    if (step.all && step.stage === 2) {
+      body = (
+        <div className="qk-chat-confirm" role="group" aria-label="정말 모두 지울까요?">
+          <p className="qk-chat-big">{t.length}개</p>
+          <p className="qk-chat-q">정말 {t.length}개를 모두 지울까요?</p>
+          <Actions okLabel="모두 지우기" onOk={() => doDelete(t)} />
+        </div>
+      );
+    } else {
+      body = (
+        <div className="qk-chat-confirm" role="group" aria-label={only ? `${only.label} 알람을 지울까요?` : `알람 ${t.length}개를 지울까요?`}>
+          {step.all ? <p className="qk-chat-big">{t.length}개</p> : null}
+          <ul className="qk-chat-list">{t.slice(0, step.all ? DELETE_ALL_MAX_SHOWN : 1).map(x => <li key={x.kind === 'alarm' ? x.alarm.id : x.kind}>{x.label}</li>)}{step.all && t.length > DELETE_ALL_MAX_SHOWN && <li className="qk-note">외 {t.length - DELETE_ALL_MAX_SHOWN}개</li>}</ul>
+          {defaultOnly && <p className="qk-note qk-chat-note">기본 알림은 지우지 않고 꺼 둬요</p>}
+          <p className="qk-chat-q">{defaultOnly ? '이 알림을 끌까요?' : step.all ? `알람 ${t.length}개를 지울까요?` : '이 알람을 지울까요?'}</p>
+          <Actions okLabel={defaultOnly ? '끄기' : step.all ? '계속' : '지우기'} onOk={() => (step.all ? setStep({ ...step, stage: 2 }) : doDelete(t))} />
+        </div>
+      );
+    }
+  } else if (step.s === 'done') {
+    body = (
+      <div className="qk-chat-confirm" role="status">
+        <p className="qk-chat-big">{step.text}</p>
+        {step.undo && <p className="qk-note qk-chat-note">10초 안에 되돌릴 수 있어요</p>}
+        <div className="qk-chat-actions">
+          {step.undo && <button type="button" className="qk-btn" onClick={step.undo} data-autofocus="">되돌리기</button>}
+          <button type="button" className="qk-btn qk-btn--solid" onClick={goInput}>계속 말하기</button>
+        </div>
+      </div>
+    );
+  } else {
+    body = (
+      <>
+        <input ref={inputRef} className="qk-chat-input" type="text" autoComplete="off" autoCorrect="off" spellCheck={false} maxLength={200}
+          value={text} placeholder={CHAT_PLACEHOLDER} aria-label="알람 대화 입력"
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); if (text.trim()) submit(); } }} />
+        <p className="qk-note qk-chat-hint">Enter로 보내요 · Esc로 닫아요</p>
+        {step.s === 'reject' && <p className="qk-chat-reject" role="status">{step.reason}</p>}
+        {step.s === 'unknown' && (
+          <div className="qk-chat-guide" role="status">
+            <p className="qk-chat-q">이렇게 말해 주세요</p>
+            <ul>{EXAMPLES.map(ex => <li key={ex}><button type="button" className="qk-chat-row" onClick={() => { setText(ex); setStep({ s: 'input' }); inputRef.current?.focus(); }}>{ex}</button></li>)}</ul>
+            <p className="qk-note">자유 대화나 잡담은 아직 지원하지 않아요</p>
+          </div>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <CardHead title="대화하기" onBack={onBack} focusBack={false} />
+      {body}
+    </>
+  );
+}
+
 const cssVars = (v: Record<string, string>): CSSProperties => v as CSSProperties;
 
 export default function QuickPage() {
   const entries = layoutQuickItems(ITEMS, QUIT);
   const [view, setView] = useState<View>('menu');
+  const [alarmDay, setAlarmDay] = useState<string | undefined>(undefined);   // 알람 대화에서 날짜를 지정한 조회(YYYY-MM-DD)
   const [armed, setArmed] = useState(false);
   const [layout, setLayout] = useState<QuickLayout | null>(null);
   const [opened, setOpened] = useState(false);
@@ -312,7 +480,8 @@ export default function QuickPage() {
     }
     if (armed) { setArmed(false); if (armTimer.current) clearTimeout(armTimer.current); }
     if (e.id === 'weather') setView(v => (v === 'weather' ? 'menu' : 'weather'));
-    else if (e.id === 'alarm') setView(v => (v === 'alarm' ? 'menu' : 'alarm'));
+    else if (e.id === 'alarm') { setAlarmDay(undefined); setView(v => (v === 'alarm' ? 'menu' : 'alarm')); }
+    else if (e.id === 'chat') setView(v => (v === 'chat' ? 'menu' : 'chat'));
     else api()?.quickAction(e.id as 'open');
   };
   const onKeys = (ev: React.KeyboardEvent) => {
@@ -324,10 +493,10 @@ export default function QuickPage() {
 
   const face = (e: Entry, i: number) => {
     const confirming = !!e.danger && armed;
-    const active = (e.id === 'weather' && view === 'weather') || (e.id === 'alarm' && view === 'alarm');
+    const active = (e.id === 'weather' && view === 'weather') || (e.id === 'alarm' && view === 'alarm') || (e.id === 'chat' && view === 'chat');
     return (
       <button type="button" className="qk-face" data-danger={e.danger ? '' : undefined} data-armed={confirming ? '' : undefined} data-active={active ? '' : undefined}
-        ref={el => { tileRefs.current[i] = el; }} tabIndex={i === focusIdx ? 0 : -1} aria-pressed={e.id === 'weather' || e.id === 'alarm' ? active : undefined}
+        ref={el => { tileRefs.current[i] = el; }} tabIndex={i === focusIdx ? 0 : -1} aria-pressed={e.id === 'weather' || e.id === 'alarm' || e.id === 'chat' ? active : undefined}
         title={e.tip} aria-label={confirming ? QUIT_CONFIRM_TEXT : `${e.label}. ${e.tip}`}
         onFocus={() => setFocusIdx(i)} onClick={() => onPick(e)} onMouseEnter={(ev) => { if (isBar) sparkIcon(e.id, ev.currentTarget); }}>
         {confirming ? <Check className="qk-i" strokeWidth={2.2} aria-hidden /> : <e.Icon className="qk-i" strokeWidth={ICON_STROKE} aria-hidden />}
@@ -335,9 +504,9 @@ export default function QuickPage() {
     );
   };
   const card = view === 'menu' ? null : (
-    <div className="qk-card" ref={cardRef} role="dialog" aria-label={view === 'weather' ? '날씨' : '오늘 알람'}
+    <div className="qk-card" ref={cardRef} role="dialog" aria-label={view === 'weather' ? '날씨' : view === 'chat' ? '대화하기' : '오늘 알람'}
       style={arc && arc.card ? { left: arc.card.x, top: arc.card.y } : undefined} data-placed={arc && arc.card ? '' : undefined}>
-      {view === 'weather' ? <WeatherCard onBack={back} /> : <AlarmCard onBack={back} />}
+      {view === 'weather' ? <WeatherCard onBack={back} /> : view === 'chat' ? <ChatCard onBack={back} onShowDay={(day) => { setAlarmDay(day); setView('alarm'); }} /> : <AlarmCard onBack={() => { setAlarmDay(undefined); back(); }} day={alarmDay} />}
     </div>
   );
 

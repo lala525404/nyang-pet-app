@@ -28,7 +28,8 @@ html[data-theme="dark"] .qk-root {
   color-scheme: dark;
 }
 .qk-root :focus-visible { outline: 2px solid var(--quick-bar-fg); outline-offset: 2px; }   /* 포커스 링은 현재 모드의 아이콘 색 */
-.qk-root:not([data-kbd]) .qk-face:focus-visible, .qk-root:not([data-kbd]) .qk-iconbtn:focus-visible { outline: none; }   /* 마우스로 열었을 때는 링을 숨긴다(키보드를 누르면 나타난다) */
+.qk-root:not([data-kbd]) .qk-face:focus-visible, .qk-root:not([data-kbd]) .qk-iconbtn:focus-visible, .qk-root:not([data-kbd]) .qk-btn:focus-visible, .qk-root:not([data-kbd]) .qk-chat-row:focus-visible { outline: none; }
+.qk-chat-input:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--quick-bar-fg); }   /* 입력칸은 테두리가 진해지는 것으로 포커스를 보인다 */   /* 마우스로 열었을 때는 링을 숨긴다(키보드를 누르면 나타난다) */
 .qk-bar .qk-face:focus-visible { outline-offset: 0; }
 .qk-i { width: 20px; height: 20px; flex: none; }
 
@@ -198,6 +199,32 @@ html[data-theme="dark"] .qk-root {
   20% { opacity: 0.9; transform: translate(calc(var(--dx) * 0.35), calc(var(--dy) * 0.35)) rotate(calc(var(--rot) * 0.3)) scale(1); }
   100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.4); }
 }
+
+/* ── 알람 대화(입력칸·확인 카드·되돌리기): 바와 같은 흑백 톤. 강조는 굵기·크기·불투명도로만 ── */
+.qk-chat-input {
+  box-sizing: border-box; width: 100%; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--quick-bar-border); background: transparent; color: var(--quick-bar-fg);
+  font: inherit; font-size: 14px; font-weight: 500; outline: none; user-select: text;
+}
+.qk-chat-input::placeholder { color: var(--quick-bar-fg); opacity: 0.45; }
+.qk-chat-input:focus { border-color: var(--quick-bar-fg); }
+.qk-chat-hint { text-align: left; padding: 0 4px; }
+.qk-chat-reject { font-size: 13px; font-weight: 700; padding: 8px 12px; border-radius: 12px; background: var(--quick-bar-hover); }
+.qk-chat-guide { display: flex; flex-direction: column; gap: 6px; }
+.qk-chat-guide ul, .qk-chat-pick ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.qk-chat-q { font-size: 13px; font-weight: 700; }
+.qk-chat-row { width: 100%; min-height: 40px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--quick-bar-hover); color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: transform 140ms var(--quick-ease); }
+.qk-chat-row:active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) { .qk-chat-row:hover { box-shadow: inset 0 0 0 44px var(--quick-bar-hover); } }
+.qk-chat-pick { display: flex; flex-direction: column; gap: 8px; }
+.qk-chat-confirm { display: flex; flex-direction: column; align-items: stretch; gap: 8px; text-align: center; }
+.qk-chat-head { font-size: 13px; opacity: 0.62; }
+.qk-chat-big { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }   /* 오전/오후가 한눈에 보이게 크게 */
+.qk-chat-title { font-size: 15px; font-weight: 700; }
+.qk-chat-note { text-align: center; padding: 0; }
+.qk-chat-list { list-style: none; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.qk-chat-list li { padding: 8px 12px; border-radius: 12px; background: var(--quick-bar-hover); font-size: 13px; font-weight: 600; }
+.qk-chat-actions { display: flex; gap: 8px; justify-content: center; margin-top: 4px; }
+.qk-chat-actions .qk-btn { flex: 1 1 0; }
 
 /* 움직임 줄이기: 모션 없이 최종 위치에 바로 보인다 */
 @media (prefers-reduced-motion: reduce) {

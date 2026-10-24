@@ -22,22 +22,24 @@ const isTime = (v: unknown): v is string => typeof v === 'string' && /^([01]?\d|
 const pad = (n: number) => String(n).padStart(2, '0');
 const normTime = (v: string) => { const [h, m] = v.split(':'); return `${pad(Number(h))}:${m}`; };
 
-export function todayAlarmList(s: QuickAlarmSettings | null, now: Date): TodayAlarmItem[] {
+// day를 주면 그날의 목록(알람 대화의 조회). 오늘이 아니면 지난 알람·다음 알람 표시는 없다.
+export function todayAlarmList(s: QuickAlarmSettings | null, now: Date, day: Date = now): TodayAlarmItem[] {
   if (!s) return [];
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const sameDay = day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth() && day.getDate() === now.getDate();
+  const nowMin = sameDay ? now.getHours() * 60 + now.getMinutes() : -1;
   const raw: { id: string; time: string; title: string; kind: TodayAlarmItem['kind']; order: number }[] = [];
   if (s.lunchOn && isTime(s.lunchTime)) raw.push({ id: 'lunch', time: normTime(s.lunchTime), title: '점심', kind: 'lunch', order: 0 });
   if (s.leaveOn && isTime(s.leaveTime)) raw.push({ id: 'leave', time: normTime(s.leaveTime), title: '퇴근', kind: 'leave', order: 0 });
   for (const a of s.alarms ?? []) {
     if (!a || !a.enabled || !isTime(a.time)) continue;
-    if (!occursOn(a, now) || isSkipped(a, now)) continue;
+    if (!occursOn(a, day) || isSkipped(a, day)) continue;
     raw.push({ id: a.id, time: normTime(a.time), title: alarmTitle({ name: a.name }), kind: 'alarm', order: 1 });
   }
   raw.sort((x, y) => toMin(x.time) - toMin(y.time) || x.order - y.order || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
   let nextSeen = false;
   return raw.map(r => {
-    const past = toMin(r.time) < nowMin;
-    const next = !past && !nextSeen;
+    const past = sameDay && toMin(r.time) < nowMin;
+    const next = sameDay && !past && !nextSeen;
     if (next) nextSeen = true;
     return { id: r.id, time: r.time, title: r.title, kind: r.kind, past, next, minutesUntil: next ? toMin(r.time) - nowMin : null };
   });
@@ -52,3 +54,11 @@ export function untilText(minutes: number): string {
 }
 
 export const NO_ALARM_TEXT = '오늘은 알람이 없어요';
+// 날짜를 지정한 조회의 제목·빈 문구: "10월 25일(일) 알람" / "이 날은 알람이 없어요"
+export const NO_ALARM_DAY_TEXT = '이 날은 알람이 없어요';
+export function dayTitle(day: Date, now: Date): string {
+  const diff = Math.round((new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
+  const label = ['일', '월', '화', '수', '목', '금', '토'][day.getDay()];
+  const base = `${day.getMonth() + 1}월 ${day.getDate()}일(${label})`;
+  return diff === 0 ? '오늘 알람' : diff === 1 ? `내일 알람 · ${base}` : `${base} 알람`;
+}

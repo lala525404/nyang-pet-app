@@ -15,7 +15,7 @@ import type { EntranceKind } from '../components/Intro';
 import Onboarding from '../components/Onboarding';
 import { createPortal } from 'react-dom';
 import type { Monitor } from '../components/settings/shared';
-import { MODE_PRESETS, loadSettings, saveSettings, seedFreshInstall } from '../utils/settings';
+import { MODE_PRESETS, loadSettings, readStoredSettings, saveSettings, seedFreshInstall } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
 import { getThemePref, nextThemePref, setThemePref } from '../utils/theme';
 import type { ThemePref } from '../utils/theme';
@@ -130,6 +130,23 @@ export default function SettingsPage() {
       apply();
     };
   }, [apply]);
+
+  // 알람 대화(퀵 메뉴)가 다른 창에서 알람을 만들거나 지우면 이 창의 화면에도 바로 반영한다(안 그러면 이 창이 나중에 저장하면서 그 변경을 덮어쓴다).
+  // 저장값이 이미 바뀐 상태라 "저장할 변경"으로 표시하지 않는다(dirty 아님). 알람과 점심·퇴근 켜짐만 가져온다.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== 'petSettings') return;
+      const fresh = readStoredSettings() as Partial<PetSettings> | null;
+      if (!fresh || !Array.isArray(fresh.alarms)) return;
+      const cur = latestRef.current;
+      const pick = { alarms: fresh.alarms, lunchEnabled: fresh.lunchEnabled ?? cur.lunchEnabled, leaveEnabled: fresh.leaveEnabled ?? cur.leaveEnabled };
+      if (JSON.stringify(pick) === JSON.stringify({ alarms: cur.alarms, lunchEnabled: cur.lunchEnabled, leaveEnabled: cur.leaveEnabled })) return;
+      latestRef.current = { ...cur, ...pick }; appliedRef.current = { ...appliedRef.current, ...pick };
+      setSettings(latestRef.current);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // 펫 퀵 메뉴에서 "동네 정하기"·"알람 설정 열기"로 열렸으면 그 위치로 간다. 이미 열려 있던 창은 메인이 바로 알리고, 새로 만든 창은 맡겨 둔 목적지를 가져온다.
   const [weatherGoto, setWeatherGoto] = useState(0);
