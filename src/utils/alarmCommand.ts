@@ -9,7 +9,7 @@ export const TITLE_MAX = 20;          // 알람 제목 최대 글자(이모지 1
 export type AlarmCommand =
   | { kind: 'create'; date: string; time: string; title: string; ambiguous: boolean; midnight?: boolean }   // ambiguous: 오전/오후를 말하지 않아 추정한 시각
   | { kind: 'cancel'; all: boolean; date: string | null; time: string | null; hour12: number | null; minute: number | null; title: string }   // hour12: 오전/오후 없이 말한 시(0~11, 오전·오후 모두 해당)
-  | { kind: 'query'; date: string }
+  | { kind: 'query'; date: string; week?: { start: string; label: string } }   // week: 주 단위 조회(start = 그 주 월요일 YYYY-MM-DD, label = "이번 주"·"다음 주" 등). 날짜는 그 주 월요일
   | { kind: 'reject'; intent: 'create' | 'cancel' | 'query'; reason: string }
   | { kind: 'unknown' };
 
@@ -67,9 +67,9 @@ export function extractDate(text: string, now: Date): Extracted<DateHit> {
     return { hit: { ok: true, date, explicit: true }, rest: cut(text, m) };
   }
   // 이번 주·다음 주 + 요일(주는 월요일 시작)
-  if ((m = /(이번|다음|담)\s*주\s*([월화수목금토일])(?:\s*요일|\s*욜|(?![가-힣]))/.exec(text))) {   // "다음 주 일정"의 '일'은 요일이 아니다
+  if ((m = /(이번\s*주|다음\s*주|담\s*주|금주|차주)\s*([월화수목금토일])(?:\s*요일|\s*욜|(?![가-힣]))/.exec(text))) {   // "다음 주 일정"의 '일'은 요일이 아니다
     const wd = WEEKDAY_CHARS.indexOf(m[2]);
-    const start = addDays(mondayOf(today), m[1] === '이번' ? 0 : 7);
+    const start = addDays(mondayOf(today), /^(이번|금주)/.test(m[1]) ? 0 : 7);
     const date = addDays(start, (wd + 6) % 7);
     if (date.getTime() < today.getTime()) return { hit: { ok: false, reason: REASON.pastDate }, rest: cut(text, m) };
     return { hit: { ok: true, date, explicit: true }, rest: cut(text, m) };
@@ -164,6 +164,15 @@ export function extractTitle(text: string): string {
   return Array.from(t).slice(0, TITLE_MAX).join('').trim();
 }
 
+// 주 표현(요일 없음): 이번 주·금주·주간 → 오늘이 든 주, 다음 주·차주·담주 → 다음 주. 주는 월요일 시작~일요일 끝. "주말"은 제외
+const RE_WEEK_WORD = /(이번\s*주|다음\s*주|담\s*주|금주|차주|(?:^|\s)주간)(?!말)/;
+export function matchWeekWord(text: string, now: Date): { start: string; label: string } | null {
+  const m = RE_WEEK_WORD.exec(text); if (!m) return null;
+  const this_ = /이번|금주|주간/.test(m[1]);
+  const start = addDays(mondayOf(startOfDay(now)), this_ ? 0 : 7);
+  return { start: ymd(start), label: this_ ? '이번 주' : '다음 주' };
+}
+
 // ── 해석 ─────────────────────────────────────────────────────────────────────
 const reject = (intent: 'create' | 'cancel' | 'query', reason: string): AlarmCommand => ({ kind: 'reject', intent, reason });
 const at = (date: Date, h: number, mi: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, mi, 0, 0);
@@ -187,12 +196,15 @@ export function parseAlarmCommand(raw: unknown, now: Date): AlarmCommand {
   const d = extractDate(text, now);
   const t = extractTime(d.rest);
   if (d.hit && !d.hit.ok) return reject(intent, d.hit.reason);
-  if (!d.hit && /(?:이번|다음|담)\s*주(?!말)/.test(d.rest)) return reject(intent, REASON.needWeekday);   // "다음 주"만 말하면 어느 날인지 모른다
+  // 주만 말한 경우(요일 없음): 조회는 그 주 전체, 만들기·삭제는 어느 날인지 모르니 요일을 요구한다
+  const weekWord = d.hit ? null : matchWeekWord(d.rest, now);
+  if (weekWord && intent !== 'query') return reject(intent, REASON.needWeekday);
   if (t.hit && t.hit.kind === 'bad') return reject(intent, REASON.badTime);
   const dateHit = d.hit && d.hit.ok ? d.hit : null;
   const rest = t.rest;
 
   if (intent === 'query') {
+    if (weekWord) return { kind: 'query', date: weekWord.start, week: weekWord };
     let date = dateHit ? dateHit.date : startOfDay(now);
     if (dateHit && dateHit.weekdayOnly !== undefined) { const diff = (dateHit.weekdayOnly - now.getDay() + 7) % 7; date = addDays(startOfDay(now), diff); }
     return { kind: 'query', date: ymd(date) };

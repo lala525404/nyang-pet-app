@@ -75,7 +75,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quickRegions:     (regions) => ipcRenderer.send('quick-regions', regions),   // 바 모드의 클릭 받는 영역
   quickCard:        (size) => ipcRenderer.send('quick-card', size ? { width: size.width, height: size.height } : null),
   quickResize:      (width, height) => ipcRenderer.send('quick-resize', { width, height }),
-  quickAction:      (action) => ipcRenderer.send('quick-action', action),
+  quickAction:      (action, arg) => ipcRenderer.send('quick-action', action, arg),
   onQuickLayout:    (cb) => {
     const handler = (_e, layout) => cb(layout);
     ipcRenderer.on('quick-layout', handler);

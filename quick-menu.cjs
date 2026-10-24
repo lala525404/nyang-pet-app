@@ -180,14 +180,23 @@ function pickWorkArea(pet, displays) {
 }
 
 // 퀵 창이 보낸 동작만 받는다
-const QUICK_ACTIONS = ['open', 'weather-setup', 'alarm-settings', 'quit'];
+const QUICK_ACTIONS = ['open', 'weather-setup', 'alarm-settings', 'alarm-calendar', 'quit'];
 const isQuickAction = (a) => typeof a === 'string' && QUICK_ACTIONS.includes(a);
 
 // 동작 → 설정창이 갈 곳(null이면 그냥 설정창 열기)
-function settingsTargetFor(action) {
+function settingsTargetFor(action, arg) {
   if (action === 'weather-setup') return { page: 'home', focus: 'weather-city' };
   if (action === 'alarm-settings') return { page: 'alarm' };
+  if (action === 'alarm-calendar') return { page: 'alarm', week: arg && arg.weekStart };   // 알람 화면을 열고 주간 캘린더를 그 주로(잘못된 값이면 sanitizeTarget이 week만 뺀다)
   return null;
+}
+
+// YYYY-MM-DD이고 실제로 있는 날짜인지
+function isYmdString(v) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const [y, m, d] = v.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
 
 // 설정창이 받는 목적지: 알려진 값만 통과
@@ -196,6 +205,7 @@ function sanitizeTarget(t) {
   const out = {};
   if (t.page === 'home' || t.page === 'alarm') out.page = t.page;
   if (t.focus === 'weather-city') out.focus = t.focus;
+  if (isYmdString(t.week)) out.week = t.week;
   return Object.keys(out).length ? out : null;
 }
 

@@ -876,11 +876,11 @@ ipcMain.on('quick-resize', (e, size) => {
   showQuick();
 });
 ipcMain.handle('quick-get-alarms', (e) => (fromQuick(e) ? quickMenu.quickAlarmSettings(alarms.resolveAlarmSettings, alarmSettings) : null));   // 스케줄러가 쓰는 값을 읽기만 한다
-ipcMain.on('quick-action', (e, action) => {
+ipcMain.on('quick-action', (e, action, arg) => {
   if (!fromQuick(e) || !quickMenu.isQuickAction(action) || (quickState && quickState.closing)) return;   // 닫히는 중의 눌림은 무시
   closeQuickMenu();
   if (action === 'quit') { requestQuit(); return; }   // 정상 종료 경로(저장·정리 후 app.quit, 막히면 QUIT_TIMEOUT_MS 뒤 app.exit)
-  openSettingsTo(quickMenu.settingsTargetFor(action));
+  openSettingsTo(quickMenu.settingsTargetFor(action, arg));
 });
 
 // 설정창을 열고, 목적지(페이지·강조할 곳)가 있으면 알려 준다. 이미 열려 있으면 바로 보내고, 새로 만들면 설정창이 뜬 뒤에 가져가게 맡겨 둔다.

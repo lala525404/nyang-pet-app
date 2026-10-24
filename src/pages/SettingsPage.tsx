@@ -150,11 +150,13 @@ export default function SettingsPage() {
 
   // 펫 퀵 메뉴에서 "동네 정하기"·"알람 설정 열기"로 열렸으면 그 위치로 간다. 이미 열려 있던 창은 메인이 바로 알리고, 새로 만든 창은 맡겨 둔 목적지를 가져온다.
   const [weatherGoto, setWeatherGoto] = useState(0);
+  const [weekGoto, setWeekGoto] = useState<{ start: string; n: number } | null>(null);   // 알람 화면의 주간 캘린더를 옮길 주(월요일 YYYY-MM-DD)
   useEffect(() => {
     const api = window.electronAPI;
-    const go = (t: { page?: 'home' | 'alarm'; focus?: 'weather-city' } | null) => {
+    const go = (t: { page?: 'home' | 'alarm'; focus?: 'weather-city'; week?: string } | null) => {
       if (!t) return;
       if (t.page) setPage(t.page);
+      if (t.week) setWeekGoto({ start: t.week, n: Date.now() });
       if (t.focus === 'weather-city') setWeatherGoto(n => n + 1);
     };
     api?.takeSettingsGoto?.().then(go).catch(() => {});
@@ -304,7 +306,7 @@ export default function SettingsPage() {
           <HomePane settings={settings} update={update} patch={patch} monitors={monitors} applyMode={applyMode}
             onOpenAnimal={() => setAnimalOpen(true)} onOpenBubble={() => setBubbleOpen(true)} onUpload={upload} gotoWeather={weatherGoto} />
         )}
-        {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} />}
+        {page === 'alarm' && <AlarmPane settings={settings} update={update} patch={patch} gotoWeek={weekGoto} />}
         {page === 'help' && <HelpPane settings={settings} patch={patch} onReplayIntro={replayIntro} onReplayOnboarding={() => setOnboarding(true)} />}
       </main>
       {onboarding && <Onboarding settings={settings} onChange={changeNow} themePref={themePref} onTheme={(t) => { setThemePref(t); setPref(t); setThemeNote(`화면 테마 ${THEME_UI[t].name}`); }} onUpload={upload} onClose={closeOnboarding} />}

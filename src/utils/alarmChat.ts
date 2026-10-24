@@ -110,6 +110,6 @@ export function withAlarmsRestored(s: PetSettings, alarms: Alarm[]): PetSettings
 }
 
 export const DELETE_ALL_MAX_SHOWN = 4;   // "다 지워줘" 확인 카드에 이름을 보여 주는 개수
-export const EXAMPLES = ['내일 오후 3시에 회의 알람 만들어줘', '내일 오후 3시 알람 취소해줘', '오늘 알람 뭐 있어'] as const;
+export const EXAMPLES = ['내일 오후 3시에 회의 알람 만들어줘', '내일 오후 3시 알람 취소해줘', '다음 주 알람 알려줘'] as const;
 export const CHAT_PLACEHOLDER = '예: 내일 오후 3시에 회의 알람 만들어줘';
 export const UNDO_MS = 10000;   // 되돌리기 버튼이 보이는 시간

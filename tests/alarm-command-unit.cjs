@@ -62,7 +62,31 @@ row('이번 주 일요일 오후 3시 알람 만들어줘', create('2026-10-25',
 row('이번 주 토요일 오후 5시 알람 만들어줘', create('2026-10-24', '17:00'));
 row('이번 주 월요일 오전 10시 알람 만들어줘', rej('create', '지난 날짜예요'));
 row('이번 주 토요일 오전 9시 알람 만들어줘', rej('create', '이미 지난 시간이에요'));
-row('이번 주 알람 알려줘', rej('query', '이번 주·다음 주는 요일도 같이 말해 주세요'));
+// 주 단위 조회(요일 없음): 이번 주·금주·주간 = 오늘이 든 주(월~일), 다음 주·차주·담주 = 다음 주. 요일이 붙으면 그 하루만
+const wk = (start, label) => ({ kind: 'query', date: start, week: { start, label } });
+row('이번 주 알람 알려줘', wk('2026-10-19', '이번 주'));
+row('이번 주 알람', wk('2026-10-19', '이번 주'));
+row('금주 일정', wk('2026-10-19', '이번 주'));
+row('금주 알람 뭐 있어', wk('2026-10-19', '이번 주'));
+row('주간 알람', wk('2026-10-19', '이번 주'));
+row('주간 일정 뭐 있어', wk('2026-10-19', '이번 주'));
+row('다음 주 알람 알려줘', wk('2026-10-26', '다음 주'));
+row('다음주 알람', wk('2026-10-26', '다음 주'));
+row('차주 알람 알려줘', wk('2026-10-26', '다음 주'));
+row('담주 알람 알려줘', wk('2026-10-26', '다음 주'));
+row('다음 주 알람 뭐 있어?', wk('2026-10-26', '다음 주'));
+row('다음 주 화요일 알람', { kind: 'query', date: '2026-10-27' });                  // 요일이 붙으면 그 하루(기존 동작)
+row('차주 화요일 알람 알려줘', { kind: 'query', date: '2026-10-27' });
+row('금주 토요일 알람 알려줘', { kind: 'query', date: '2026-10-24' });
+row('이번 주말 알람', { kind: 'query', date: '2026-10-24' });                        // 주말은 주 표현이 아니다
+row('다음 주 알람 만들어줘', rej('create', '이번 주·다음 주는 요일도 같이 말해 주세요'));      // 만들기·지우기는 요일이 필요하다
+row('다음 주 알람 취소해줘', rej('cancel', '이번 주·다음 주는 요일도 같이 말해 주세요'));
+row('이번 주 알람 알려줘', wk('2026-10-26', '이번 주'), D(2026, 10, 26, 9, 0));        // 월요일에 시작하는 주
+row('이번 주 알람 알려줘', wk('2026-10-19', '이번 주'), NOW_SUN);                     // 일요일은 그 주의 마지막 날
+row('다음 주 알람 알려줘', wk('2026-12-28', '다음 주'), D(2026, 12, 24, 9, 0));        // 연말: 다음 주가 연초에 걸친다
+row('다음 주 알람 알려줘', wk('2027-01-04', '다음 주'), D(2026, 12, 31, 9, 0));
+row('이번 주 알람 알려줘', wk('2026-12-28', '이번 주'), NOW_DEC31);
+row('이번 주 알람 알려줘', wk('2028-02-28', '이번 주'), NOW_LEAP);                    // 윤년: 2/28(월)~3/5(일)에 2/29가 든다
 row('다음 주 월요일 알람 만들어줘 오후 3시', create('2026-10-26', '15:00'), NOW_SUN);   // 일요일 기준 "다음 주"는 내일(월)
 row('이번 주 일요일 오후 3시 알람 만들어줘', create('2026-10-25', '15:00'), NOW_SUN);
 row('이번 주 월요일 오후 3시 알람 만들어줘', rej('create', '지난 날짜예요'), NOW_SUN);
@@ -351,7 +375,7 @@ t('연결: 퀵 메뉴에 "대화하기"(message-circle, 툴팁·aria-label)가 �
   assert.ok(/window\.addEventListener\('storage', onStorage\)/.test(settingsPage) && /readStoredSettings/.test(settingsPage), '설정창이 다른 창의 알람 변경을 반영');
   assert.ok(/UNDO_MS/.test(page) && /10초 안에 되돌릴 수 있어요/.test(page) && />되돌리기<\/button>/.test(page) && /되돌렸어요/.test(page), '되돌리기 10초');
   assert.ok(/이렇게 말해 주세요/.test(page) && /자유 대화나 잡담은 아직 지원하지 않아요/.test(page) && /EXAMPLES\.map/.test(page), 'unknown 안내');
-  assert.ok(/onShowDay=\{\(day\) => \{ setAlarmDay\(day\); setView\('alarm'\); \}\}/.test(page) && /todayAlarmList\(s, new Date\(\), shown \?\? undefined\)/.test(page), '조회는 기존 알람 카드를 재사용');
+  assert.ok(/onShowDay=\{\(q\) => \{ setAlarmQuery\(q\); setView\('alarm'\); \}\}/.test(page) && /todayAlarmList\(s, now, shown \?\? undefined\)/.test(page) && /weekAlarmList\(s, now, parseYmd\(week\.start\)\)/.test(page), '조회는 기존 알람 카드를 재사용');
   assert.ok(/정말 \{t\.length\}개를 모두 지울까요/.test(page) && /stage: 2/.test(page), '다 지우기는 개수를 보여 주는 두 번째 확인');
   assert.ok(/data-autofocus=\{focusBack \? '' : undefined\}/.test(page));
   for (const f of ['src/pages/QuickPage.tsx', 'src/utils/alarmCommand.ts', 'src/utils/alarmChat.ts', 'src/utils/alarmStore.ts', 'src/styles/quick.css']) assert.ok(!read(f).includes(FFFD) && !/\?{3}/.test(read(f)), f);
@@ -363,6 +387,63 @@ t('조회 카드(날짜 지정): 그날 알람을 같은 형식으로, 오늘이
   assert.strictEqual(QA.todayAlarmList(s, NOW, D(2026, 10, 27)).length, 0, '10-27: 직접 설정한 알람 없음');
   assert.strictEqual(QA.dayTitle(D(2026, 10, 24), NOW), '오늘 알람'); assert.strictEqual(QA.dayTitle(D(2026, 10, 25), NOW), '내일 알람 · 10월 25일(일)'); assert.strictEqual(QA.dayTitle(D(2026, 10, 30), NOW), '10월 30일(금) 알람');
   assert.strictEqual(QA.noAlarmText(D(2026, 10, 25), NOW), '10월 25일에 설정한 알람이 없어요');
+});
+t('주간 조회 카드: 월~일, 반복 알람은 날마다 펼침, 점심·퇴근 제외, 날짜·시각 순, 오늘이 든 주만 지남·다음 표시', () => {
+  const s = { lunchOn: true, leaveOn: true, lunchTime: '12:00', leaveTime: '18:00', alarms: [
+    al('w', '09:00', { name: '스탠드업', repeat: { kind: 'weekly', days: [1, 3] } }),      // 월·수
+    al('d', '15:00', { name: '병원', repeat: { kind: 'date', date: '2026-10-24' } }),
+    al('x', '08:00', { name: '꺼짐', enabled: false, repeat: { kind: 'weekly', days: [1] } }),
+    al('n', '07:00', { name: '다음 주만', repeat: { kind: 'date', date: '2026-10-27' } })] };
+  const cur = QA.weekAlarmList(s, NOW, D(2026, 10, 19));
+  assert.deepStrictEqual(cur.map(x => `${x.date} ${x.time}`), ['2026-10-19 09:00', '2026-10-21 09:00', '2026-10-24 15:00'], '월~일, 날짜·시각 순, 꺼진 알람·다른 주 알람·점심퇴근 제외');
+  assert.deepStrictEqual(cur.map(x => x.heading), ['월 10/19', '수 10/21', '토 10/24']);
+  assert.deepStrictEqual(cur.map(x => x.past), [true, true, false], '오늘이 든 주: 지난 알람은 흐리게');
+  assert.deepStrictEqual(cur.map(x => x.next), [false, false, true]); assert.strictEqual(cur[2].minutesUntil, 50, '다음 알람 N분 뒤는 오늘 것 기준');
+  const nxt = QA.weekAlarmList(s, NOW, D(2026, 10, 26));
+  assert.deepStrictEqual(nxt.map(x => `${x.date} ${x.time}`), ['2026-10-26 09:00', '2026-10-27 07:00', '2026-10-28 09:00']);
+  assert.ok(nxt.every(x => !x.past && !x.next && x.minutesUntil === null), '다음 주: 지남·다음 표시 없음');
+  assert.deepStrictEqual(QA.weekAlarmList({ ...s, alarms: [] }, NOW, D(2026, 10, 26)), [], '직접 설정한 알람이 없으면 빈 목록(기본 알림이 켜져 있어도)');
+  assert.deepStrictEqual(QA.weekAlarmList(null, NOW, D(2026, 10, 26)), []);
+  const past = QA.weekAlarmList(s, NOW, D(2026, 10, 12)); assert.ok(past.every(x => x.past && !x.next), '지난 주는 모두 흐리게');
+  assert.strictEqual(QA.noWeekAlarmText('다음 주'), '다음 주에 직접 설정한 알람이 없어요'); assert.strictEqual(QA.noWeekAlarmText('이번 주'), '이번 주에 직접 설정한 알람이 없어요');
+});
+t('주간 조회: 연말·연초 경계, 윤년, 한 주 안의 일 번호 경계', () => {
+  const s = { lunchOn: false, leaveOn: false, lunchTime: '12:00', leaveTime: '18:00', alarms: [
+    al('a', '10:00', { repeat: { kind: 'date', date: '2026-12-31' } }), al('b', '11:00', { repeat: { kind: 'date', date: '2027-01-01' } }),
+    al('c', '09:00', { repeat: { kind: 'weekly', days: [0] } }), al('e', '12:00', { repeat: { kind: 'date', date: '2028-02-29' } })] };
+  const l = QA.weekAlarmList(s, D(2026, 12, 24, 9), D(2026, 12, 28));
+  assert.deepStrictEqual(l.map(x => `${x.date} ${x.time}`), ['2026-12-31 10:00', '2027-01-01 11:00', '2027-01-03 09:00'], '12/28~1/3: 해가 바뀌는 주');
+  assert.deepStrictEqual(l.map(x => x.heading), ['목 12/31', '금 1/1', '일 1/3']);
+  const leap = QA.weekAlarmList(s, D(2028, 2, 28, 10), D(2028, 2, 28)); assert.deepStrictEqual(leap.map(x => x.date), ['2028-02-29', '2028-03-05'], '2/28(월)~3/5(일): 윤일 포함');
+  assert.ok(leap.some(x => x.date === '2028-02-29' && x.heading === '화 2/29'));
+});
+t('카드 3개 제한과 더보기 개수: 전체 합계가 기준, 3개 이하면 더보기 없음', () => {
+  assert.strictEqual(QA.CARD_MAX_ITEMS, 3);
+  for (const [n, shown, more] of [[0, 0, 0], [1, 1, 0], [3, 3, 0], [4, 3, 1], [5, 3, 2], [11, 3, 8]]) {
+    const r = QA.limitItems(Array.from({ length: n }, (_, i) => i)); assert.strictEqual(r.shown.length, shown, `n=${n}`); assert.strictEqual(r.more, more, `n=${n}`);
+  }
+  const s = { lunchOn: false, leaveOn: false, lunchTime: '12:00', leaveTime: '18:00', alarms: [al('a', '09:00', { repeat: { kind: 'weekly', days: [1, 2, 3] } }), al('b', '10:00', { repeat: { kind: 'weekly', days: [1, 2] } })] };
+  const week = QA.weekAlarmList(s, NOW, D(2026, 10, 26)), r = QA.limitItems(week);
+  assert.strictEqual(week.length, 5); assert.deepStrictEqual(r.shown.map(x => `${x.date} ${x.time}`), ['2026-10-26 09:00', '2026-10-26 10:00', '2026-10-27 09:00']); assert.strictEqual(r.more, 2, '+2개 더보기');
+});
+t('머리글: 이번 주·다음 주 · 시작~끝(월~일)', () => {
+  assert.strictEqual(QA.weekTitle('이번 주', D(2026, 10, 19)), '이번 주 · 10/19(월)~10/25(일)');
+  assert.strictEqual(QA.weekTitle('다음 주', D(2026, 10, 26)), '다음 주 · 10/26(월)~11/1(일)');
+  assert.strictEqual(QA.weekTitle('다음 주', D(2026, 12, 28)), '다음 주 · 12/28(월)~1/3(일)');
+});
+t('더보기: 설정창 알람 캘린더를 그 주로 옮겨 연다(검증된 값만, 이미 열린 창에도)', () => {
+  const Q = require('../quick-menu.cjs');
+  assert.ok(Q.isQuickAction('alarm-calendar'));
+  assert.deepStrictEqual(Q.sanitizeTarget(Q.settingsTargetFor('alarm-calendar', { weekStart: '2026-10-26' })), { page: 'alarm', week: '2026-10-26' });
+  for (const bad of [undefined, null, {}, { weekStart: 5 }, { weekStart: '2026-13-01' }, { weekStart: '2026-02-30' }, { weekStart: '10/26' }, { weekStart: '<script>' }]) assert.deepStrictEqual(Q.sanitizeTarget(Q.settingsTargetFor('alarm-calendar', bad)), { page: 'alarm' }, JSON.stringify(bad));
+  assert.deepStrictEqual(Q.settingsTargetFor('alarm-settings'), { page: 'alarm' }, '기존 알람 설정 열기는 그대로');
+  const page = read('src/pages/QuickPage.tsx'), pane = read('src/components/settings/AlarmPane.tsx'), set = read('src/pages/SettingsPage.tsx'), main = read('main.cjs'), pre = read('preload.cjs');
+  assert.match(page, /quickAction\('alarm-calendar', \{ weekStart: calendarWeek \}\)/); assert.match(page, /\+\{more\}개 더보기/);
+  assert.match(main, /settingsTargetFor\(action, arg\)/); assert.match(pre, /quickAction:\s+\(action, arg\) => ipcRenderer\.send\('quick-action', action, arg\)/);
+  assert.match(set, /setWeekGoto\(\{ start: t\.week, n: Date\.now\(\) \}\)/); assert.match(set, /gotoWeek=\{weekGoto\}/);
+  assert.match(pane, /setFocus\(\{ date: parseYmd\(gotoWeek\.start\), n: Date\.now\(\) \}\)/);
+  assert.ok(/openSettingsTo\(target\)[\s\S]*?settings-goto/.test(main), '이미 열린 창에는 settings-goto로 바로 보낸다');
+  assert.strictEqual(CH.EXAMPLES[2], '다음 주 알람 알려줘');
 });
 
 (async () => { let fail = 0; for (const [name, fn] of queue) { try { await fn(); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + (e && e.message)); } } if (fail) { console.log(`\n${fail}개 실패 / ${queue.length}개`); process.exit(1); } console.log(`  ok  알람 대화 ${queue.length}개 검사(해석 사례 ${cases.length}개 포함)\n\n${queue.length}개 통과`); })();

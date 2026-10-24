@@ -7,7 +7,7 @@ import AlarmDetailFields from './AlarmDetailFields';
 import AlarmEditor from './AlarmEditor';
 import NoticeCard from './NoticeCard';
 import { ALARM_NAME_MAX } from '../../utils/alarmText';
-import { MAX_ALARMS, isPastOneShot, newAlarm, parseYmd, repeatSummary, ymd } from '../../utils/alarmSchedule';
+import { MAX_ALARMS, isPastOneShot, isYmd, newAlarm, parseYmd, repeatSummary, ymd } from '../../utils/alarmSchedule';
 import { openAfterAdd, openAfterRemove, openIfExists, toggleOpen } from '../../utils/alarmList';
 import type { Alarm } from '../../utils/settings';
 import type { PaneProps } from './shared';
@@ -15,7 +15,7 @@ import type { PaneProps } from './shared';
 const newId = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const LIMIT_NOTE = `알람은 최대 ${MAX_ALARMS}개까지 만들 수 있어요. 지난 알람을 정리하거나 쓰지 않는 알람을 지워 주세요.`;
 
-export default function AlarmPane({ settings: s, update }: PaneProps) {
+export default function AlarmPane({ settings: s, update, gotoWeek }: PaneProps & { gotoWeek?: { start: string; n: number } | null }) {
   const alarms = s.alarms || [];
   const [now, setNow] = useState(new Date());
   const [openId, setOpenId] = useState<string | null>(null);   // 목록에서 "자세히"가 펼쳐진 알람(한 번에 하나)
@@ -23,6 +23,13 @@ export default function AlarmPane({ settings: s, update }: PaneProps) {
   const [focus, setFocus] = useState<{ date: Date; n: number } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);   // 방금 추가·복제한 알람: 펼친 뒤 이름 칸에 포커스                           // 캘린더를 그 날짜가 있는 주로 옮기기
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
+  // 퀵 메뉴의 "더보기": 캘린더를 조회한 주로 옮기고 캘린더가 보이게 스크롤한다(캘린더의 평소 동작은 그대로)
+  useEffect(() => {
+    if (!gotoWeek || !isYmd(gotoWeek.start)) return;
+    setFocus({ date: parseYmd(gotoWeek.start), n: Date.now() });
+    const t = setTimeout(() => document.querySelector('.st-cal')?.scrollIntoView({ block: 'start', behavior: 'auto' }), 60);
+    return () => clearTimeout(t);
+  }, [gotoWeek]);
   const atLimit = alarms.length >= MAX_ALARMS;
   const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   useEffect(() => { setOpenId(o => openIfExists(o, alarms.map(a => a.id))); }, [alarms]);

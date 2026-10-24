@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { AlarmClock, Bell, Check, ChevronLeft, MessageCircle, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Droplets, LayoutDashboard, Power, Sun, Thermometer, Wind } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -9,13 +9,14 @@ import { cityLabel } from '../utils/citySearch';
 import { loadSettings, formatTime } from '../utils/settings';
 import { QUIT_CONFIRM_MS, SPARKLE_COOLDOWN_MS, SPARKLE_LIFETIME_MS, barRows, canSparkle, flightVars, layoutQuickItems, moveQuickFocus, quickGapPx, sparkleBurst, sparkleEdgeBurst, sparkleRoom } from '../utils/quickMenu';
 import type { Sparkle } from '../utils/quickMenu';
-import { dayTitle, noAlarmText, todayAlarmList, untilText } from '../utils/quickAlarms';
+import { dayTitle, limitItems, noAlarmText, noWeekAlarmText, todayAlarmList, untilText, weekAlarmList, weekTitle } from '../utils/quickAlarms';
+import type { WeekAlarmItem } from '../utils/quickAlarms';
 import { parseAlarmCommand } from '../utils/alarmCommand';
 import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, newAlarmId, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
 import type { CreateCommand, Target } from '../utils/alarmChat';
 import { applyToStoredSettings } from '../utils/alarmStore';
 import type { Alarm } from '../utils/settings';
-import { parseYmd } from '../utils/alarmSchedule';
+import { mondayOf, parseYmd, ymd } from '../utils/alarmSchedule';
 import type { QuickAlarmSettings, TodayAlarmItem } from '../utils/quickAlarms';
 import {
   WEATHER_CREDIT_TEXT, WEATHER_SETUP_TEXT, formatTemp, formatWind, hourLabel, staleText, threeHourly, todayDay, weatherLabel, windText,
@@ -143,35 +144,59 @@ function WeatherCard({ onBack }: { onBack: () => void }) {
 }
 
 // 오늘 알람 카드. day를 주면(알람 대화의 조회) 그날의 알람을 같은 카드 형식으로 보여 준다.
-function AlarmCard({ onBack, day }: { onBack: () => void; day?: string }) {
-  const [items, setItems] = useState<TodayAlarmItem[] | null>(null);
-  const shown = day ? parseYmd(day) : null;
+// 조회 대상: 아무것도 없으면 오늘, day면 그 하루, week면 그 주(월~일). week.label은 머리글 앞부분("이번 주"·"11월 2주차")
+export type AlarmQuery = { day?: string; week?: { start: string; label: string } };
+
+function AlarmCard({ onBack, query }: { onBack: () => void; query?: AlarmQuery }) {
+  const [items, setItems] = useState<WeekAlarmItem[] | null>(null);
+  const week = query?.week ?? null;
+  const shown = !week && query?.day ? parseYmd(query.day) : null;
+  const key = week ? `w${week.start}` : query?.day ?? '';
   useEffect(() => {
     let cancelled = false;
     (async () => {
       let s: QuickAlarmSettings | null = null;
       try { s = (await api()?.getQuickAlarmSettings?.()) ?? null; } catch { s = null; }
-      if (!cancelled) setItems(todayAlarmList(s, new Date(), shown ?? undefined));
+      const now = new Date();
+      const list: WeekAlarmItem[] = week ? weekAlarmList(s, now, parseYmd(week.start))
+        : todayAlarmList(s, now, shown ?? undefined).map(i => ({ ...i, date: '', heading: '' }));
+      if (!cancelled) setItems(list);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [day]);
+  }, [key]);
+  const { shown: rows, more } = limitItems(items ?? []);
+  // 더보기: 설정창 알람 화면의 주간 캘린더를 조회한 주(날짜 조회면 그 날이 든 주)로 옮겨 연다
+  const calendarWeek = week ? week.start : ymd(mondayOf(shown ?? new Date()));
+  let lastHeading = '';
   return (
     <>
-      <CardHead title={shown ? dayTitle(shown, new Date()) : '오늘 알람'} onBack={onBack} />
+      <CardHead title={week ? weekTitle(week.label, parseYmd(week.start)) : shown ? dayTitle(shown, new Date()) : '오늘 알람'} onBack={onBack} />
       {items === null ? <p className="qk-note" role="status">불러오는 중이에요…</p> : items.length === 0 ? (
-        <p className="qk-note">{noAlarmText(shown ?? new Date(), new Date())}</p>
+        <p className="qk-note">{week ? noWeekAlarmText(week.label) : noAlarmText(shown ?? new Date(), new Date())}</p>
       ) : (
         <ul className="qk-alarms">
-          {items.map(a => (
-            <li key={a.id} data-past={a.past ? '' : undefined} data-next={a.next ? '' : undefined}>
-              <span className="qk-al-time">{formatTime(a.time)}</span>
-              <span className="qk-al-title">{a.title}</span>
-              {a.next && a.minutesUntil !== null && <span className="qk-al-until">{untilText(a.minutesUntil)}</span>}
-              {a.past && <span className="qk-al-done">지남</span>}
-            </li>
-          ))}
+          {rows.map(a => {
+            const head = week && a.heading !== lastHeading ? a.heading : null;
+            lastHeading = a.heading;
+            return (
+              <Fragment key={`${a.date}-${a.id}`}>
+                {head && <li className="qk-al-head" aria-hidden>{head}</li>}
+                <li data-past={a.past ? '' : undefined} data-next={a.next ? '' : undefined}>
+                  <span className="qk-al-time">{formatTime(a.time)}</span>
+                  <span className="qk-al-title">{a.title}</span>
+                  {a.next && a.minutesUntil !== null && <span className="qk-al-until">{untilText(a.minutesUntil)}</span>}
+                  {a.past && <span className="qk-al-done">지남</span>}
+                </li>
+              </Fragment>
+            );
+          })}
         </ul>
+      )}
+      {more > 0 && (
+        <button type="button" className="qk-btn qk-more" onClick={() => api()?.quickAction('alarm-calendar', { weekStart: calendarWeek })}>
+          +{more}개 더보기
+        </button>
       )}
       <button type="button" className="qk-btn qk-foot" onClick={() => api()?.quickAction('alarm-settings')}>
         <AlarmClock className="qk-i" strokeWidth={ICON_STROKE} aria-hidden />알람 설정 열기
@@ -195,7 +220,7 @@ const REASON_NO_SETTINGS = '설정을 한 번 저장한 뒤에 다시 해 보세
 const REASON_NOT_FOUND = '찾는 알람이 없어요';
 const applyReason = (r: 'no-settings' | 'save' | 'limit') => (r === 'limit' ? REASON_LIMIT : r === 'no-settings' ? REASON_NO_SETTINGS : '저장하지 못했어요');
 
-function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (day: string) => void }) {
+function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: AlarmQuery) => void }) {
   const [text, setText] = useState('');
   const [step, setStep] = useState<ChatStep>({ s: 'input' });
   const inputRef = useRef<HTMLInputElement>(null);
@@ -217,7 +242,7 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (day: 
     setText('');   // 제출하면 입력 문장은 바로 비운다
     if (cmd.kind === 'unknown') { setStep({ s: 'unknown' }); return; }
     if (cmd.kind === 'reject') { setStep({ s: 'reject', reason: cmd.reason }); return; }
-    if (cmd.kind === 'query') { onShowDay(cmd.date); return; }   // 조회는 기존 알람 카드를 날짜만 바꿔서 재사용
+    if (cmd.kind === 'query') { onShowDay(cmd.week ? { week: cmd.week } : { day: cmd.date }); return; }   // 조회는 기존 알람 카드를 날짜·주만 바꿔서 재사용
     if (cmd.kind === 'create') { setStep({ s: 'create', cmd }); return; }
     const targets = findTargets(cmd, deleteContext(), now);
     if (!targets.length) { setStep({ s: 'reject', reason: REASON_NOT_FOUND }); return; }
@@ -341,7 +366,7 @@ const cssVars = (v: Record<string, string>): CSSProperties => v as CSSProperties
 export default function QuickPage() {
   const entries = layoutQuickItems(ITEMS, QUIT);
   const [view, setView] = useState<View>('menu');
-  const [alarmDay, setAlarmDay] = useState<string | undefined>(undefined);   // 알람 대화에서 날짜를 지정한 조회(YYYY-MM-DD)
+  const [alarmQuery, setAlarmQuery] = useState<AlarmQuery | undefined>(undefined);   // 알람 대화에서 날짜·주를 지정한 조회
   const [armed, setArmed] = useState(false);
   const [layout, setLayout] = useState<QuickLayout | null>(null);
   const [opened, setOpened] = useState(false);
@@ -479,7 +504,7 @@ export default function QuickPage() {
     }
     if (armed) { setArmed(false); if (armTimer.current) clearTimeout(armTimer.current); }
     if (e.id === 'weather') setView(v => (v === 'weather' ? 'menu' : 'weather'));
-    else if (e.id === 'alarm') { setAlarmDay(undefined); setView(v => (v === 'alarm' ? 'menu' : 'alarm')); }
+    else if (e.id === 'alarm') { setAlarmQuery(undefined); setView(v => (v === 'alarm' ? 'menu' : 'alarm')); }
     else if (e.id === 'chat') setView(v => (v === 'chat' ? 'menu' : 'chat'));
     else api()?.quickAction(e.id as 'open');
   };
@@ -505,7 +530,7 @@ export default function QuickPage() {
   const card = view === 'menu' ? null : (
     <div className="qk-card" ref={cardRef} role="dialog" aria-label={view === 'weather' ? '날씨' : view === 'chat' ? '대화하기' : '오늘 알람'}
       style={arc && arc.card ? { left: arc.card.x, top: arc.card.y } : undefined} data-placed={arc && arc.card ? '' : undefined}>
-      {view === 'weather' ? <WeatherCard onBack={back} /> : view === 'chat' ? <ChatCard onBack={back} onShowDay={(day) => { setAlarmDay(day); setView('alarm'); }} /> : <AlarmCard onBack={() => { setAlarmDay(undefined); back(); }} day={alarmDay} />}
+      {view === 'weather' ? <WeatherCard onBack={back} /> : view === 'chat' ? <ChatCard onBack={back} onShowDay={(q) => { setAlarmQuery(q); setView('alarm'); }} /> : <AlarmCard onBack={() => { setAlarmQuery(undefined); back(); }} query={alarmQuery} />}
     </div>
   );
 
