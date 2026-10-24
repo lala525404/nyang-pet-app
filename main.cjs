@@ -519,7 +519,8 @@ function rebuildTrayMenu() { if (tray && trayMenuBuilder) { try { tray.setContex
 // 초집중 모드는 예전처럼 렌더러가 알려 주는 "버디 위인지"(petInteractive)도 함께 쓴다(둘 중 하나라도 위면 받는다). 비상 스위치: CHOEAE_DISABLE_CLICKTHROUGH=1 이면 예전 동작.
 const clickThrough = require('./click-through.cjs');
 const clickThroughOn = clickThrough.isEnabled(process.env);
-let petRegions = [];                              // 렌더러가 알려 준 보이는 요소 영역(창 안 좌표). 비어 있으면(아직 모르면) 항상 받는다
+let petMeasured = null;                           // 렌더러가 잰 펫 원의 중심 { cx, cy, focus }(창 안 좌표, 그때의 초집중 여부 포함)
+let petRegions = [];                            // 렌더러가 알려 준 보이는 요소 영역(창 안 좌표). 비어 있으면(아직 모르면) 항상 받는다
 let petCT = { interactive: true, miss: 0 };       // 펫 창의 현재 판정(처음에는 연다)
 function applyPetMouse() {
   if (petWindow && !petWindow.isDestroyed()) {
@@ -555,7 +556,7 @@ function updateFocus(change) {
   const r = focusMode.applyFocusChange(focusState, change);
   if (!r.changed) return { ...focusState };
   focusState = r.state; focusMode.saveFocus(focusFile(), focusState);
-  if (r.enabledChanged) { petInteractive = false; applyPetMouse(); applyYar(); rebuildTrayMenu(); }
+  if (r.enabledChanged) { petInteractive = false; petMeasured = null; applyPetMouse(); applyYar(); rebuildTrayMenu(); }   // petMeasured: 모드가 바뀌면 이전 모드에서 잰 펫 위치를 버린다
   if (!r.onlyAnchor) broadcastFocus();   // 기준 위치만 바뀐 것은 버디 창이 스스로 알린 것이라 다시 알리지 않는다
   return { ...focusState };
 }
@@ -567,7 +568,12 @@ ipcMain.on('pet-interactive', (_e, v) => { const next = v === true; if (next ===
 ipcMain.on('pet-regions', (e, list) => {
   if (!petWindow || petWindow.isDestroyed() || e.sender !== petWindow.webContents) return;
   const r = clickThrough.sanitizeRegions(list);
-  if (r) petRegions = r;
+  if (r) {
+    petRegions = r;
+    // 첫 원 = 보이는 펫의 중심(창 안 좌표). 퀵 바 위치 계산이 모드(평소·초집중)와 상관없이 실제 그려진 위치를 쓰도록 모아 둔다(검증은 quick-menu.cjs)
+    const el = r.find(x => x.kind === 'ellipse');
+    petMeasured = el ? { cx: el.cx, cy: el.cy, focus: focusState.enabled } : null;
+  }
 });
 
 // ★ 컴퓨터를 켜면 자동 실행(로그인 항목). 판단 로직은 login-item.cjs(단위 테스트됨). 상태는 저장하지 않고 항상 OS에서 읽는다.
@@ -804,7 +810,7 @@ function setQuickBounds(raw, pet, size) {
 function placeQuick(size) {
   if (!quickWindow || quickWindow.isDestroyed() || !petWindow || petWindow.isDestroyed()) return;
   const { pet, work } = quickWork();
-  const p = quickMenu.placeQuickWindow(pet, size, work, { sizePct: petSizePct });
+  const p = quickMenu.placeQuickWindow(pet, size, work, { sizePct: petSizePct, focus: !!(quickState && quickState.focus), measured: quickState && quickState.measured });
   setQuickBounds(p, pet, size);
   try { quickWindow.webContents.send('quick-layout', { mode: 'bar', side: p.side, maxWidth: quickMenu.barMaxWidth(work) }); } catch {}
 }
@@ -839,7 +845,9 @@ function openQuickMenu() {
   });
   quickWindow = win;
   const petAtOpen = petWindow.getBounds();
-  quickState = { mode: null, count: 0, card: null, dir: null, closing: false, closeTimer: null, pet: petAtOpen };
+  // 열릴 때의 모드와 펫 측정값을 함께 고정한다(열려 있는 동안 모드가 바뀌어도 한 번 정한 자리에서 어긋나지 않는다). 측정값은 지금 모드에서 잰 것만 쓴다.
+  const focusAtOpen = !!focusState.enabled;
+  quickState = { mode: null, count: 0, card: null, dir: null, closing: false, closeTimer: null, pet: petAtOpen, focus: focusAtOpen, measured: petMeasured && petMeasured.focus === focusAtOpen ? { cx: petMeasured.cx, cy: petMeasured.cy } : null };
   setQuickBounds({ x: petAtOpen.x, y: petAtOpen.y, width: size.width, height: size.height }, petAtOpen, size);   // 첫 알림(quick-init) 전의 임시 자리
   win.loadURL(getPageURL('/quick'));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

@@ -96,11 +96,29 @@ function petCenter(pet, sizePct) {
 
 // 펫 창 bounds → 보이는 펫 이미지의 사각형(화면 좌표). 펫 창은 240×230이고 보이는 이미지는 그 아래쪽 가운데의 약 76px(64×크기%×1.19)다.
 // 호버 확대(80px)를 기준으로 한다: 확대돼도 바와 겹치지 않는다. 펫이 움직이거나 순간이동해도 창 위치(pet)에서 바로 계산하므로 어긋나지 않는다.
-function petImageRect(pet, sizePct, hover = true) {
+//
+// 초집중 모드는 펫 아래에 시계(20px+위 여백 2px)와 남은 근무시간 묶음(위 2px+27px+아래 6px)이 붙어 있어서, 아래 정렬된 펫이 그만큼 위로 올라간다
+// (실측: 평소 중심 y=175, 초집중 시계만 153, 시계+남은 근무시간 118 / 창 230px). 모드별 값은 PET_FOCUS 한 곳에서 관리한다.
+const PET_FOCUS = { clockPx: 22, leavePx: 35 };
+const PET_FOCUS_TOLERANCE_PX = 18;   // 측정값을 받아들이는 오차(둥둥·박동 애니메이션 여유)
+// 렌더러가 측정해 보낸 펫 원의 중심(창 안 좌표)을 검증: 숫자·창 안·현재 모드에서 나올 수 있는 범위일 때만 쓴다(모드 전환 직전의 오래된 값·이상한 값은 버린다)
+function validMeasuredCenter(measured, pet, normalCy, focus) {
+  if (!measured || !isNum(measured.cx) || !isNum(measured.cy)) return null;
+  if (measured.cx < 0 || measured.cx > pet.width || measured.cy < 0 || measured.cy > pet.height) return null;
+  const hi = normalCy - (focus ? PET_FOCUS.clockPx : 0) + PET_FOCUS_TOLERANCE_PX, lo = normalCy - (focus ? PET_FOCUS.clockPx + PET_FOCUS.leavePx : 0) - PET_FOCUS_TOLERANCE_PX;
+  return measured.cy >= lo && measured.cy <= hi ? { cx: measured.cx, cy: measured.cy } : null;
+}
+// opts: { hover = true, focus = false(초집중 모드), measured = { cx, cy }(렌더러가 알려 준 펫 원 중심, 창 안 좌표) }
+function petImageRect(pet, sizePct, opts = {}) {
+  const hover = opts.hover !== false, focus = opts.focus === true;
   const base = PET_BASE_PX * clampN(Number(sizePct) || 100, 50, 200) / 100 * PET_WIN.emojiRatio;
   const size = hover ? base * PET_HOVER_RATIO : base;
-  const cy = pet.y + pet.height - PET_WIN.bottom - base / 2;   // 확대는 이미지 가운데 기준
-  return { x: pet.x + pet.width / 2 - size / 2, y: cy - size / 2, width: size, height: size };
+  const normalCy = pet.y + pet.height - PET_WIN.bottom - base / 2;   // 평소 모드: 아래에서 17px 위에 가운데
+  // 초집중: 측정값이 있으면 그것, 없으면 상수(남은 근무시간까지 보이는 경우를 가정: 겹침 방지가 우선)
+  const m = validMeasuredCenter(opts.measured, pet, normalCy - pet.y, focus);
+  const cy = m ? pet.y + m.cy : normalCy - (focus ? PET_FOCUS.clockPx + PET_FOCUS.leavePx : 0);   // 확대는 이미지 가운데 기준
+  const cx = m ? pet.x + m.cx : pet.x + pet.width / 2;
+  return { x: cx - size / 2, y: cy - size / 2, width: size, height: size, measured: !!m };
 }
 
 const union = (a, b) => (a ? { minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) } : { ...b });
@@ -198,14 +216,16 @@ function layoutArc({ count, sizePct = 100, origin, work, card = null, dir = null
 function placeQuickWindow(pet, size, work, opts = {}) {
   const gap = isNum(opts.gap) ? opts.gap : QUICK_BAR_GAP_PX, pad = isNum(opts.pad) ? opts.pad : QUICK_WIN_PAD;
   const w = Math.min(size.width, work.width), h = Math.min(size.height, work.height);
-  const img = petImageRect(pet, opts.sizePct);
+  const img = petImageRect(pet, opts.sizePct, { focus: opts.focus === true, measured: opts.measured });
+  // 아래로 갈 때: 초집중 모드는 이미지 아래의 시계·남은 근무시간 묶음 아래(= 펫 창 아래 가장자리)에 붙여 겹치지 않게 한다
+  const imgBottom = opts.focus === true ? Math.max(img.y + img.height, pet.y + pet.height) : img.y + img.height;
   const above = img.y - gap + pad - h;                 // 창 아래 가장자리 = 이미지 윗부분 - gap + pad → 보이는 바의 아래 끝이 이미지 윗부분에서 gap 위
-  const below = img.y + img.height + gap - pad;        // 창 위 가장자리 = 이미지 아랫부분 + gap - pad → 보이는 바의 위 끝이 이미지 아랫부분에서 gap 아래
+  const below = imgBottom + gap - pad;                 // 창 위 가장자리 = 이미지(초집중은 시계·진행바) 아랫부분 + gap - pad → 보이는 바의 위 끝이 gap 아래
   let y, side = 'above';
   if (above >= work.y) y = above;                                          // 위
   else if (below + h <= work.y + work.height) { y = below; side = 'below'; }   // 아래(펫 이미지 아래쪽 기준)
   else y = above;                                                          // 둘 다 모자라면 아래에서 보정
-  let x = Math.round(pet.x + pet.width / 2 - w / 2);
+  let x = Math.round(img.x + img.width / 2 - w / 2);
   x = Math.max(work.x, Math.min(x, work.x + work.width - w));
   y = Math.max(work.y, Math.min(y, work.y + work.height - h));
   // 보이는 이미지 위치는 소수(76.16px 등)라 y가 소수가 될 수 있다 → 창 좌표는 항상 정수로(setBounds는 소수를 거절한다)
@@ -266,5 +286,5 @@ module.exports = {
   QUICK_MENU_LAYOUT, barMaxWidth, BTN, SHADOW_PAD, CARD_GAP, ARC_MAX, RADIUS_PER_PET, HINT, DIRS, PET_WIN,
   QUICK_W, QUICK_INITIAL_H, QUICK_MIN, QUICK_MAX, QUICK_SHOW_FALLBACK_MS, QUICK_BLUR_GRACE_MS, QUICK_CLOSE_MS, QUICK_FULL_CLICK_MS, QUICK_ACTIONS,
   clampQuickSize, clampCard, modeFor, arcSpanDeg, arcRadius, arcAngles, petCenter, chooseDirection, layoutArc,
-  toInt, safePoint, safeBounds, boundsOrFallback, defaultNearPet, QUICK_BAR_GAP_PX, QUICK_WIN_PAD, PET_HOVER_RATIO, petImageRect, placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
+  toInt, safePoint, safeBounds, boundsOrFallback, defaultNearPet, QUICK_BAR_GAP_PX, QUICK_WIN_PAD, PET_HOVER_RATIO, PET_FOCUS, validMeasuredCenter, petImageRect, placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
 };

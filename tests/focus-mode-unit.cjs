@@ -138,7 +138,7 @@ t('CPU 절약(정적 확인): 기본 물리 루프(30fps)는 쉬고 느린 루�
 t('연결(정적 확인): 시작 때 상태 복원(창보다 먼저), 켜면 클릭 통과·야르 정지·트레이 글자, IPC·preload·UI 문구·빌드 파일, 전역 단축키 없음', () => {
   const main = read('main.cjs'), pre = read('preload.cjs'), home = read('src/components/settings/HomePane.tsx'), pkg = JSON.parse(read('package.json'));
   assert.ok(main.indexOf('focusState = focusMode.loadFocus(focusFile());') < main.indexOf('createPetWindow();\r\n    createTray();') || main.indexOf('focusState = focusMode.loadFocus(focusFile());') < main.indexOf('createPetWindow();\n    createTray();'), '상태 복원이 창·트레이 생성보다 먼저');
-  assert.match(main, /if \(r\.enabledChanged\) \{ petInteractive = false; applyPetMouse\(\); applyYar\(\); rebuildTrayMenu\(\); \}/);
+  assert.match(main, /if \(r\.enabledChanged\) \{ petInteractive = false; petMeasured = null; applyPetMouse\(\); applyYar\(\); rebuildTrayMenu\(\); \}/);
   assert.match(main, /petWindow\.setIgnoreMouseEvents\(clickThrough\.shouldIgnore\(\{ enabled: clickThroughOn, focusEnabled: focusState\.enabled, rendererInteractive: petInteractive, hit: petCT\.interactive \}\), \{ forward: true \}\)/);   // 초집중 판정(petInteractive)은 그대로 쓰고, 비상 스위치를 끄면 예전과 같다(tests/click-through-unit.cjs가 두 식이 같음을 확인)
   assert.match(main, /applyPetMouse\(\);\s*\/\/ 초집중 모드로 시작하면 처음부터 클릭 통과/);
   assert.match(main, /label: focusMode\.trayLabel\(focusState\.enabled\),[^\n]*\s*click: \(\) => updateFocus\(\{ enabled: !focusState\.enabled \}\),/);
