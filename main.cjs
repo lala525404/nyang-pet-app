@@ -789,7 +789,7 @@ const quickWork = () => {
 function placeQuick(size) {
   if (!quickWindow || quickWindow.isDestroyed() || !petWindow || petWindow.isDestroyed()) return;
   const { pet, work } = quickWork();
-  const p = quickMenu.placeQuickWindow(pet, size, work);
+  const p = quickMenu.placeQuickWindow(pet, size, work, { sizePct: petSizePct });
   quickWindow.setBounds({ x: p.x, y: p.y, width: p.width, height: p.height });
   try { quickWindow.webContents.send('quick-layout', { mode: 'bar', side: p.side, maxWidth: quickMenu.barMaxWidth(work) }); } catch {}
 }

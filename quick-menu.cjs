@@ -15,6 +15,9 @@ const DIR_ANGLE = { up: -90, down: 90, left: 180, right: 0 };   // 호 가운데
 const PET_CENTER_LIFT = 8;      // 펫 중심에서 약간 위에서 시작한다
 // 펫 창(240×230) 안에서 보이는 펫의 중심: 아래 여백 17px, 이모지는 64×크기% 의 약 1.19배
 const PET_WIN = { w: 240, h: 230, bottom: 17, emojiRatio: 1.19 };
+const PET_HOVER_RATIO = 80 / 76;   // 호버하면 보이는 이미지가 76px → 80px로 커진다(우클릭할 때는 커서가 펫 위라 거의 항상 이 상태)
+const QUICK_BAR_GAP_PX = 6;        // 바의 보이는 아래(위) 가장자리와 펫 이미지 윗(아랫)부분 사이
+const QUICK_WIN_PAD = 24;          // 바 모드 퀵 창 안쪽의 투명 여백(그림자 자리). quick.css의 .qk-root[data-mode="bar"] padding과 같아야 한다
 
 const QUICK_W = 340;            // 알약 바 모드의 첫 창 너비
 const QUICK_INITIAL_H = 140;    // 첫 크기 알림이 오기 전의 높이
@@ -59,6 +62,15 @@ function arcAngles(n, dir) {
 function petCenter(pet, sizePct) {
   const emoji = PET_BASE_PX * clampN(Number(sizePct) || 100, 50, 200) / 100 * PET_WIN.emojiRatio;
   return { x: pet.x + pet.width / 2, y: pet.y + pet.height - PET_WIN.bottom - emoji / 2 - PET_CENTER_LIFT };
+}
+
+// 펫 창 bounds → 보이는 펫 이미지의 사각형(화면 좌표). 펫 창은 240×230이고 보이는 이미지는 그 아래쪽 가운데의 약 76px(64×크기%×1.19)다.
+// 호버 확대(80px)를 기준으로 한다: 확대돼도 바와 겹치지 않는다. 펫이 움직이거나 순간이동해도 창 위치(pet)에서 바로 계산하므로 어긋나지 않는다.
+function petImageRect(pet, sizePct, hover = true) {
+  const base = PET_BASE_PX * clampN(Number(sizePct) || 100, 50, 200) / 100 * PET_WIN.emojiRatio;
+  const size = hover ? base * PET_HOVER_RATIO : base;
+  const cy = pet.y + pet.height - PET_WIN.bottom - base / 2;   // 확대는 이미지 가운데 기준
+  return { x: pet.x + pet.width / 2 - size / 2, y: cy - size / 2, width: size, height: size };
 }
 
 const union = (a, b) => (a ? { minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) } : { ...b });
@@ -151,14 +163,18 @@ function layoutArc({ count, sizePct = 100, origin, work, card = null, dir = null
 
 // 알약 바 모드(7개 이상)의 창 위치: 펫 창의 가운데 위쪽, 위에 자리가 없으면 아래쪽, 그것도 모자라면 화면 안으로 밀어 넣는다.
 // pet: 펫 창 bounds. 반환: { x, y, width, height, side: 'above' | 'below' }
-function placeQuickWindow(pet, size, work, gap = 4) {
+// 바(보이는 알약)와 펫의 보이는 이미지 사이는 QUICK_BAR_GAP_PX. 창 안쪽의 투명 여백(QUICK_WIN_PAD)과 펫 창의 투명 여백(240×230 중 보이는 이미지는 76px)은
+// 모두 계산에 넣는다. 펫 창 위치(pet)와 보이는 이미지의 오프셋은 petImageRect 한 곳에서만 관리한다.
+function placeQuickWindow(pet, size, work, opts = {}) {
+  const gap = isNum(opts.gap) ? opts.gap : QUICK_BAR_GAP_PX, pad = isNum(opts.pad) ? opts.pad : QUICK_WIN_PAD;
   const w = Math.min(size.width, work.width), h = Math.min(size.height, work.height);
-  const catTop = pet.y + Math.round(pet.height * 0.4);   // 버디는 창 아래쪽에 있다: 머리 위쪽 선
-  const catBottom = pet.y + pet.height;
+  const img = petImageRect(pet, opts.sizePct);
+  const above = img.y - gap + pad - h;                 // 창 아래 가장자리 = 이미지 윗부분 - gap + pad → 보이는 바의 아래 끝이 이미지 윗부분에서 gap 위
+  const below = img.y + img.height + gap - pad;        // 창 위 가장자리 = 이미지 아랫부분 + gap - pad → 보이는 바의 위 끝이 이미지 아랫부분에서 gap 아래
   let y, side = 'above';
-  if (catTop - gap - h >= work.y) y = catTop - gap - h;                              // 위
-  else if (catBottom + gap + h <= work.y + work.height) { y = catBottom + gap; side = 'below'; }   // 아래
-  else y = catTop - gap - h;                                                          // 둘 다 모자라면 아래에서 보정
+  if (above >= work.y) y = above;                                          // 위
+  else if (below + h <= work.y + work.height) { y = below; side = 'below'; }   // 아래(펫 이미지 아래쪽 기준)
+  else y = above;                                                          // 둘 다 모자라면 아래에서 보정
   let x = Math.round(pet.x + pet.width / 2 - w / 2);
   x = Math.max(work.x, Math.min(x, work.x + work.width - w));
   y = Math.max(work.y, Math.min(y, work.y + work.height - h));
@@ -219,5 +235,5 @@ module.exports = {
   QUICK_MENU_LAYOUT, barMaxWidth, BTN, SHADOW_PAD, CARD_GAP, ARC_MAX, RADIUS_PER_PET, HINT, DIRS, PET_WIN,
   QUICK_W, QUICK_INITIAL_H, QUICK_MIN, QUICK_MAX, QUICK_SHOW_FALLBACK_MS, QUICK_BLUR_GRACE_MS, QUICK_CLOSE_MS, QUICK_FULL_CLICK_MS, QUICK_ACTIONS,
   clampQuickSize, clampCard, modeFor, arcSpanDeg, arcRadius, arcAngles, petCenter, chooseDirection, layoutArc,
-  placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
+  QUICK_BAR_GAP_PX, QUICK_WIN_PAD, PET_HOVER_RATIO, petImageRect, placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,
 };

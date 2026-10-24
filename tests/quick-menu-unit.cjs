@@ -38,7 +38,7 @@ t('바 줄바꿈: 화면 폭이 충분하면 한 줄(완전한 알약), 좁으�
 t('바 위치: 펫 머리 위 중앙, 위가 모자라면 아래(side), 화면 밖으로 나가지 않는다(구석·다중 모니터), 카드가 붙으면 높이가 늘어도 안', () => {
   const work = { x: 0, y: 33, width: 1728, height: 1084 };
   const bar = { width: 330, height: 80 }, withCard = { width: 372, height: 560 };
-  const mid = Q.placeQuickWindow({ x: 700, y: 850, width: 240, height: 230 }, bar, work); assert.strictEqual(mid.side, 'above'); assert.strictEqual(mid.x, 700 + 120 - 165, '가운데'); assert.ok(mid.y + mid.height <= 850 + 92 + 1, '머리 위');
+  const mid = Q.placeQuickWindow({ x: 700, y: 850, width: 240, height: 230 }, bar, work); assert.strictEqual(mid.side, 'above'); assert.strictEqual(mid.x, 700 + 120 - 165, '가운데'); assert.ok(mid.y + mid.height - Q.QUICK_WIN_PAD <= 850 + 135, '보이는 바가 펫 이미지 위');
   const top = Q.placeQuickWindow({ x: 700, y: 33, width: 240, height: 230 }, withCard, work); assert.strictEqual(top.side, 'below', '위에 자리가 없으면 아래(카드가 붙으면 카드는 바 아래로)');
   for (const [px, py] of [[0, 33], [1488, 33], [0, 887], [1488, 887], [-50, 400], [3000, 400]]) for (const size of [bar, withCard]) {
     const r = Q.placeQuickWindow({ x: px, y: py, width: 240, height: 230 }, size, work);
@@ -162,8 +162,8 @@ const WORK = { x: 0, y: 0, width: 1920, height: 1040 };
 t('창 위치: 펫 위쪽 가운데, 위가 모자라면 아래쪽, 어떤 경우에도 모니터 작업 영역 안', () => {
   const size = { width: 340, height: 140 };
   const pet = { x: 1000, y: 700, width: 240, height: 230 };
-  const p = Q.placeQuickWindow(pet, size, WORK); assert.strictEqual(p.x, 1000 + 120 - 170); assert.ok(p.y + 140 <= 700 + 92, '펫 머리 위'); assert.ok(p.y >= 0);
-  const top = Q.placeQuickWindow({ x: 1000, y: 0, width: 240, height: 230 }, size, WORK); assert.ok(top.y >= 230, '위가 모자라면 아래쪽');
+  const p = Q.placeQuickWindow(pet, size, WORK); assert.strictEqual(p.x, 1000 + 120 - 170); assert.ok(p.y + 140 - Q.QUICK_WIN_PAD <= 700 + 135, '보이는 바가 펫 이미지 위'); assert.ok(p.y >= 0);
+  const top = Q.placeQuickWindow({ x: 1000, y: -60, width: 240, height: 230 }, size, WORK); assert.ok(top.y + Q.QUICK_WIN_PAD >= -60 + 213, '위가 모자라면 아래쪽(펫 이미지 아래)');
   for (const px of [-300, 0, 500, 1800, 1900, 5000]) for (const py of [-200, 0, 400, 900, 1040, 3000]) for (const h of [100, 140, 300, 640]) {
     const r = Q.placeQuickWindow({ x: px, y: py, width: 240, height: 230 }, { width: 340, height: h }, WORK);
     assert.ok(r.x >= WORK.x && r.y >= WORK.y && r.x + r.width <= WORK.x + WORK.width && r.y + r.height <= WORK.y + WORK.height, `밖으로 나감 ${px},${py},${h}`);
@@ -350,6 +350,32 @@ t('화면: 아이콘은 이모지가 아니라 lucide, 새 홈 칩·설정 스�
   assert.ok(!/id: 'quick'/.test(home));
   for (const f of ['src/pages/QuickPage.tsx', 'src/styles/quick.css', 'quick-menu.cjs', 'src/utils/quickMenu.ts', 'src/utils/weatherCard.ts', 'src/utils/quickAlarms.ts']) assert.ok(!read(f).includes(FFFD), f);
   assert.ok(/html\[data-theme="dark"\] \.qk-root/.test(css) && /prefers-reduced-motion/.test(css), '다크 테마·움직임 줄이기');
+});
+t('바 위치: 보이는 바와 펫 이미지 사이는 QUICK_BAR_GAP_PX(위·아래 배치 모두), 펫 크기·이동·가장자리에서도 같다', () => {
+  assert.strictEqual(Q.QUICK_BAR_GAP_PX, 6); assert.strictEqual(Q.QUICK_WIN_PAD, 24);
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src/styles/quick.css'), 'utf8');
+  assert.ok(new RegExp(`\\.qk-root\\[data-mode="bar"\\][^{]*\\{[^}]*padding: ${Q.QUICK_WIN_PAD}px`).test(css), 'CSS의 바 모드 투명 여백이 QUICK_WIN_PAD와 같다');
+  const work = { x: 0, y: 0, width: 1920, height: 1040 }, size = { width: 340, height: 140 };
+  const visBox = (r) => ({ top: r.y + Q.QUICK_WIN_PAD, bottom: r.y + r.height - Q.QUICK_WIN_PAD });
+  // 펫 이미지: 창 240×230의 아래 17px 위, 76px(호버 80px) 가운데
+  const img0 = Q.petImageRect({ x: 0, y: 0, width: 240, height: 230 }, 100); assert.ok(Math.abs(img0.width - 80.17) < 0.05 && Math.abs(img0.x + img0.width / 2 - 120) < 0.01); assert.ok(Math.abs(img0.y + img0.height - (230 - 17 + 2)) < 0.1, '호버 확대는 가운데 기준(아래로 2px)');
+  const rest = Q.petImageRect({ x: 0, y: 0, width: 240, height: 230 }, 100, false); assert.ok(Math.abs(rest.width - 76.16) < 0.01 && Math.abs(rest.y + rest.height - 213) < 0.01);
+  for (const [px, py, pct] of [[700, 600, 100], [123, 456, 100], [1000, 800, 50], [1200, 700, 200], [300, 333, 150]]) {
+    const pet = { x: px, y: py, width: 240, height: 230 }, img = Q.petImageRect(pet, pct), r = Q.placeQuickWindow(pet, size, work, { sizePct: pct });
+    assert.strictEqual(r.side, 'above'); assert.ok(Math.abs(img.y - visBox(r).bottom - 6) <= 1, `위 배치 간격 6px: ${px},${py},${pct}`);
+    // 위에 자리가 없을 때(펫이 화면 맨 위): 아래, 이미지 아래쪽 기준 같은 간격
+    const topPet = { x: px, y: -150, width: 240, height: 230 }, tImg = Q.petImageRect(topPet, pct), t2 = Q.placeQuickWindow(topPet, size, { ...work, y: 0 }, { sizePct: pct });
+    assert.strictEqual(t2.side, 'below'); assert.ok(Math.abs(visBox(t2).top - (tImg.y + tImg.height) - 6) <= 1, `아래 배치 간격 6px: ${pct}`);
+  }
+  // 창 위치(펫 이동·순간이동)만 바뀌면 같은 만큼 따라 움직인다
+  const a = Q.placeQuickWindow({ x: 500, y: 500, width: 240, height: 230 }, size, work), b = Q.placeQuickWindow({ x: 900, y: 650, width: 240, height: 230 }, size, work);
+  assert.strictEqual(b.y - a.y, 150); assert.strictEqual(b.x - a.x, 400);
+  // 예전(투명 여백 포함 기준)과 비교: 이제 보이는 바가 이미지 윗부분에서 6px(예전은 약 70px)
+  const old = 500 + Math.round(230 * 0.4) - 4;   // 예전 창 아래 가장자리
+  assert.ok(old - 24 < img0.y + 500 - 40, '예전 계산은 보이는 바가 이미지보다 훨씬 위였다');
+  // 가장자리 보정: 위에도 아래에도 모자라면 화면 안으로 밀어 넣는다
+  const tiny = Q.placeQuickWindow({ x: 0, y: 0, width: 240, height: 230 }, { width: 340, height: 640 }, { x: 0, y: 0, width: 300, height: 400 }); assert.ok(tiny.y >= 0 && tiny.y + tiny.height <= 400);
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8'); assert.ok(/placeQuickWindow\(pet, size, work, \{ sizePct: petSizePct \}\)/.test(main));
 });
 
 (async () => { let fail = 0; for (const [name, fn] of queue) { try { await fn(); console.log('  ok  ' + name); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + (e && e.message)); } } if (fail) { console.log(`\n${fail}개 실패`); process.exit(1); } console.log(`\n${queue.length}개 통과`); })();
