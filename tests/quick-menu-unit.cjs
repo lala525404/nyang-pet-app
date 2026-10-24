@@ -22,7 +22,63 @@ t('항목 배치: 종료는 항상 마지막, 항목이 늘면 최대 8개(종�
   const seven = ['1', '2', '3', '4', '5', '6', '7']; assert.deepStrictEqual(M.layoutQuickItems(seven, 'Q'), [...seven, 'Q']);
   const nine = [...seven, '8', '9']; const l = M.layoutQuickItems(nine, 'Q'); assert.strictEqual(l.length, 8); assert.strictEqual(l[7], 'Q');
   assert.deepStrictEqual(M.layoutQuickItems([], 'Q'), ['Q']);
-  for (const n of [1, 2, 3, 4, 5, 6]) assert.strictEqual(Q.modeFor(n), 'arc'); for (const n of [7, 8]) assert.strictEqual(Q.modeFor(n), 'bar');
+  // 배치 전환 상수: 기본은 항상 바. 'radial'로 바꾸면 6개까지 호, 7개 이상은 바
+  assert.strictEqual(Q.QUICK_MENU_LAYOUT, 'bar'); for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) assert.strictEqual(Q.modeFor(n), 'bar', `기본 ${n}개`);
+  for (const n of [1, 2, 3, 4, 5, 6]) assert.strictEqual(Q.modeFor(n, 'radial'), 'arc'); for (const n of [7, 8]) assert.strictEqual(Q.modeFor(n, 'radial'), 'bar'); assert.strictEqual(Q.modeFor(4, 'bar'), 'bar');
+  assert.ok(/QUICK_MENU_LAYOUT/.test(read('quick-menu.cjs')) && !/QUICK_MENU_LAYOUT/.test(read('src/components/settings/HomePane.tsx') + read('src/pages/SettingsPage.tsx') + read('src/components/settings/HelpPane.tsx')), '설정 UI에는 노출하지 않는다');
+});
+t('바 줄바꿈: 화면 폭이 충분하면 한 줄(완전한 알약), 좁으면 두 줄 이상. 폭 계산은 간격 규칙과 같다', () => {
+  for (const n of [4, 5, 6, 7, 8]) { assert.strictEqual(M.barRows(n, 1920), 1, `${n}개 큰 화면`); assert.strictEqual(M.barRows(n, M.barWidthPx(n)), 1, `${n}개 딱 맞는 폭`); }
+  assert.ok(M.barWidthPx(4) < M.barWidthPx(8) && M.barWidthPx(8) < 520, '8개도 일반 화면에 한 줄로 들어간다');
+  assert.strictEqual(M.barRows(8, M.barWidthPx(8) - 1), 2, '1px 모자라면 두 줄'); assert.ok(M.barRows(8, 120) >= 3 && M.barRows(8, 120) <= 8, '아주 좁으면 여러 줄');
+  assert.strictEqual(M.barRows(0, 500), 1); assert.strictEqual(M.barRows(4, NaN), 1); assert.strictEqual(M.barRows(4, 0), 1);
+  for (let w = 100; w < 600; w += 7) for (const n of [4, 6, 8]) assert.ok(M.barRows(n, w) >= 1 && M.barRows(n, w) <= n, `${n}/${w}`);
+  assert.strictEqual(Q.barMaxWidth({ x: 0, y: 0, width: 1728, height: 900 }), 1704); assert.strictEqual(Q.barMaxWidth({ x: 0, y: 0, width: 100, height: 900 }), 160);
+});
+t('바 위치: 펫 머리 위 중앙, 위가 모자라면 아래(side), 화면 밖으로 나가지 않는다(구석·다중 모니터), 카드가 붙으면 높이가 늘어도 안', () => {
+  const work = { x: 0, y: 33, width: 1728, height: 1084 };
+  const bar = { width: 330, height: 80 }, withCard = { width: 372, height: 560 };
+  const mid = Q.placeQuickWindow({ x: 700, y: 850, width: 240, height: 230 }, bar, work); assert.strictEqual(mid.side, 'above'); assert.strictEqual(mid.x, 700 + 120 - 165, '가운데'); assert.ok(mid.y + mid.height <= 850 + 92 + 1, '머리 위');
+  const top = Q.placeQuickWindow({ x: 700, y: 33, width: 240, height: 230 }, withCard, work); assert.strictEqual(top.side, 'below', '위에 자리가 없으면 아래(카드가 붙으면 카드는 바 아래로)');
+  for (const [px, py] of [[0, 33], [1488, 33], [0, 887], [1488, 887], [-50, 400], [3000, 400]]) for (const size of [bar, withCard]) {
+    const r = Q.placeQuickWindow({ x: px, y: py, width: 240, height: 230 }, size, work);
+    assert.ok(r.x >= work.x && r.y >= work.y && r.x + r.width <= work.x + work.width && r.y + r.height <= work.y + work.height, `밖으로 나감 ${px},${py}`);
+  }
+  const left = { workArea: { x: -1920, y: 0, width: 1920, height: 1040 } }, main = { workArea: { x: 0, y: 0, width: 1920, height: 1040 } };
+  const pet = { x: -240, y: 600, width: 240, height: 230 }; const r = Q.placeQuickWindow(pet, bar, Q.pickWorkArea(pet, [left, main])); assert.ok(r.x >= -1920 && r.x + r.width <= 0, '왼쪽 모니터 안');
+});
+t('호버 스파클: 3~5개, 약 0.6초, 아이콘당 쿨다운 400ms, 동시 상한, 위치·크기·방향 범위', () => {
+  assert.deepStrictEqual([...M.SPARKLE_COUNT], [3, 5]); assert.strictEqual(M.SPARKLE_LIFETIME_MS, 600); assert.strictEqual(M.SPARKLE_COOLDOWN_MS, 400); assert.ok(M.SPARKLE_MAX_LIVE >= 10 && M.SPARKLE_MAX_LIVE <= 40);
+  let seed = 7; const rand = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const counts = new Set();
+  for (let i = 0; i < 400; i++) {
+    const b = M.sparkleBurst(100, 50, rand); counts.add(b.length); assert.ok(b.length >= 3 && b.length <= 5);
+    for (const s of b) { assert.strictEqual(s.x, 100); assert.strictEqual(s.y, 50); assert.ok(s.size >= 6 && s.size <= 10, `크기 ${s.size}`); assert.ok(Math.hypot(s.dx, s.dy + 4) <= 32 + 1.5 && Math.hypot(s.dx, s.dy + 4) >= 16 - 1.5, '거리'); assert.ok(Math.abs(s.rot) <= 60 && s.delay >= 0 && s.delay <= 90); }
+  }
+  assert.deepStrictEqual([...counts].sort(), [3, 4, 5], '3·4·5개가 모두 나온다');
+  assert.strictEqual(M.sparkleBurst(0, 0, rand, 4).length, 4);
+  const edge = M.sparkleEdgeBurst({ left: 20, top: 30, width: 300, height: 56 }, rand); assert.ok(edge.length >= 3 && edge.length <= 5);
+  assert.ok(edge.some(s => s.x < 60) && edge.some(s => s.x > 280), '바의 왼쪽·오른쪽 끝 가까이'); for (const s of edge) assert.ok(s.y >= 30 && s.y <= 86, '바 높이 안');
+  // 쿨다운(아이콘당 400ms)
+  assert.ok(M.canSparkle(undefined, 1000)); assert.ok(!M.canSparkle(1000, 1399)); assert.ok(M.canSparkle(1000, 1400)); assert.ok(M.canSparkle(1000, 5000));
+  let last; let fired = 0; for (let t0 = 0; t0 < 10000; t0 += 50) { if (M.canSparkle(last, t0)) { last = t0; fired++; } } assert.strictEqual(fired, 25, '연속 호버를 10초 해도 아이콘당 초당 2.5번(400ms)을 넘지 않는다');
+  // 동시 상한
+  assert.strictEqual(M.sparkleRoom(0, 5), 5); assert.strictEqual(M.sparkleRoom(M.SPARKLE_MAX_LIVE - 2, 5), 2); assert.strictEqual(M.sparkleRoom(M.SPARKLE_MAX_LIVE, 5), 0); assert.strictEqual(M.sparkleRoom(M.SPARKLE_MAX_LIVE + 3, 5), 0);
+});
+t('스파클·바 연결(정적 확인): rAF 루프 없음, 호버 이벤트에서 추가하고 animationend에서 제거, 움직임 줄이기 생략, 닫히면 즉시 정리, 별 모양·색·글로우, 아이콘 20ms 간격 등장, 열림 200ms(튕김 3px 이내)', () => {
+  const page = read('src/pages/QuickPage.tsx'), css = read('src/styles/quick.css');
+  assert.ok(/onMouseEnter=\{\(ev\) => \{ if \(isBar\) sparkIcon\(e\.id, ev\.currentTarget\); \}\}/.test(page) && /onMouseEnter=\{sparkBarEnter\}/.test(page), '아이콘 호버·바 진입');
+  assert.ok(/addEventListener\('animationend', remove, \{ once: true \}\)/.test(page) && /el\.remove\(\)/.test(page), 'animationend에서 제거');
+  assert.ok(/prefers-reduced-motion: reduce\)'\)\.matches\) return;/.test(page) && /\.qk-sparks \{ display: none; \}/.test(css), '움직임 줄이기에서는 생략');
+  assert.ok(/useEffect\(\(\) => \{ if \(closing\) clearSparks\(\); \}, \[closing, clearSparks\]\)/.test(page) && /layer\.textContent = ''/.test(page), '닫히면 남은 입자 즉시 정리');
+  assert.ok(/sparkleRoom\(layer\.childElementCount, list\.length\)/.test(page) && /canSparkle\(sparkLastRef\.current\[key\], now, SPARKLE_COOLDOWN_MS\)/.test(page));
+  assert.ok(!/setInterval\(|requestAnimationFrame\(\s*function/.test(page.replace(/const id = requestAnimationFrame\(\(\) => \{[\s\S]*?\}\);\s*return \(\) => cancelAnimationFrame\(id\);/, '')), 'rAF 루프 없음(포커스용 한 번뿐)');
+  assert.ok(/clip-path: polygon\(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%\)/.test(css) && /\.qk-spark::before \{[^}]*background: var\(--quick-bar-fg\)/.test(css) && /drop-shadow\(0 0 3px var\(--quick-spark-glow\)\)/.test(css), '랜딩과 같은 4갈래 별, 현재 모드의 아이콘 색, 글로우');
+  assert.ok(!/\.qk-spark[^{]*\{[^}]*(#fff|white)/i.test(css), '라이트 바에서 보이지 않는 흰색을 따로 쓰지 않는다');
+  assert.ok(/qk-ico-in 200ms var\(--quick-ease\) calc\(var\(--i, 0\) \* 20ms \+ 40ms\)/.test(css) && /style=\{cssVars\(\{ '--i': String\(i\) \}\)\}/.test(page), '아이콘이 왼쪽부터 20ms 간격');
+  assert.ok(/animation: qk-bar-in 200ms/.test(css) && /scaleX\(0\.7\)/.test(css) && /scaleX\(1\.008\)/.test(css), '열림 200ms, 0.7→1, 살짝 튕김');
+  assert.ok(/animation: qk-bar-out 150ms ease-in both/.test(css), '닫힘 150ms');
+  assert.ok(/flex-wrap: wrap/.test(css) && /max-width: var\(--qk-maxw, 560px\)/.test(css) && /border-radius: 999px/.test(css), '완전한 알약, 폭 넘으면 줄바꿈');
 });
 t('키보드 이동: 호·바는 한 줄 순서라 좌우·상하 모두 앞뒤 한 칸, 끝에서는 멈추고 Home/End', () => {
   assert.strictEqual(M.moveQuickFocus(0, 'ArrowRight', 4), 1); assert.strictEqual(M.moveQuickFocus(3, 'ArrowRight', 4), 3);
@@ -234,7 +290,7 @@ t('연결: 우클릭 → 퀵 메뉴, 종료는 정상 종료 경로(requestQuit:
   assert.ok(/ipcMain\.on\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main));
   assert.ok(/if \(action === 'quit'\) \{ requestQuit\(\); return; \}/.test(main));
   assert.ok(/quitTimer = setTimeout\(\(\) => app\.exit\(0\), QUIT_TIMEOUT_MS\)/.test(main) && /QUIT_TIMEOUT_MS = 2000/.test(main) && /app\.quit\(\)/.test(main), '정상 종료를 먼저, 2초 안에 안 끝나면 강제');
-  assert.ok(/const fromQuick = \(e\) =>/.test(main) && (main.match(/fromQuick\(e\)/g) || []).length === 6, '닫기·첫 알림·카드·크기·알람 읽기·동작 6곳 모두 퀵 창이 보낸 것인지 확인');
+  assert.ok(/const fromQuick = \(e\) =>/.test(main) && (main.match(/fromQuick\(e\)/g) || []).length === 7, '닫기·첫 알림·영역·카드·크기·알람 읽기·동작 7곳 모두 퀵 창이 보낸 것인지 확인');
   assert.ok(/win\.on\('blur'/.test(main) && /closeQuickMenu\(\)/.test(main), '포커스를 잃으면 닫힘');
   assert.ok(/if \(quickWindow && !quickWindow\.isDestroyed\(\)\) return;/.test(main.slice(main.indexOf('function startAlwaysOnTopKeepAlive'), main.indexOf('function stopAlwaysOnTopKeepAlive'))), '퀵 메뉴가 열려 있는 동안 항상 위 재설정은 쉰다(맥에서 포커스를 가져가 메뉴가 닫히는 문제)');
   assert.ok(/quickWindow = null;/.test(main.slice(main.indexOf('function finishQuit'), main.indexOf('function requestQuit'))), '종료 때 퀵 창도 정리');

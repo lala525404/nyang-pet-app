@@ -9,7 +9,9 @@ html:has(.qk-root), html:has(.qk-root) body, html:has(.qk-root) #root { backgrou
   --quick-bar-fg: #111111;
   --quick-bar-border: rgba(17, 17, 17, 0.12);
   --quick-bar-hover: rgba(17, 17, 17, 0.08);
-  --quick-shadow: 0 6px 18px rgba(17, 17, 17, 0.14), 0 1px 3px rgba(17, 17, 17, 0.1);
+  --quick-shadow: 0 1px 2px rgba(17, 17, 17, 0.06), 0 10px 30px rgba(17, 17, 17, 0.1);   /* 랜딩 인트로의 그림자(얇은 것 + 넓게 번지는 것) */
+  --quick-spark-glow: rgba(17, 17, 17, 0.28);   /* 스파클의 은은한 글로우 */
+  --quick-ease: cubic-bezier(0.23, 1, 0.32, 1);   /* 랜딩과 같은 이징 */
   --quick-confirm: #e5484d;   /* 종료 확인 단계에서만 쓰는 붉은색(이 한 곳만 색 허용) */
   position: relative; color: var(--quick-bar-fg); user-select: none;
   font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
@@ -21,10 +23,13 @@ html[data-theme="dark"] .qk-root {
   --quick-bar-fg: #ffffff;
   --quick-bar-border: rgba(255, 255, 255, 0.16);
   --quick-bar-hover: rgba(255, 255, 255, 0.14);
-  --quick-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --quick-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.5);
+  --quick-spark-glow: rgba(255, 255, 255, 0.4);
   color-scheme: dark;
 }
 .qk-root :focus-visible { outline: 2px solid var(--quick-bar-fg); outline-offset: 2px; }   /* 포커스 링은 현재 모드의 아이콘 색 */
+.qk-root:not([data-kbd]) .qk-face:focus-visible, .qk-root:not([data-kbd]) .qk-iconbtn:focus-visible { outline: none; }   /* 마우스로 열었을 때는 링을 숨긴다(키보드를 누르면 나타난다) */
+.qk-bar .qk-face:focus-visible { outline-offset: 0; }
 .qk-i { width: 20px; height: 20px; flex: none; }
 
 /* ── 원형 버튼(호와 알약 바가 함께 쓴다) ── */
@@ -97,7 +102,7 @@ html[data-theme="dark"] .qk-root {
 
 /* ── 카드(날씨·알람): 호 바깥쪽에 붙는다. 배경은 버튼과 같은 색, 글자는 반대색, 강조는 굵기·불투명도로만 ── */
 .qk-card {
-  position: absolute; width: 320px; box-sizing: border-box; padding: 14px; border-radius: 20px;
+  position: absolute; width: 320px; box-sizing: border-box; padding: 14px; border-radius: 16px;   /* 랜딩·앱의 패널 반경(16px)과 같은 비율 */
   background: var(--quick-bar-bg); color: var(--quick-bar-fg); border: 1px solid var(--quick-bar-border); box-shadow: var(--quick-shadow);
   display: flex; flex-direction: column; gap: 12px; pointer-events: auto;
   animation: qk-card-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
@@ -161,10 +166,16 @@ html[data-theme="dark"] .qk-root {
 .qk-alarms li[data-next] .qk-al-time, .qk-alarms li[data-next] .qk-al-title { font-weight: 800; }
 .qk-alarms li[data-past] { opacity: 0.4; }
 
-/* ── 알약 바(7개 이상의 대체 경로) ── */
-.qk-root[data-mode="bar"] { width: max-content; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.qk-bar { display: flex; align-items: center; gap: var(--qk-gap, 6px); padding: 5px; border-radius: 999px; background: var(--quick-bar-bg); border: 1px solid var(--quick-bar-border); box-shadow: var(--quick-shadow); }
+/* ── 알약 바(기본 배치) ──
+   랜딩 인트로의 칩과 같은 가족: 완전한 알약(999px), 1px 테두리, 얇은+넓은 이중 그림자, Pretendard, 같은 이징, 눌리면 살짝 작아짐.
+   바 바깥 24px는 그림자·스파클이 잘리지 않게 하는 투명 여백(클릭은 바·카드 위에서만 받는다). 화면 폭(--qk-maxw)을 넘으면 두 줄로 줄바꿈 */
+.qk-root[data-mode="bar"] { width: max-content; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.qk-bar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; row-gap: 4px; gap: var(--qk-gap, 6px); max-width: var(--qk-maxw, 560px); padding: 6px; border-radius: 999px; background: var(--quick-bar-bg); border: 1px solid var(--quick-bar-border); box-shadow: var(--quick-shadow); }
+.qk-bar[data-rows="2"], .qk-bar[data-rows="3"] { border-radius: 30px; }
 .qk-slot { display: inline-flex; align-items: center; gap: var(--qk-gap, 6px); }
+.qk-root[data-mode="bar"]:not([data-open]) .qk-slot { opacity: 0; }
+.qk-root[data-mode="bar"][data-open]:not([data-closing]) .qk-slot { animation: qk-ico-in 200ms var(--quick-ease) calc(var(--i, 0) * 20ms + 40ms) both; }   /* 왼쪽부터 20ms 간격으로 살짝 올라오며 나타난다 */
+@keyframes qk-ico-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .qk-bar .qk-face { border-color: transparent; background: transparent; box-shadow: none; }
 @media (hover: hover) and (pointer: fine) { .qk-bar .qk-face:hover { box-shadow: inset 0 0 0 44px var(--quick-bar-hover); } }
 .qk-bar .qk-face[data-active] { box-shadow: inset 0 0 0 44px var(--quick-bar-hover); }
@@ -172,13 +183,26 @@ html[data-theme="dark"] .qk-root {
 .qk-sep { width: 1px; height: 22px; background: var(--quick-bar-border); }   /* 종료 앞의 얇은 구분선 */
 .qk-root[data-mode="bar"][data-side="above"] .qk-bar { transform-origin: 50% 100%; }
 .qk-root[data-mode="bar"][data-side="below"] .qk-bar { transform-origin: 50% 0; }
-.qk-root[data-mode="bar"][data-open]:not([data-closing]) .qk-bar { animation: qk-bar-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+.qk-root[data-mode="bar"][data-open]:not([data-closing]) .qk-bar { animation: qk-bar-in 200ms var(--quick-ease) both; }   /* 펫 쪽에서 가로로 펼쳐지고, 끝에서 3px 이내로 살짝 튕긴다 */
 .qk-root[data-mode="bar"][data-closing] .qk-bar { animation: qk-bar-out 150ms ease-in both; }
-@keyframes qk-bar-in { from { opacity: 0; transform: scaleX(0.7); } to { opacity: 1; transform: none; } }
+.qk-root[data-mode="bar"][data-closing] .qk-slot { animation: none; }
+@keyframes qk-bar-in { 0% { opacity: 0; transform: scaleX(0.7); } 72% { opacity: 1; transform: scaleX(1.008); } 100% { opacity: 1; transform: none; } }
 @keyframes qk-bar-out { to { opacity: 0; transform: scaleX(0.7); } }
+
+/* ── 호버 스파클("뾰로롱"): 랜딩 인트로와 같은 4갈래 별(✦). 색은 현재 모드의 아이콘 색, 은은한 글로우. 입자는 JS가 더하고 animationend에서 지운다 ── */
+.qk-sparks { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: visible; }
+.qk-spark { position: absolute; display: block; opacity: 0; pointer-events: none; will-change: transform, opacity; filter: drop-shadow(0 0 3px var(--quick-spark-glow)); animation: qk-spark 600ms var(--delay, 0ms) var(--quick-ease) both; }
+.qk-spark::before { content: ""; position: absolute; inset: 0; background: var(--quick-bar-fg); clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }   /* 별 모양은 안쪽에서 자른다(글로우가 잘리지 않게) */
+@keyframes qk-spark {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.3); }
+  20% { opacity: 0.9; transform: translate(calc(var(--dx) * 0.35), calc(var(--dy) * 0.35)) rotate(calc(var(--rot) * 0.3)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.4); }
+}
 
 /* 움직임 줄이기: 모션 없이 최종 위치에 바로 보인다 */
 @media (prefers-reduced-motion: reduce) {
   .qk-root *, .qk-root *::before { animation: none !important; transition: none !important; }
   .qk-root[data-mode="arc"]:not([data-open]) .qk-fb { opacity: 1; }
+  .qk-root[data-mode="bar"]:not([data-open]) .qk-slot { opacity: 1; }
+  .qk-sparks { display: none; }
 }

@@ -37,7 +37,12 @@ function clampQuickSize(w, h) {
 }
 const clampCard = (w, h) => (isNum(w) && isNum(h) && w > 0 && h > 0 ? { w: clampN(Math.round(w), 100, CARD_MAX.w), h: clampN(Math.round(h), 40, CARD_MAX.h) } : null);
 
-const modeFor = (count) => (count > ARC_MAX ? 'bar' : 'arc');
+// 퀵 메뉴의 기본 배치. 'bar'(가로 알약 바)가 기본이다. 'radial'(방사형으로 쏟아지는 호)은 코드에 남겨 두었고 이 상수만 바꾸면 전환된다(설정 UI에는 노출하지 않는다).
+// 호 배치는 6개까지이고 그보다 많으면 바로 바뀐다.
+const QUICK_MENU_LAYOUT = 'bar';
+const modeFor = (count, layout = QUICK_MENU_LAYOUT) => (layout === 'radial' && count <= ARC_MAX ? 'arc' : 'bar');
+// 바가 한 줄로 쓸 수 있는 최대 폭: 작업 영역 폭에서 양쪽 여백을 뺀 값(넘으면 CSS가 두 줄로 줄바꿈한다)
+const barMaxWidth = (work) => Math.max(160, Math.round(work.width - 2 * 12));
 
 // 호가 벌어지는 각도(도): 4개 180, 5개 210, 6개 240(많을수록 넓힌다)
 function arcSpanDeg(n) { return n <= 1 ? 0 : n === 2 ? 60 : n === 3 ? 120 : n === 4 ? 180 : n === 5 ? 210 : 240; }
@@ -201,7 +206,7 @@ function quickAlarmSettings(resolveAlarmSettings, alarmSettings) {
 }
 
 module.exports = {
-  BTN, SHADOW_PAD, CARD_GAP, ARC_MAX, RADIUS_PER_PET, HINT, DIRS, PET_WIN,
+  QUICK_MENU_LAYOUT, barMaxWidth, BTN, SHADOW_PAD, CARD_GAP, ARC_MAX, RADIUS_PER_PET, HINT, DIRS, PET_WIN,
   QUICK_W, QUICK_INITIAL_H, QUICK_MIN, QUICK_MAX, QUICK_SHOW_FALLBACK_MS, QUICK_BLUR_GRACE_MS, QUICK_CLOSE_MS, QUICK_FULL_CLICK_MS, QUICK_ACTIONS,
   clampQuickSize, clampCard, modeFor, arcSpanDeg, arcRadius, arcAngles, petCenter, chooseDirection, layoutArc,
   placeQuickWindow, pickWorkArea, isQuickAction, settingsTargetFor, sanitizeTarget, quickAlarmSettings,

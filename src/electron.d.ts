@@ -28,7 +28,7 @@ export interface QuickBox { x: number; y: number; w: number; h: number }
 export type QuickLayout =
   | { mode: 'arc'; dir: 'up' | 'down' | 'left' | 'right'; bounds: { x: number; y: number; width: number; height: number }; pet: { x: number; y: number };
       buttons: { x: number; y: number; dx: number; dy: number }[]; card: QuickBox | null; hint: QuickBox; radius: number }
-  | { mode: 'bar'; side: 'above' | 'below' };
+  | { mode: 'bar'; side: 'above' | 'below'; maxWidth?: number };
 export interface SettingsTarget { page?: 'home' | 'alarm'; focus?: 'weather-city' }
 export type QuickAlarmSettings = import('./utils/quickAlarms').QuickAlarmSettings;
 
@@ -61,6 +61,7 @@ interface ElectronAPI {
   quickClose: () => void;
   setPetRegions: (regions: unknown[]) => void;
   quickInit: (count: number) => void;
+  quickRegions: (regions: unknown[]) => void;
   quickCard: (size: { width: number; height: number } | null) => void;
   quickResize: (width: number, height: number) => void;
   onQuickLayout: (cb: (layout: QuickLayout) => void) => () => void;

@@ -81,6 +81,21 @@ t('퀵 메뉴: 호 모드에서는 버튼(원)과 카드 위에서만 받고 버
   assert.ok(Q.QUICK_FULL_CLICK_MS >= 500 && Q.QUICK_FULL_CLICK_MS <= 1000, '열림 모션 동안은 창 전체가 받는다(안착 전에도 누를 수 있음)');
 });
 
+t('퀵 메뉴 바 모드: 렌더러가 알려 준 바·카드 사각형 위에서만 받고(투명 여백 24px는 통과), 열림 직후에는 창 전체가 받는다. 연결(정적 확인)', () => {
+  const bar = { kind: 'rect', x: 24, y: 24, w: 300, h: 56 }, card = { kind: 'rect', x: 24, y: 90, w: 320, h: 400 };
+  const regions = CT.sanitizeRegions([bar, card]); assert.strictEqual(regions.length, 2);
+  const win = { x: 600, y: 200, width: 372, height: 520 }; const cur = (dx, dy) => ({ x: win.x + dx, y: win.y + dy });
+  const st = (dx, dy, prev) => CT.step(prev || { interactive: false, miss: 0 }, { cursor: cur(dx, dy), bounds: win, regions });
+  assert.strictEqual(st(100, 50).interactive, true, '바 위'); assert.strictEqual(st(100, 200).interactive, true, '카드 위');
+  assert.strictEqual(st(8, 8).interactive, false, '바 바깥 투명 여백'); assert.strictEqual(st(350, 50).interactive, false, '바 오른쪽 여백'); assert.strictEqual(st(100, 500).interactive, false, '카드 아래 여백');
+  assert.strictEqual(st(324, 50).interactive, true, '바 오른쪽 경계'); assert.strictEqual(st(325, 50).interactive, false, '경계 1px 밖');
+  const main = read('main.cjs'), page = read('src/pages/QuickPage.tsx'), pre = read('preload.cjs');
+  assert.match(main, /ipcMain\.on\('quick-regions', \(e, list\) => \{\s*if \(!fromQuick\(e\) \|\| !quickState \|\| quickState\.mode !== 'bar'\) return;/);
+  assert.match(main, /quickState\.regions = r && r\.length \? r : null;/); assert.match(pre, /quickRegions:\s*\(regions\) => ipcRenderer\.send\('quick-regions', regions\)/);
+  assert.match(page, /for \(const sel of \['\.qk-bar', '\.qk-card'\]\)/); assert.match(page, /api\(\)\?\.quickRegions\(list\)/);
+  assert.ok(Q.QUICK_FULL_CLICK_MS > 0, '열림 직후 전체 클릭');
+});
+
 // ── 비상 스위치·초집중 모드 ───────────────────────────────────────────────────
 t('비상 스위치: CHOEAE_DISABLE_CLICKTHROUGH=1(또는 true)이면 꺼진다. 기본(없음·0·빈 값)은 켜짐', () => {
   for (const v of ['1', 'true', 'TRUE']) assert.strictEqual(CT.isEnabled({ CHOEAE_DISABLE_CLICKTHROUGH: v }), false, v);

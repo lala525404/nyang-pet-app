@@ -791,7 +791,7 @@ function placeQuick(size) {
   const { pet, work } = quickWork();
   const p = quickMenu.placeQuickWindow(pet, size, work);
   quickWindow.setBounds({ x: p.x, y: p.y, width: p.width, height: p.height });
-  try { quickWindow.webContents.send('quick-layout', { mode: 'bar', side: p.side }); } catch {}
+  try { quickWindow.webContents.send('quick-layout', { mode: 'bar', side: p.side, maxWidth: quickMenu.barMaxWidth(work) }); } catch {}
 }
 // 호 모드: 펫 중심에서 호와 카드를 계산해 창을 놓고, 버튼 좌표를 렌더러에 보낸다
 function layoutQuickArc() {
@@ -851,7 +851,15 @@ ipcMain.on('quick-init', (e, info) => {
   if (quickState.mode === 'arc') {
     layoutQuickArc();
     setTimeout(() => { if (quickWindow && quickState) showQuick(); }, 40);   // 렌더러가 좌표를 그린 뒤에 보여 준다
+  } else {   // 바: 렌더러가 바를 그리고 크기를 알려 오면(quick-resize) 그때 놓고 보여 준다
+    try { quickWindow.webContents.send('quick-layout', { mode: 'bar', side: 'above', maxWidth: quickMenu.barMaxWidth(quickWork().work) }); } catch {}
   }
+});
+// 바 모드: 렌더러가 바·카드의 사각형(창 안 좌표)을 알려 준다 → 클릭 통과 영역(버튼이 있는 바와 카드 위에서만 클릭을 받는다)
+ipcMain.on('quick-regions', (e, list) => {
+  if (!fromQuick(e) || !quickState || quickState.mode !== 'bar') return;
+  const r = clickThroughOn ? clickThrough.sanitizeRegions(list) : null;
+  quickState.regions = r && r.length ? r : null;
 });
 // 호 모드: 카드(날씨·알람)가 열리고 닫힐 때 크기를 알린다(null이면 카드 없음)
 ipcMain.on('quick-card', (e, size) => {
