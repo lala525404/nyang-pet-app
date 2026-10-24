@@ -10,7 +10,8 @@ const A = require('../alarms.cjs');
 const settingsTs = load('src/utils/settings.ts');
 const sched = load('src/utils/alarmSchedule.ts', { './settings': settingsTs });
 const text = load('src/utils/alarmText.ts', { './settings': settingsTs });
-const P = load('src/utils/alarmCommand.ts', { './alarmSchedule': sched });
+const WOM = load('src/utils/weekOfMonth.ts', { './alarmSchedule': sched });
+const P = load('src/utils/alarmCommand.ts', { './alarmSchedule': sched, './weekOfMonth': WOM });
 const CH = load('src/utils/alarmChat.ts', { './alarmSchedule': sched, './alarmText': text, './alarmCommand': P });
 const QA = load('src/utils/quickAlarms.ts', { './alarmSchedule': sched, './alarmText': text });
 const FFFD = String.fromCharCode(0xFFFD);
@@ -87,6 +88,60 @@ row('다음 주 알람 알려줘', wk('2026-12-28', '다음 주'), D(2026, 12, 2
 row('다음 주 알람 알려줘', wk('2027-01-04', '다음 주'), D(2026, 12, 31, 9, 0));
 row('이번 주 알람 알려줘', wk('2026-12-28', '이번 주'), NOW_DEC31);
 row('이번 주 알람 알려줘', wk('2028-02-28', '이번 주'), NOW_LEAP);                    // 윤년: 2/28(월)~3/5(일)에 2/29가 든다
+// "N월 N주차": 주는 월~일, 그 주의 목요일이 든 달의 주. 1주차 = 그 달 첫 목요일이 든 주(2026-10-24 기준 올해)
+row('11월 2주차 알람', wk('2026-11-09', '11월 2주차'));
+row('11월 2주차 알람 알려줘', wk('2026-11-09', '11월 2주차'));
+row('11월 둘째 주 알람 알려줘', wk('2026-11-09', '11월 2주차'));
+row('11월 둘째주 알람', wk('2026-11-09', '11월 2주차'));
+row('11월 첫째 주 알람', wk('2026-11-02', '11월 1주차'));
+row('11월 첫 주 알람', wk('2026-11-02', '11월 1주차'));
+row('11월 셋째 주 알람', wk('2026-11-16', '11월 3주차'));
+row('11월 넷째 주 알람', wk('2026-11-23', '11월 4주차'));
+row('11월 마지막 주 알람', wk('2026-11-23', '11월 4주차'));
+row('11월 마지막주 알람 알려줘', wk('2026-11-23', '11월 4주차'));
+row('12월 다섯째 주 알람', wk('2026-12-28', '12월 5주차'));
+row('12월 5주차 알람', wk('2026-12-28', '12월 5주차'));
+row('12월 마지막 주 알람', wk('2026-12-28', '12월 5주차'));            // 12/28(월)~1/3(일): 해를 넘는 주
+row('12월 1주차 알람', wk('2026-11-30', '12월 1주차'));                // 11/30(월)~12/6(일): 앞 달 날짜를 포함
+row('1월 1주차 알람', wk('2025-12-29', '1월 1주차'));                  // 12/29(월)~1/4(일)
+row('1월 5주차 알람', wk('2026-01-26', '1월 5주차'));
+row('5월 1주차 알람', wk('2026-05-04', '5월 1주차'));                  // 5/1(금)이 든 주(4/27~5/3)는 4월 5주차
+row('4월 5주차 알람', wk('2026-04-27', '4월 5주차'));
+row('3월 1주차 알람', wk('2026-03-02', '3월 1주차'));                  // 3/1(일)이 든 주는 2월 4주차
+row('4월 1주차 알람', wk('2026-03-30', '4월 1주차'));                  // 3/31(화)이 든 주는 4월 1주차
+row('이번 달 2주차 알람', wk('2026-10-05', '10월 2주차'));
+row('이번 달 2주차', wk('2026-10-05', '10월 2주차'));                  // 알람이라는 말이 없어도 조회
+row('이번달 둘째 주 알람 알려줘', wk('2026-10-05', '10월 2주차'));
+row('이달 마지막 주 알람', wk('2026-10-26', '10월 5주차'));
+row('2주차 알람', wk('2026-10-05', '10월 2주차'));                     // 월 생략 → 이번 달
+row('2주차 알람 알려줘', wk('2026-10-05', '10월 2주차'));
+row('마지막 주 알람', wk('2026-10-26', '10월 5주차'));
+row('다음 달 2주차 알람', wk('2026-11-09', '11월 2주차'));
+row('11월 2주차 화요일 알람', { kind: 'query', date: '2026-11-10' });     // 요일이 붙으면 그 하루만
+row('11월 첫째 주 화요일 알람 알려줘', { kind: 'query', date: '2026-11-03' });
+row('11월 2주차 일요일 알람', { kind: 'query', date: '2026-11-15' });
+row('11월 2주차 월요일 알람', { kind: 'query', date: '2026-11-09' });
+row('11월 2주차 일정', wk('2026-11-09', '11월 2주차'));                // '일정'의 '일'은 요일이 아니다
+row('1주차 알람', wk('2026-09-28', '10월 1주차'));                     // 지난 주차도 조회할 수 있다(지난 알람은 흐리게)
+row('11월 5주차 알람', rej('query', '11월은 4주차까지 있어요'));            // 존재하지 않는 주차
+row('11월 다섯째 주 알람', rej('query', '11월은 4주차까지 있어요'));
+row('11월 6주차 알람', rej('query', '11월은 4주차까지 있어요'));
+row('11월 0주차 알람', rej('query', '11월은 4주차까지 있어요'));
+row('2월 5주차 알람', rej('query', '2월은 4주차까지 있어요'));
+row('6월 5주차 알람', rej('query', '6월은 4주차까지 있어요'));
+row('13월 2주차 알람', rej('query', '그런 날짜는 없어요'));
+row('0월 2주차 알람', rej('query', '그런 날짜는 없어요'));
+row('2027년 11월 2주차 알람', rej('query', '올해 안의 날짜만 말할 수 있어요'));
+row('2025년 11월 2주차 알람', rej('query', '지난 날짜예요'));
+row('2026년 11월 2주차 알람', wk('2026-11-09', '11월 2주차'));
+row('11월 2주차 알람 만들어줘', rej('create', '주차는 알람 조회에서만 쓸 수 있어요. 날짜나 요일로 말해 주세요'));   // 주차는 조회만
+row('11월 2주차 알람 취소해줘', rej('cancel', '주차는 알람 조회에서만 쓸 수 있어요. 날짜나 요일로 말해 주세요'));
+row('2주차 월요일 오후 3시 알람 만들어줘', rej('create', '주차는 알람 조회에서만 쓸 수 있어요. 날짜나 요일로 말해 주세요'));
+row('2주 뒤 오후 3시 알람 만들어줘', create('2026-11-07', '15:00'));        // "2주 뒤"는 주차가 아니다
+row('2주 뒤 알람 알려줘', { kind: 'query', date: '2026-11-07' });
+row('2주차', { kind: 'unknown' });                                       // 알람·월 말이 없으면 주차 숫자만으로는 반응하지 않는다
+row('이번 주말 알람', { kind: 'query', date: '2026-10-24' });
+row('11월 둘째 주말 알람', { kind: 'query', date: '2026-10-24' });          // 주말은 주차가 아니다(기존 주말 표현)
 row('다음 주 월요일 알람 만들어줘 오후 3시', create('2026-10-26', '15:00'), NOW_SUN);   // 일요일 기준 "다음 주"는 내일(월)
 row('이번 주 일요일 오후 3시 알람 만들어줘', create('2026-10-25', '15:00'), NOW_SUN);
 row('이번 주 월요일 오후 3시 알람 만들어줘', rej('create', '지난 날짜예요'), NOW_SUN);
@@ -444,6 +499,64 @@ t('더보기: 설정창 알람 캘린더를 그 주로 옮겨 연다(검증된 �
   assert.match(pane, /setFocus\(\{ date: parseYmd\(gotoWeek\.start\), n: Date\.now\(\) \}\)/);
   assert.ok(/openSettingsTo\(target\)[\s\S]*?settings-goto/.test(main), '이미 열린 창에는 settings-goto로 바로 보낸다');
   assert.strictEqual(CH.EXAMPLES[2], '다음 주 알람 알려줘');
+});
+// 2026년 월별 주차 날짜 범위(월~일). 기준: 주는 월요일 시작, 그 주의 목요일이 든 달의 주, 그 달 첫 목요일이 든 주가 1주차
+const R26 = (...ranges) => ranges.map((r) => r.split('~').map((p) => (/^\d{4}/.test(p) ? p : `2026-${p}`)).join('~'));   // 연도를 안 쓴 날짜는 2026
+const RANGES_2026 = {
+  1: R26('2025-12-29~01-04', '01-05~01-11', '01-12~01-18', '01-19~01-25', '01-26~02-01'),
+  2: R26('02-02~02-08', '02-09~02-15', '02-16~02-22', '02-23~03-01'),
+  3: R26('03-02~03-08', '03-09~03-15', '03-16~03-22', '03-23~03-29'),
+  4: R26('03-30~04-05', '04-06~04-12', '04-13~04-19', '04-20~04-26', '04-27~05-03'),
+  5: R26('05-04~05-10', '05-11~05-17', '05-18~05-24', '05-25~05-31'),
+  6: R26('06-01~06-07', '06-08~06-14', '06-15~06-21', '06-22~06-28'),
+  7: R26('06-29~07-05', '07-06~07-12', '07-13~07-19', '07-20~07-26', '07-27~08-02'),
+  8: R26('08-03~08-09', '08-10~08-16', '08-17~08-23', '08-24~08-30'),
+  9: R26('08-31~09-06', '09-07~09-13', '09-14~09-20', '09-21~09-27'),
+  10: R26('09-28~10-04', '10-05~10-11', '10-12~10-18', '10-19~10-25', '10-26~11-01'),
+  11: R26('11-02~11-08', '11-09~11-15', '11-16~11-22', '11-23~11-29'),
+  12: R26('11-30~12-06', '12-07~12-13', '12-14~12-20', '12-21~12-27', '12-28~2027-01-03'),
+};
+t('주차 계산(2026년 매달): 1주차~마지막 주차의 날짜 범위 표, 월초가 금·토·일인 달, 월말이 월·화·수인 달, 5주차가 있는 달·없는 달', () => {
+  const fmt = (d) => sched.ymd(d), full = (s, e) => `${fmt(s)}~${fmt(e)}`;
+  for (let m = 1; m <= 12; m++) {
+    const want = RANGES_2026[m], got = [];
+    assert.strictEqual(WOM.weeksInMonth(2026, m), want.length, `${m}월 주 수`);
+    for (let n = 1; n <= want.length; n++) { const s = WOM.weekOfMonthStart(2026, m, n); got.push(full(s, sched.addDays(s, 6))); }
+    assert.deepStrictEqual(got, want, `${m}월`);
+  }
+  assert.strictEqual(WOM.weekOfMonthStart(2026, 11, 5), null); assert.strictEqual(WOM.weekOfMonthStart(2026, 11, 0), null); assert.strictEqual(WOM.weekOfMonthStart(2026, 12, 6), null); assert.strictEqual(WOM.weekOfMonthStart(2026, 11, 1.5), null);
+  assert.strictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].reduce((a, m) => a + WOM.weeksInMonth(2026, m), 0), 53, '2026년은 ISO 기준 53주');
+});
+t('주차 계산: 이어지는 주(빈틈·겹침 없음), 역방향 일치, 여러 해(윤년 포함), 기준 상수', () => {
+  assert.deepStrictEqual({ ...WOM.WEEK_BASIS }, { weekStartsOn: 1, anchorWeekday: 4 }, '기준은 상수 한 곳(월요일 시작, 목요일이 든 달)');
+  for (const y of [2024, 2025, 2026, 2027, 2028, 2032]) {
+    let prev = null, total = 0;
+    for (let m = 1; m <= 12; m++) {
+      const c = WOM.weeksInMonth(y, m); assert.ok(c === 4 || c === 5, `${y}-${m}: ${c}`); total += c;
+      for (let n = 1; n <= c; n++) {
+        const s = WOM.weekOfMonthStart(y, m, n); assert.strictEqual(s.getDay(), 1, '월요일 시작');
+        if (prev) assert.strictEqual(Math.round((s - prev) / 86400000), 7, `${y}-${m}-${n}: 앞 주와 7일 간격`);
+        prev = s;
+        const back = WOM.weekOfMonthOf(sched.addDays(s, 3)); assert.deepStrictEqual([back.year, back.month, back.n], [y, m, n], '목요일 날짜로 되짚으면 같은 주차');
+        for (let k = 0; k < 7; k++) { const b = WOM.weekOfMonthOf(sched.addDays(s, k)); assert.deepStrictEqual([b.month, b.n, sched.ymd(b.start)], [m, n, sched.ymd(s)], '그 주의 어느 날이든 같은 주차'); }
+      }
+    }
+    assert.ok(total === 52 || total === 53, `${y}년 ${total}주`);
+  }
+  assert.strictEqual(WOM.weeksInMonth(2028, 2), 4); assert.strictEqual(sched.ymd(WOM.weekOfMonthStart(2028, 2, 4)), '2028-02-21');   // 윤년 2월(2/29 포함)
+  assert.strictEqual(sched.ymd(WOM.weekOfMonthStart(2027, 1, 1)), '2027-01-04', '2026-12-28~2027-01-03은 12월 5주차이므로 2027년 1월 1주차는 1/4');
+  const nov = WOM.weekOfMonthOf(D(2026, 11, 1)); assert.deepStrictEqual([nov.month, nov.n], [10, 5], '11/1(일)은 10월 5주차(10/26~11/1)');
+});
+t('주 조회 카드 머리글: 이번 주·다음 주·N월 N주차 모두 같은 형식', () => {
+  assert.strictEqual(QA.weekTitle('11월 2주차', D(2026, 11, 9)), '11월 2주차 · 11/9(월)~11/15(일)');
+  assert.strictEqual(QA.weekTitle('12월 5주차', D(2026, 12, 28)), '12월 5주차 · 12/28(월)~1/3(일)');
+  assert.strictEqual(QA.weekTitle('1월 1주차', D(2025, 12, 29)), '1월 1주차 · 12/29(월)~1/4(일)');
+  assert.strictEqual(QA.noWeekAlarmText('11월 2주차'), '11월 2주차에 직접 설정한 알람이 없어요');
+  const hit = P.parseAlarmCommand('11월 2주차 알람', NOW); const s = { lunchOn: true, leaveOn: true, lunchTime: '12:00', leaveTime: '18:00', alarms: [al('a', '09:00', { repeat: { kind: 'weekly', days: [1] } })] };
+  const l = QA.weekAlarmList(s, NOW, D(2026, 11, 9)); assert.strictEqual(l.length, 1); assert.ok(!l[0].past && !l[0].next, '미래 주: 지남·다음 표시 없음');
+  assert.strictEqual(hit.week.start, '2026-11-09', '더보기는 해석한 주(11/9)로 캘린더를 옮긴다');
+  const past = QA.weekAlarmList(s, NOW, D(2026, 9, 28)); assert.ok(past.length === 1 && past[0].past, '지난 주차도 조회되고 지난 알람은 흐리게');
+  const page = read('src/utils/weekOfMonth.ts'); assert.ok(!page.includes(FFFD) && !/\?{3}/.test(page));
 });
 
 (async () => { let fail = 0; for (const [name, fn] of queue) { try { await fn(); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + (e && e.message)); } } if (fail) { console.log(`\n${fail}개 실패 / ${queue.length}개`); process.exit(1); } console.log(`  ok  알람 대화 ${queue.length}개 검사(해석 사례 ${cases.length}개 포함)\n\n${queue.length}개 통과`); })();

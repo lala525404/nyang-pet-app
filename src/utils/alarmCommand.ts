@@ -1,4 +1,5 @@
 import { addDays, mondayOf, startOfDay, ymd } from './alarmSchedule';
+import { WEEK_BASIS, weekOfMonthStart, weeksInMonth } from './weekOfMonth';
 
 // 알람 대화: 한국어 문장 → 알람 명령(만들기·취소·조회). 규칙 기반이고 외부 연결·AI·네트워크가 없다. 순수 함수라 현재 시각(now)을 인자로 받아 시험한다(tests/alarm-command-unit.cjs).
 // 입력 문장은 이 모듈이 저장하거나 기록하지 않는다(결과 명령만 돌려준다).
@@ -21,6 +22,7 @@ export const REASON = {
   badTime: '시간을 다시 확인해 주세요',
   needWeekday: '이번 주·다음 주는 요일도 같이 말해 주세요',
   thisYearOnly: '올해 안의 날짜만 말할 수 있어요',
+  weekQueryOnly: '주차는 알람 조회에서만 쓸 수 있어요. 날짜나 요일로 말해 주세요',
 } as const;
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -173,6 +175,31 @@ export function matchWeekWord(text: string, now: Date): { start: string; label: 
   return { start: ymd(start), label: this_ ? '이번 주' : '다음 주' };
 }
 
+// "N월 N주차" 표현(조회 전용): 11월 2주차 · 11월 둘째 주 · 이번 달 2주차 · 2주차(이번 달) · 11월 마지막 주 · 11월 2주차 화요일(그 하루)
+// 숫자는 "주차"가 붙어야 주차로 본다("2주 뒤"와 구분). 계산 기준은 weekOfMonth.ts의 WEEK_BASIS 한 곳.
+const WOM_ORDINAL: Record<string, number> = { 첫째: 1, 첫: 1, 둘째: 2, 셋째: 3, 넷째: 4, 다섯째: 5, 마지막: -1 };
+const RE_WOM = /(?:(\d{4})\s*년\s*)?(?:(\d{1,2})\s*월\s*|(이번\s*달|이달|금월|다음\s*달|담달)\s*)?(?:(\d{1,2})\s*주\s*차|(첫째|첫|둘째|셋째|넷째|다섯째|마지막)\s*주(?:\s*차)?(?!말))/;
+export type WeekOfMonthHit = { kind: 'query'; date: string; week?: { start: string; label: string } } | { kind: 'reject'; intent: 'query'; reason: string };
+export function matchWeekOfMonth(text: string, now: Date): WeekOfMonthHit | null {
+  const m = RE_WOM.exec(text); if (!m) return null;
+  const rej = (reason: string): WeekOfMonthHit => ({ kind: 'reject', intent: 'query', reason });
+  const thisYear = now.getFullYear();
+  let year = thisYear, month = now.getMonth() + 1;
+  if (m[3]) { if (/^(다음|담)/.test(m[3])) { month += 1; if (month > 12) { month = 1; year += 1; } } }
+  else if (m[2]) month = Number(m[2]);
+  if (m[1] && Number(m[1]) !== thisYear) return rej(Number(m[1]) < thisYear ? REASON.pastDate : REASON.thisYearOnly);
+  if (year !== thisYear) return rej(REASON.thisYearOnly);
+  if (month < 1 || month > 12) return rej(REASON.noDate);
+  const count = weeksInMonth(year, month);
+  const n = m[4] ? Number(m[4]) : WOM_ORDINAL[m[5]] === -1 ? count : WOM_ORDINAL[m[5]];
+  const start = weekOfMonthStart(year, month, n);
+  if (!start) return rej(`${month}월은 ${count}주차까지 있어요`);
+  // 뒤에 요일이 붙으면 그 하루만("11월 2주차 화요일")
+  const after = text.slice(m.index + m[0].length), w = /^\s*([월화수목금토일])(?:\s*요일|\s*욜|(?![가-힣]))/.exec(after);
+  if (w) return { kind: 'query', date: ymd(addDays(start, (WEEKDAY_CHARS.indexOf(w[1]) - WEEK_BASIS.weekStartsOn + 7) % 7)) };
+  return { kind: 'query', date: ymd(start), week: { start: ymd(start), label: `${month}월 ${n}주차` } };
+}
+
 // ── 해석 ─────────────────────────────────────────────────────────────────────
 const reject = (intent: 'create' | 'cancel' | 'query', reason: string): AlarmCommand => ({ kind: 'reject', intent, reason });
 const at = (date: Date, h: number, mi: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, mi, 0, 0);
@@ -191,7 +218,13 @@ export function parseAlarmCommand(raw: unknown, now: Date): AlarmCommand {
   else if (createStrong && hasTimeWord) intent = 'create';
   else if (alarmWord && (queryWord || !hasTimeWord)) intent = 'query';
   else if (alarmWord && hasTimeWord) intent = 'create';
+  // 알람이라는 말 없이 "이번 달 2주차"·"11월 둘째 주"만 말해도 조회로 본다(월·달이 같이 있을 때만: 숫자만 있는 "2주차"는 알람 말이 있어야 한다)
+  if (!intent && !cancel && !createStrong && !createWeak && /(?:월|달)\s*(?:\d{1,2}\s*주\s*차|(?:첫째|첫|둘째|셋째|넷째|다섯째|마지막)\s*주)/.test(text)) intent = 'query';
   if (!intent) return { kind: 'unknown' };
+
+  // "N월 N주차"는 조회만 한다(만들기·지우기는 날짜나 요일로)
+  const wom = matchWeekOfMonth(text, now);
+  if (wom) return intent === 'query' ? wom : reject(intent, REASON.weekQueryOnly);
 
   const d = extractDate(text, now);
   const t = extractTime(d.rest);
