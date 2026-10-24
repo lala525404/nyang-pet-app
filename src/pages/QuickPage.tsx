@@ -12,8 +12,9 @@ import type { Sparkle } from '../utils/quickMenu';
 import { dayTitle, limitItems, noAlarmText, noWeekAlarmText, todayAlarmList, untilText, weekAlarmList, weekTitle } from '../utils/quickAlarms';
 import type { WeekAlarmItem } from '../utils/quickAlarms';
 import { parseAlarmCommand } from '../utils/alarmCommand';
-import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, newAlarmId, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
-import type { CreateCommand, Target } from '../utils/alarmChat';
+import type { Meridiem } from '../utils/alarmCommand';
+import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, meridiemQuestion, newAlarmId, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
+import type { CreateCommand, MeridiemAsk, Target } from '../utils/alarmChat';
 import { applyToStoredSettings } from '../utils/alarmStore';
 import type { Alarm } from '../utils/settings';
 import { mondayOf, parseYmd, ymd } from '../utils/alarmSchedule';
@@ -210,6 +211,7 @@ type ChatStep =
   | { s: 'input' }
   | { s: 'reject'; reason: string }
   | { s: 'unknown' }
+  | { s: 'ask'; ask: MeridiemAsk; text: string }   // 오전/오후 되묻기(문장은 화면 상태로만 보관)
   | { s: 'create'; cmd: CreateCommand }
   | { s: 'pick'; targets: Target[] }
   | { s: 'delete'; targets: Target[]; stage: 1 | 2; all: boolean }
@@ -238,8 +240,10 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
 
   const submit = () => {
     const now = new Date();
-    const cmd = parseAlarmCommand(text, now);
-    setText('');   // 제출하면 입력 문장은 바로 비운다
+    const typed = text;
+    const cmd = parseAlarmCommand(typed, now);
+    setText('');   // 제출하면 입력 칸은 바로 비운다(오전/오후를 되묻는 동안만 문장을 이 카드의 화면 상태로 들고 있고, 닫으면 사라진다. 저장·기록 없음)
+    if (cmd.kind === 'needsMeridiem') { setStep({ s: 'ask', ask: cmd, text: typed }); return; }
     if (cmd.kind === 'unknown') { setStep({ s: 'unknown' }); return; }
     if (cmd.kind === 'reject') { setStep({ s: 'reject', reason: cmd.reason }); return; }
     if (cmd.kind === 'query') { onShowDay(cmd.week ? { week: cmd.week } : { day: cmd.date }); return; }   // 조회는 기존 알람 카드를 날짜·주만 바꿔서 재사용
@@ -251,6 +255,13 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
     else setStep({ s: 'pick', targets });
   };
 
+  // 되묻기의 답: 같은 문장을 고른 오전/오후로 다시 해석한다(지난 시간이면 거절, 아니면 기존 확인 카드)
+  const answerMeridiem = (typed: string, meridiem: Meridiem) => {
+    const cmd = parseAlarmCommand(typed, new Date(), meridiem);
+    if (cmd.kind === 'create') setStep({ s: 'create', cmd });
+    else if (cmd.kind === 'reject') setStep({ s: 'reject', reason: cmd.reason });
+    else setStep({ s: 'unknown' });
+  };
   const doCreate = (cmd: CreateCommand) => {
     const [h, m] = cmd.time.split(':').map(Number);
     const day = parseYmd(cmd.date);
@@ -277,7 +288,20 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
   );
 
   let body: JSX.Element;
-  if (step.s === 'create') {
+  if (step.s === 'ask') {
+    const q = meridiemQuestion(step.ask);
+    body = (
+      <div className="qk-chat-confirm qk-chat-ask" role="group" aria-label={q.title}>
+        <p className="qk-chat-q">{q.title}</p>
+        <div className="qk-chat-choices">
+          {q.choices.map((c, i) => (
+            <button key={c.meridiem} type="button" className="qk-btn qk-btn--solid qk-chat-choice" onClick={() => answerMeridiem(step.text, c.meridiem)} data-autofocus={i === 0 ? '' : undefined} autoFocus={i === 0}>{c.label}</button>
+          ))}
+        </div>
+        <button type="button" className="qk-btn" onClick={goInput}>취소</button>
+      </div>
+    );
+  } else if (step.s === 'create') {
     const q = createQuestion(step.cmd);
     body = (
       <div className="qk-chat-confirm" role="group" aria-label={q.question}>

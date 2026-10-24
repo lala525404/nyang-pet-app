@@ -8,7 +8,8 @@ export const MAX_INPUT_CHARS = 200;   // 이보다 긴 입력은 알람 말이 �
 export const TITLE_MAX = 20;          // 알람 제목 최대 글자(이모지 1개 = 1글자)
 
 export type AlarmCommand =
-  | { kind: 'create'; date: string; time: string; title: string; ambiguous: boolean; midnight?: boolean }   // ambiguous: 오전/오후를 말하지 않아 추정한 시각
+  | { kind: 'create'; date: string; time: string; title: string; midnight?: boolean }
+  | { kind: 'needsMeridiem'; hour: number; minute: number; title: string }   // "3시"처럼 오전/오후 구분이 없는 1~12시: 짐작하지 않고 되묻는다(hour 1~12). 답은 parseAlarmCommand(원문, now, Meridiem)로 다시 해석
   | { kind: 'cancel'; all: boolean; date: string | null; time: string | null; hour12: number | null; minute: number | null; title: string }   // hour12: 오전/오후 없이 말한 시(0~11, 오전·오후 모두 해당)
   | { kind: 'query'; date: string; week?: { start: string; label: string } }   // week: 주 단위 조회(start = 그 주 월요일 YYYY-MM-DD, label = "이번 주"·"다음 주" 등). 날짜는 그 주 월요일
   | { kind: 'reject'; intent: 'create' | 'cancel' | 'query'; reason: string }
@@ -22,6 +23,7 @@ export const REASON = {
   badTime: '시간을 다시 확인해 주세요',
   needWeekday: '이번 주·다음 주는 요일도 같이 말해 주세요',
   thisYearOnly: '올해 안의 날짜만 말할 수 있어요',
+  pastTimeAsk: '이미 지난 시간이에요. 내일로 하려면 "내일 오전 3시"처럼 날짜를 같이 말해 주세요',
   weekQueryOnly: '주차는 알람 조회에서만 쓸 수 있어요. 날짜나 요일로 말해 주세요',
 } as const;
 
@@ -109,7 +111,7 @@ export function extractTime(text: string): Extracted<TimeHit> {
   if ((m = /(?<!\d)(\d{1,2}):(\d{2})(?!\d)/.exec(text))) {
     const h = Number(m[1]), mi = Number(m[2]);
     if (h > 24 || mi > 59 || (h === 24 && mi > 0)) return { hit: { kind: 'bad' }, rest: cut(text, m) };
-    return { hit: { kind: 'abs', hour: h === 24 ? 0 : h, minute: mi, period: h === 24 ? 'midnight' : 'h24' }, rest: cut(text, m) };
+    return { hit: { kind: 'abs', hour: h === 24 ? 0 : h, minute: mi, period: h === 24 ? 'midnight' : m[1].length === 1 && h >= 1 ? '' : 'h24' }, rest: cut(text, m) };   // "3:30"(앞자리 0 없는 한 자리)는 24시간 표기가 아니라 구분 없는 3시 30분
   }
   // 오전/오후/아침/저녁/밤/새벽/낮 + N시 (N분|반)
   if ((m = /(오전|오후|아침|저녁|밤|새벽|낮)\s*(\d{1,2})\s*시(?!간)(?:\s*(\d{1,2})\s*분|\s*반)?/.exec(text))) {
@@ -205,7 +207,9 @@ const reject = (intent: 'create' | 'cancel' | 'query', reason: string): AlarmCom
 const at = (date: Date, h: number, mi: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, mi, 0, 0);
 const hhmm = (h: number, mi: number) => `${pad2(h)}:${pad2(mi)}`;
 
-export function parseAlarmCommand(raw: unknown, now: Date): AlarmCommand {
+// 되묻기의 답: 'am' 오전, 'pm' 오후(12시는 정오), 'night' 밤(12시는 자정=그날 밤 12시)
+export type Meridiem = 'am' | 'pm' | 'night';
+export function parseAlarmCommand(raw: unknown, now: Date, meridiem?: Meridiem): AlarmCommand {
   const text = normalizeInput(raw);
   if (!text) return { kind: 'unknown' };
   const alarmWord = RE_ALARM.test(text);
@@ -266,50 +270,34 @@ export function parseAlarmCommand(raw: unknown, now: Date): AlarmCommand {
   if (t.hit.kind === 'rel') {
     const dt = new Date(nowMin.getTime() + t.hit.minutes * 60000);
     if (t.hit.minutes <= 0) return reject('create', REASON.badTime);
-    return { kind: 'create', date: ymd(dt), time: hhmm(dt.getHours(), dt.getMinutes()), title, ambiguous: false };
+    return { kind: 'create', date: ymd(dt), time: hhmm(dt.getHours(), dt.getMinutes()), title };
   }
-  const h = t.hit;
+  // 오전/오후 구분도 24시간 표기도 아닌 1~12시("3시", "3시 30분", "12시")는 짐작하지 않고 되묻는다. 답(meridiem)을 받으면 그 시각으로 다시 해석한다.
+  let h = t.hit;
+  if (h.period === '') {
+    if (!meridiem) return { kind: 'needsMeridiem', hour: h.hour, minute: h.minute, title };
+    h = { ...h, period: meridiem };
+  }
   let date = dateHit ? dateHit.date : todayStart;
   const explicit = !!dateHit;
-  const isToday = (x: Date) => x.getTime() === todayStart.getTime();
-  const resolve = (day: Date): { hour: number; ambiguous: boolean } | null => {
-    if (h.period === 'noon') return { hour: 12, ambiguous: false };
-    if (h.period === 'midnight') return { hour: 0, ambiguous: false };
-    if (h.period === 'h24') return { hour: h.hour, ambiguous: false };
-    if (h.period !== '') return { hour: hourOf(h.hour, h.period), ambiguous: false };
-    // 오전/오후 없음: 오늘이면 지금 기준 가장 가까운 미래, 다른 날이면 알람에 흔한 쪽(1~5시 오후, 6~11시 오전, 12시 정오)
-    if (h.hour < 1 || h.hour > 12) return { hour: h.hour, ambiguous: false };
-    const am = h.hour % 12, pm = am + 12;
-    if (isToday(day)) {
-      const cands = [am, pm].filter(x => at(day, x, h.minute).getTime() > nowMin.getTime());
-      if (cands.length) return { hour: Math.min(...cands), ambiguous: true };
-      return null;   // 오늘은 둘 다 지났다
-    }
-    return { hour: h.hour === 12 ? 12 : h.hour <= 5 ? pm : am, ambiguous: true };
-  };
+  const hour = h.period === 'noon' ? 12 : h.period === 'midnight' ? 0 : h.period === 'h24' ? h.hour : hourOf(h.hour, h.period);
+  // 이미 지난 시각: 날짜를 말했거나 되물은 뒤 고른 시각이면 거절(되물은 답을 임의로 내일로 바꾸지 않는다), 날짜 없이 처음부터 구분을 말한 시각은 내일로
+  const passed = (): AlarmCommand | null => (meridiem && !explicit ? reject('create', REASON.pastTimeAsk) : explicit ? reject('create', REASON.pastTime) : null);
 
   if (dateHit && dateHit.weekdayOnly !== undefined) {   // 그냥 요일: 다음에 오는 그 요일
     const diff = (dateHit.weekdayOnly - now.getDay() + 7) % 7;
     let day = addDays(todayStart, diff);
-    let r = resolve(day);
-    if (diff === 0 && (!r || at(day, r.hour, h.minute).getTime() <= nowMin.getTime())) { day = addDays(day, 7); r = resolve(day); }
-    if (!r) return reject('create', REASON.pastTime);
-    return { kind: 'create', date: ymd(day), time: hhmm(r.hour, h.minute), title, ambiguous: r.ambiguous };
+    if (diff === 0 && at(day, hour, h.minute).getTime() <= nowMin.getTime()) day = addDays(day, 7);
+    return { kind: 'create', date: ymd(day), time: hhmm(hour, h.minute), title };
   }
 
   // 자정·24시·"밤 12시"는 그날 밤의 끝이다: "내일 자정"은 내일 밤 12시 = 모레 0시(카드에 그 사실을 함께 적는다)
   let midnight = false;
   if (h.period === 'midnight' || (h.period === 'night' && h.hour === 12)) { midnight = true; date = addDays(date, 1); }
-  let r = resolve(date);
-  if (!r) {   // 오늘 "N시"가 둘 다 지났다
-    if (explicit) return reject('create', REASON.pastTime);
-    date = addDays(date, 1); r = resolve(date);
-    if (!r) return reject('create', REASON.badTime);
-  }
-  let dt = at(date, r.hour, h.minute);
+  let dt = at(date, hour, h.minute);
   if (dt.getTime() <= nowMin.getTime()) {
-    if (explicit) return reject('create', REASON.pastTime);   // 날짜를 말했는데 이미 지난 시간
-    date = addDays(date, 1); dt = at(date, r.hour, h.minute);   // 날짜가 없으면 내일 그 시각
+    const rj = passed(); if (rj) return rj;
+    date = addDays(date, 1); dt = at(date, hour, h.minute);   // 날짜가 없으면 내일 그 시각
   }
-  return { kind: 'create', date: ymd(date), time: hhmm(r.hour, h.minute), title, ambiguous: r.ambiguous, ...(midnight ? { midnight: true } : {}) };
+  return { kind: 'create', date: ymd(date), time: hhmm(hour, h.minute), title, ...(midnight ? { midnight: true } : {}) };
 }

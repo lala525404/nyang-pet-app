@@ -1,7 +1,7 @@
 import type { Alarm, PetSettings } from './settings';
 import { MAX_ALARMS, WEEKDAY_LABELS, addDays, isPastOneShot, isSkipped, occursOn, parseYmd, startOfDay, toMin } from './alarmSchedule';
 import { alarmTitle } from './alarmText';
-import type { AlarmCommand } from './alarmCommand';
+import type { AlarmCommand, Meridiem } from './alarmCommand';
 
 // 알람 대화의 "해석 결과 → 실제 알람" 쪽(순수 함수): 만들 알람 만들기, 지울 알람 찾기, 확인 문구, 설정 값 바꾸기(만들기·지우기·끄기·되돌리기).
 // 저장 경로는 설정창과 같다(saveSettings + syncSettings): 별도 저장소를 만들지 않는다. 입력 문장은 여기에 들어오지 않는다(해석 결과만).
@@ -32,8 +32,22 @@ export function createQuestion(cmd: CreateCommand): { head: string; big: string;
   return {
     head: p.dateText,
     big: `${p.timeText}${p.noteText ? ` (${p.noteText})` : ''}`,
-    note: [cmd.ambiguous ? '오전·오후를 말하지 않아서 가까운 시각으로 맞췄어요' : '', night ? `${night}이에요` : ''].filter(Boolean).join(' · '),
+    note: night ? `${night}이에요` : '',
     question: `${p.dateText} ${p.timeText}에 ${cmd.title ? `'${cmd.title}' ` : ''}알람을 만들까요?`,
+  };
+}
+
+// ── 오전/오후 되묻기 ─────────────────────────────────────────────────────────
+// "3시"처럼 구분이 없는 시각은 두 개의 큰 버튼으로 고르게 한다. 12시는 [정오 12시] [자정 12시(밤 12시)].
+export type MeridiemAsk = Extract<AlarmCommand, { kind: 'needsMeridiem' }>;
+export function meridiemQuestion(cmd: MeridiemAsk): { title: string; choices: { label: string; meridiem: Meridiem }[] } {
+  const mm = cmd.minute ? ` ${cmd.minute}분` : '';
+  const when = `${cmd.hour}시${mm}`;
+  return {
+    title: `몇 시인가요? ${when}${cmd.minute ? '이' : '가'} ${cmd.hour === 12 ? '정오인지 자정인지' : '오전인지 오후인지'} 골라 주세요`,
+    choices: cmd.hour === 12
+      ? [{ label: `정오 ${when}`, meridiem: 'pm' }, { label: `자정 ${when}(밤 12시)`, meridiem: 'night' }]
+      : [{ label: `오전 ${when}`, meridiem: 'am' }, { label: `오후 ${when}`, meridiem: 'pm' }],
   };
 }
 

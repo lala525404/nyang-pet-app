@@ -29,7 +29,8 @@ const NOW_SUN = D(2026, 10, 25, 9, 0);              // 일요일(주의 마지�
 const match = (got, want, label) => { for (const [k, v] of Object.entries(want)) assert.deepStrictEqual(got[k], v, `${label}: ${k}  got=${JSON.stringify(got)}`); };
 const cases = [];
 const row = (input, want, now = NOW) => cases.push([input, want, now]);
-const create = (date, time, title = '', ambiguous = false, extra = {}) => ({ kind: 'create', date, time, title, ambiguous, ...extra });
+const create = (date, time, title = '', _unused = false, extra = {}) => ({ kind: 'create', date, time, title, ...extra });
+const ask = (hour, minute = 0, title = '') => ({ kind: 'needsMeridiem', hour, minute, title });
 const rej = (intent, reason) => ({ kind: 'reject', intent, reason });
 
 // ── 만들기: 날짜 표현 ────────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ row('금요일 오후 2시 알람 만들어줘', create('2026-10-30', '14:00'));
 row('일요일 오전 7시 알람 만들어줘', create('2026-10-25', '07:00'));
 row('토요일 오후 5시 알람 만들어줘', create('2026-10-24', '17:00'));     // 오늘이 그 요일이고 시각이 남았다
 row('토요일 오전 9시 알람 만들어줘', create('2026-10-31', '09:00'));     // 오늘 시각이 지났으니 다음 주
-row('토요일 3시에 알람 만들어줘', create('2026-10-24', '15:00', '', true));
+row('토요일 3시에 알람 만들어줘', ask(3));
 row('다음 주 월요일 오전 10시 알람 설정', create('2026-10-26', '10:00'));
 row('다음 주 금요일 오후 3시 알람 만들어줘', create('2026-10-30', '15:00'));
 row('담주 수요일 오후 2시 알람 만들어줘', create('2026-10-28', '14:00'));
@@ -160,7 +161,6 @@ row('내일 18:00 알람 만들어줘', create('2026-10-25', '18:00'));
 row('15시 30분 알람 만들어줘', create('2026-10-24', '15:30'));
 row('내일 오전 12시 알람 만들어줘', create('2026-10-25', '00:00'));
 row('내일 오후 12시 알람 만들어줘', create('2026-10-25', '12:00'));
-row('내일 12시 알람 만들어줘', create('2026-10-25', '12:00', '', true));
 row('30분 뒤 알람 만들어줘', create('2026-10-24', '14:40'));
 row('10분 후에 알람 만들어줘', create('2026-10-24', '14:20'));
 row('1시간 뒤 알람 만들어줘', create('2026-10-24', '15:10'));
@@ -169,16 +169,27 @@ row('2시간 30분 뒤에 알람 만들어줘', create('2026-10-24', '16:40'));
 row('1시간 반 뒤 알람 만들어줘', create('2026-10-24', '15:40'));
 row('12시간 뒤 알람 만들어줘', create('2026-10-25', '02:10'));            // 날짜를 넘김
 // ── 오전/오후 모호 ───────────────────────────────────────────────────────────
-row('오늘 3시 알람 만들어줘', create('2026-10-24', '15:00', '', true));    // 지금 기준 가장 가까운 미래(03:00은 지났다)
-row('오늘 3시 알람 만들어줘', create('2026-10-26', '03:00', '', true).kind ? { kind: 'create', date: '2026-10-26', time: '03:00', ambiguous: true } : {}, NOW_MORNING);   // 새벽 2시에는 오전 3시
-row('오늘 1시 알람 만들어줘', rej('create', '이미 지난 시간이에요'));        // 01:00·13:00 모두 지났다
-row('1시에 알람 만들어줘', create('2026-10-25', '13:00', '', true));       // 날짜 없음: 내일, 다른 날의 1~5시는 오후
-row('내일 3시 알람 만들어줘', create('2026-10-25', '15:00', '', true));
-row('내일 7시 알람 만들어줘', create('2026-10-25', '07:00', '', true));     // 6~11시는 오전
+// 구분(오전·오후·아침·낮·저녁·밤·새벽·정오·자정)도 24시간 표기도 아닌 1~12시는 짐작하지 않고 항상 되묻는다(needsMeridiem)
+row('오늘 3시 알람 만들어줘', ask(3));
+row('오늘 3시 알람 만들어줘', ask(3), NOW_MORNING);                          // 새벽 2시여도 짐작하지 않는다
+row('오늘 1시 알람 만들어줘', ask(1));                                        // 지난 시각이어도 먼저 되묻는다(고른 뒤 거절)
+row('1시에 알람 만들어줘', ask(1));
+row('3시 알람 만들어줘', ask(3));
+row('3시 30분 알람 만들어줘', ask(3, 30));
+row('3시 반에 알람 만들어줘', ask(3, 30));
+row('1시 15분 알람 만들어줘', ask(1, 15));
+row('3:30 알람 만들어줘', ask(3, 30));                                       // 앞자리 0 없는 한 자리 시각은 24시간 표기가 아니다
+row('내일 3시 알람 만들어줘', ask(3));
+row('내일 7시 알람 만들어줘', ask(7));
+row('금요일 7시 알람 만들어줘', ask(7));
+row('7시 반에 알람 만들어줘', ask(7, 30));
+row('내일 3시에 회의 알람 만들어줘', ask(3, 0, '회의'));
+row('내일 12시 알람 만들어줘', ask(12));
+row('12시 알람 만들어줘', ask(12));
+row('12시 30분 알람 만들어줘', ask(12, 30));
+row('11월 3일 3시 알람 만들어줘', ask(3));
+row('10월 1일 3시 알람 만들어줘', rej('create', '지난 날짜예요'));            // 날짜가 틀리면 시각을 묻기 전에 거절
 row('내일 오전 3시 알람 만들어줘', create('2026-10-25', '03:00'));          // 말하면 모호하지 않다
-row('금요일 7시 알람 만들어줘', create('2026-10-30', '07:00', '', true));
-row('7시 반에 알람 만들어줘', create('2026-10-24', '19:30', '', true));      // 오늘 07:30은 지났으니 가장 가까운 미래는 오후 7시 30분
-row('7시 반에 알람 만들어줘', create('2026-10-26', '07:30', '', true), NOW_MORNING);   // 새벽 2시에는 오전 7시 30분
 // ── 12시·자정·정오 경계 ─────────────────────────────────────────────────────
 row('내일 자정에 알람 만들어줘', create('2026-10-26', '00:00', '', false, { midnight: true }));   // 내일 밤 12시 = 모레 0시
 row('오늘 자정에 알람 만들어줘', create('2026-10-25', '00:00', '', false, { midnight: true }));
@@ -307,6 +318,75 @@ t('결과 모양: 만들기는 항상 유효한 날짜(YYYY-MM-DD)·시각(HH:MM
   assert.ok(created > 300, `만들기 결과 ${created}개`);
 });
 
+// ── 오전/오후 되묻기 ─────────────────────────────────────────────────────────
+t('오전/오후 되묻기: 모호한 시각은 항상 되묻고, 구분이 있는 표현(오전·오후·아침·낮·저녁·밤·새벽·정오·자정·24시간·상대 시각)은 되묻지 않는다', () => {
+  for (const [s, h, m] of [['3시 알람 만들어줘', 3, 0], ['3시 30분 알람 만들어줘', 3, 30], ['12시 알람 만들어줘', 12, 0], ['1시 15분 알람 만들어줘', 1, 15], ['11시 알람 추가해줘', 11, 0], ['오늘 6시에 알람 맞춰줘', 6, 0], ['내일 3시 알람 만들어줘', 3, 0], ['내일 3시에 회의 알람', 3, 0], ['다음 주 화요일 9시 알람 만들어줘', 9, 0]]) {
+    for (const now of [NOW, NOW_MORNING, NOW_SUN, D(2026, 3, 3, 3, 3)]) { const r = P.parseAlarmCommand(s, now); assert.strictEqual(r.kind, 'needsMeridiem', `${s} @${now}`); assert.deepStrictEqual([r.hour, r.minute], [h, m], s); }
+  }
+  assert.strictEqual(P.parseAlarmCommand('내일 3시에 회의 알람', NOW).title, '회의');
+  for (const s of ['오후 3시 알람 만들어줘', '밤 12시 알람 만들어줘', '새벽 3시 알람 만들어줘', '아침 7시 알람 만들어줘', '낮 12시 알람 만들어줘', '저녁 7시 반 알람 만들어줘', '오전 3시 30분 알람 만들어줘', '15:30 알람 만들어줘', '03:30 알람 만들어줘', '13시 알람 만들어줘', '정오에 알람 만들어줘', '자정에 알람 만들어줘', '30분 뒤 알람 만들어줘', '2시간 뒤 알람 만들어줘', '1시간 반 뒤 알람 만들어줘', '24시 알람 만들어줘', '0시 알람 만들어줘', '내일 오후 3시 알람 만들어줘']) {
+    assert.strictEqual(P.parseAlarmCommand(s, NOW).kind, 'create', s);
+  }
+  for (const s of ['3시 알람 취소해줘', '3시 알람 알려줘', '3시 알람 뭐 있어']) assert.notStrictEqual(P.parseAlarmCommand(s, NOW).kind, 'needsMeridiem', `${s}: 삭제·조회는 되묻지 않는다`);
+  assert.strictEqual(P.parseAlarmCommand('3시 알람 취소해줘', NOW).kind, 'cancel');
+});
+t('오전/오후 되묻기 뒤 선택: 오전·오후 각각 확인 카드로, 오늘 이미 지난 시각은 거절, 12시는 정오/자정, 날짜 지정·제목 유지', () => {
+  const NOW5 = D(2026, 10, 24, 17, 0);   // 오후 5시
+  assert.deepStrictEqual(P.parseAlarmCommand('3시 알람 만들어줘', NOW5, 'pm'), rej('create', P.REASON.pastTimeAsk), '날짜 없음, 오늘 15시도 지났으니 → 고른 시각을 임의로 내일로 바꾸지 않고 거절');
+  assert.deepStrictEqual(P.parseAlarmCommand('8시 알람 만들어줘', NOW5, 'pm'), create('2026-10-24', '20:00'), '아직 안 지났으면 오늘');
+  const a = P.parseAlarmCommand('3시 알람 만들어줘', NOW5, 'am'); assert.deepStrictEqual([a.kind, a.reason], ['reject', P.REASON.pastTimeAsk], '지금 오후 5시에 오전 3시를 고르면 거절 + 안내');
+  assert.ok(/내일 오전 3시/.test(a.reason));
+  assert.strictEqual(P.parseAlarmCommand('3시 알람 만들어줘', NOW5, 'pm').kind, 'reject');
+  const morning = D(2026, 10, 24, 2, 0);
+  assert.deepStrictEqual(P.parseAlarmCommand('3시 알람 만들어줘', morning, 'am'), create('2026-10-24', '03:00')); assert.deepStrictEqual(P.parseAlarmCommand('3시 알람 만들어줘', morning, 'pm'), create('2026-10-24', '15:00'));
+  assert.deepStrictEqual(P.parseAlarmCommand('내일 3시 알람 만들어줘', NOW5, 'am'), create('2026-10-25', '03:00')); assert.deepStrictEqual(P.parseAlarmCommand('내일 3시 알람 만들어줘', NOW5, 'pm'), create('2026-10-25', '15:00'));
+  assert.deepStrictEqual(P.parseAlarmCommand('내일 3시 30분에 회의 알람 만들어줘', NOW5, 'pm'), create('2026-10-25', '15:30', '회의'));
+  assert.deepStrictEqual(P.parseAlarmCommand('오늘 3시 알람 만들어줘', NOW5, 'am'), rej('create', '이미 지난 시간이에요'), '날짜를 말했으면 기존 지난 시간 거절');
+  assert.deepStrictEqual(P.parseAlarmCommand('내일 12시 알람 만들어줘', NOW5, 'pm'), create('2026-10-25', '12:00'), '정오');
+  assert.deepStrictEqual(P.parseAlarmCommand('내일 12시 알람 만들어줘', NOW5, 'night'), create('2026-10-26', '00:00', '', false, { midnight: true }), '자정(밤 12시)=내일 밤의 끝');
+  assert.deepStrictEqual(P.parseAlarmCommand('내일 12시 30분 알람 만들어줘', NOW5, 'night'), create('2026-10-26', '00:30', '', false, { midnight: true }));
+  assert.deepStrictEqual(P.parseAlarmCommand('금요일 3시 알람 만들어줘', NOW5, 'am'), create('2026-10-30', '03:00'));
+  assert.strictEqual(P.parseAlarmCommand('3:30 알람 만들어줘', morning, 'pm').time, '15:30');
+  // 되묻는 카드의 문구·버튼
+  const q3 = CH.meridiemQuestion(P.parseAlarmCommand('3시 알람 만들어줘', NOW5)); assert.strictEqual(q3.title, '몇 시인가요? 3시가 오전인지 오후인지 골라 주세요'); assert.deepStrictEqual(q3.choices, [{ label: '오전 3시', meridiem: 'am' }, { label: '오후 3시', meridiem: 'pm' }]);
+  const q330 = CH.meridiemQuestion(P.parseAlarmCommand('3시 30분 알람 만들어줘', NOW5)); assert.strictEqual(q330.title, '몇 시인가요? 3시 30분가 오전인지 오후인지 골라 주세요'.replace('30분가', '30분이'), '조사 자연스럽게'); assert.deepStrictEqual(q330.choices.map(c => c.label), ['오전 3시 30분', '오후 3시 30분']);
+  const q12 = CH.meridiemQuestion(P.parseAlarmCommand('12시 알람 만들어줘', NOW5)); assert.ok(/정오인지 자정인지/.test(q12.title)); assert.deepStrictEqual(q12.choices, [{ label: '정오 12시', meridiem: 'pm' }, { label: '자정 12시(밤 12시)', meridiem: 'night' }]);
+});
+t('오전/오후 되묻기 화면 연결(정적 확인): 버튼 두 개 전에는 만들기로 넘어가지 않고, 닫으면 아무것도 만들지 않으며, 선택은 기존 확인 카드로 이어진다', () => {
+  const page = read('src/pages/QuickPage.tsx'), chat = page.slice(page.indexOf('function ChatCard'), page.indexOf('const cssVars'));
+  assert.ok(/if \(cmd\.kind === 'needsMeridiem'\) \{ setStep\(\{ s: 'ask'/.test(chat), '모호하면 ask 단계');
+  const ask = chat.slice(chat.indexOf("step.s === 'ask'"), chat.indexOf("step.s === 'create'")); assert.ok(ask.length > 100 && !/doCreate|applyToStoredSettings|withAlarmAdded/.test(ask), '되묻기 단계에서는 만들지 않는다');
+  assert.ok(/answerMeridiem\(step\.text, c\.meridiem\)/.test(ask) && /qk-chat-choice/.test(ask) && /onClick=\{goInput\}/.test(ask));
+  assert.ok(/const answerMeridiem[\s\S]*?parseAlarmCommand\(typed, new Date\(\), meridiem\)[\s\S]*?setStep\(\{ s: 'create', cmd \}\)[\s\S]*?setStep\(\{ s: 'reject'/.test(chat), '선택 → 확인 카드 또는 거절');
+  const doCreateAt = chat.indexOf('const doCreate'); assert.ok(chat.indexOf('withAlarmAdded') > doCreateAt && !chat.slice(0, doCreateAt).includes('withAlarmAdded('), '저장은 doCreate(만들기 버튼)에서만');
+  assert.ok(/e\.key === 'Escape'[\s\S]{0,80}quickClose/.test(page), 'Esc는 퀵 메뉴를 닫는다(되묻는 문장도 카드 상태와 함께 사라진다)');
+  assert.ok(/\.qk-chat-choices/.test(read('src/styles/quick.css')));
+  assert.ok(!/ambiguous|가까운 시각/.test(read('src/utils/alarmCommand.ts') + read('src/utils/alarmChat.ts') + page), '예전 "가까운 시각" 추정·보조 문구가 코드에 없다');
+});
+t('삭제: 오전/오후 없는 시각은 되묻지 않고, 오전·오후 알람이 둘 다 있으면 목록에서 고르고 하나뿐이면 바로 확인 카드', () => {
+  const both = [al('am', '03:00', { repeat: { kind: 'date', date: '2026-10-25' } }), al('pm', '15:00', { repeat: { kind: 'date', date: '2026-10-25' } }), al('x', '09:00', { repeat: { kind: 'date', date: '2026-10-25' } })];
+  const cmd = P.parseAlarmCommand('3시 알람 취소해줘', NOW); assert.strictEqual(cmd.kind, 'cancel'); assert.strictEqual(cmd.hour12, 3);
+  const two = CH.findTargets(cmd, CTX(both, { lunchOn: false, leaveOn: false }), NOW); assert.deepStrictEqual(two.map(x => x.alarm.id).sort(), ['am', 'pm'], '둘 다 후보 → 목록에서 고른다(2개 이상이면 pick)');
+  const one = CH.findTargets(cmd, CTX([both[1], both[2]], { lunchOn: false, leaveOn: false }), NOW); assert.deepStrictEqual(one.map(x => x.alarm.id), ['pm'], '하나뿐이면 바로 확인');
+  const am = CH.findTargets(P.parseAlarmCommand('오전 3시 알람 취소해줘', NOW), CTX(both, { lunchOn: false, leaveOn: false }), NOW); assert.deepStrictEqual(am.map(x => x.alarm.id), ['am']);
+});
+t('무작위 문장 3000개: 되묻기 없이 만들기로 넘어가는 것은 오전/오후(또는 24시간·정오·자정·상대 시각)가 명시된 경우뿐이다', () => {
+  let seed = 29; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const days = ['', '오늘', '내일', '모레', '월요일', '다음 주 금요일', '25일', '11월 5일'];
+  const times = ['3시', '12시', '3시 30분', '1시 15분', '7시 반', '11시', '오전 9시', '오후 3시', '새벽 4시', '아침 7시', '낮 12시', '저녁 6시', '밤 12시', '밤 11시', '정오', '자정', '15:30', '07:45', '13시', '0시', '24시', '30분 뒤', '2시간 뒤'];
+  const explicit = (s) => /오전|오후|아침|낮|저녁|밤|새벽|정오|자정|뒤|후/.test(s) || /\d{1,2}:\d{2}/.test(s) && /(?:^|\D)(?:0\d|1\d|2[0-4]):\d{2}/.test(s) || /(?:^|\D)(?:1[3-9]|2[0-4]|0)\s*시/.test(s);
+  let asked = 0, made = 0;
+  for (let i = 0; i < 3000; i++) {
+    const now = D(2026, 1 + Math.floor(rnd() * 12), 1 + Math.floor(rnd() * 28), Math.floor(rnd() * 24), Math.floor(rnd() * 60));
+    const s = [pick(days), pick(times), pick(['', '병원', "'회의'"]), pick(['알람 만들어줘', '알람 추가해줘', '알람 설정해줘'])].filter(Boolean).join(' ');
+    const r = P.parseAlarmCommand(s, now);
+    if (r.kind === 'create') { made++; assert.ok(explicit(s), `구분 없이 만들어졌다: ${s}`); }
+    if (r.kind === 'needsMeridiem') { asked++; assert.ok(!explicit(s), `명시됐는데 되물었다: ${s}`); assert.ok(r.hour >= 1 && r.hour <= 12); for (const m of ['am', 'pm', 'night']) { const f = P.parseAlarmCommand(s, now, m); assert.ok(f.kind === 'create' || f.kind === 'reject', s); if (f.kind === 'create') assert.ok(sched.isYmd(f.date) && /^\d{2}:\d{2}$/.test(f.time)); } }
+  }
+  assert.ok(asked > 400 && made > 400, `되묻기 ${asked}, 만들기 ${made}`);
+});
+
 // ── 지울 알람 찾기·문구·설정 값 바꾸기 ─────────────────────────────────────────
 const al = (id, time, extra = {}) => ({ id, time, enabled: true, ...extra });
 const CTX = (alarms, o = {}) => ({ alarms, lunchOn: o.lunchOn ?? true, leaveOn: o.leaveOn ?? true, lunchTime: '12:00', leaveTime: '18:00' });
@@ -340,14 +420,14 @@ t('점심·퇴근 기본 알림은 지우지 않고 "끄기"만: 이름을 말�
   assert.deepStrictEqual(CH.findTargets(cancelCmd({ date: '2026-10-25', time: '12:00' }), none, NOW), [], '날짜를 지정하면 매일 알림은 후보로 올리지 않는다');
 });
 t('확인 문구: 날짜·요일·오전/오후를 크게, 모호하면 안내, 자정은 전날 밤 표기', () => {
-  const q = CH.createQuestion({ kind: 'create', date: '2026-10-25', time: '15:00', title: '회의', ambiguous: false });
+  const q = CH.createQuestion({ kind: 'create', date: '2026-10-25', time: '15:00', title: '회의' });
   assert.strictEqual(q.head, '10월 25일 일요일'); assert.strictEqual(q.big, '오후 3시'); assert.strictEqual(q.question, "10월 25일 일요일 오후 3시에 '회의' 알람을 만들까요?"); assert.strictEqual(q.note, '');
-  assert.ok(CH.createQuestion({ kind: 'create', date: '2026-10-25', time: '15:00', title: '', ambiguous: true }).note.includes('오전·오후를 말하지 않아서'));
-  assert.strictEqual(CH.createQuestion({ kind: 'create', date: '2026-10-25', time: '15:00', title: '', ambiguous: false }).question, '10월 25일 일요일 오후 3시에 알람을 만들까요?');
+  assert.strictEqual(CH.createQuestion({ kind: 'create', date: '2026-10-25', time: '15:00', title: '' }).note, '', '더 이상 "가까운 시각으로 맞췄어요" 보조 문구가 없다');
+  assert.strictEqual(CH.createQuestion({ kind: 'create', date: '2026-10-25', time: '15:00', title: '' }).question, '10월 25일 일요일 오후 3시에 알람을 만들까요?');
   assert.deepStrictEqual(CH.whenParts('2026-10-26', '00:00'), { dateText: '10월 26일 월요일', timeText: '오전 12시', noteText: '자정' });
   assert.deepStrictEqual(CH.whenParts('2026-10-26', '12:00'), { dateText: '10월 26일 월요일', timeText: '오후 12시', noteText: '정오' });
   assert.strictEqual(CH.whenParts('2026-10-26', '07:05').timeText, '오전 7시 5분'); assert.strictEqual(CH.whenParts('2026-10-26', '23:30').timeText, '오후 11시 30분');
-  const mid = CH.createQuestion({ kind: 'create', date: '2026-10-26', time: '00:00', title: '', ambiguous: false, midnight: true }); assert.ok(mid.note.includes('10월 25일 밤 12시') && mid.big.includes('자정'));
+  const mid = CH.createQuestion({ kind: 'create', date: '2026-10-26', time: '00:00', title: '', midnight: true }); assert.ok(mid.note.includes('10월 25일 밤 12시') && mid.big.includes('자정'));
   assert.strictEqual(CH.CHAT_PLACEHOLDER, '예: 내일 오후 3시에 회의 알람 만들어줘'); assert.strictEqual(CH.EXAMPLES.length, 3); assert.strictEqual(CH.UNDO_MS, 10000);
 });
 t('알람 만들기·지우기·끄기·되돌리기(설정 값): 설정창과 같은 모양의 날짜 한 번짜리 알람, 50개 상한, 되돌리기는 같은 id를 중복하지 않는다', () => {
@@ -415,7 +495,8 @@ t('입력 문장은 저장·기록하지 않는다: 알람 대화 코드에 cons
   for (const f of files) { const s = read(f).replace(/\/\/.*$/gm, ''); assert.ok(!/console\./.test(s), `${f}: console`); assert.ok(!/fetch\(|XMLHttpRequest|WebSocket|sendBeacon|localStorage|sessionStorage|indexedDB/.test(s.replace(/localStorage|readStoredSettings|saveSettings/g, '')), `${f}: 저장·네트워크`); }
   const page = read('src/pages/QuickPage.tsx'); const chat = page.slice(page.indexOf('function ChatCard'), page.indexOf('const cssVars'));
   assert.ok(chat.length > 1000); assert.ok(!/console\.|localStorage|sessionStorage|fetch\(/.test(chat), 'ChatCard: 기록·저장·네트워크 없음');
-  assert.ok(/const cmd = parseAlarmCommand\(text, now\);\s*setText\(''\);/.test(chat), '제출하면 바로 비운다');
+  assert.ok(/const typed = text;\s*const cmd = parseAlarmCommand\(typed, now\);\s*setText\(''\);/.test(chat), '제출하면 바로 비운다(되묻는 동안만 화면 상태로 보관)');
+  assert.ok(/setStep\(\{ s: 'ask', ask: cmd, text: typed \}\)/.test(chat) && !/localStorage|sessionStorage/.test(chat), '되묻기 중 문장은 카드 상태에만');
   assert.ok(!/api\(\)\?\.\w+\([^)]*\btext\b/.test(chat), '입력 문장을 IPC로 보내지 않는다');
   assert.ok(!/openai|anthropic|claude|gpt|llm|\bAI\b/i.test((read('src/utils/alarmCommand.ts') + read('src/utils/alarmChat.ts')).replace(/\/\/.*$/gm, '')), 'AI·외부 서비스 없음(코드 기준, 주석 제외)');
   assert.ok(!/^import .* from '(?!\.)/m.test(read('src/utils/alarmCommand.ts') + read('src/utils/alarmChat.ts')), '외부 패키지 의존 없음');
