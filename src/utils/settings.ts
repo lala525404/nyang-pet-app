@@ -45,6 +45,9 @@ export interface PetSettings {
   alarmCleanupDay: string;
   alarmClockMark: number;
   alarmCleanupUndo: CleanupUndo | null;
+  // 부팅 후 오늘 브리핑(v1.7.0): 켜기/끄기(기본 켬)와 마지막으로 띄운 날(YYYY-MM-DD, 카드 창이 쓴다). 끄면 띄우지 않고 이 날짜도 바꾸지 않는다
+  briefEnabled: boolean;
+  lastBriefDate: string;
   moveSpeed: number;
   zone: number;
   monitor: number; // -1 = 전체 모니터
@@ -73,7 +76,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, weatherCityId: '', weatherConsent: false, introEnabled: true, lastSeenVersion: '', lastPromptedVersion: '', alarmCleanupDay: '', alarmClockMark: 0, alarmCleanupUndo: null, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, weatherCityId: '', weatherConsent: false, introEnabled: true, lastSeenVersion: '', lastPromptedVersion: '', alarmCleanupDay: '', alarmClockMark: 0, alarmCleanupUndo: null, briefEnabled: true, lastBriefDate: '', useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
   lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchPreAlertEnabled: false, leavePreAlertEnabled: false, alarms: [],
@@ -169,7 +172,7 @@ export function patchStoredSettings(patch: Partial<PetSettings>): boolean {
 
 // 다른 창(안내 카드·펫 창)이 저장값에 직접 써 넣는 기록 키. 설정창은 이 키를 스스로 바꾸지 않고, 저장할 때마다 저장값의 것을 이어받는다
 // (그렇지 않으면 설정창이 자기 메모리의 낡은 값으로 통째로 덮어써서, 방금 저장한 "마지막으로 본 버전" 같은 기록이 되돌아간다).
-export const OTHER_WINDOW_KEYS = ['lastSeenVersion', 'lastPromptedVersion', 'alarmCleanupDay', 'alarmClockMark', 'alarmCleanupUndo'] as const;
+export const OTHER_WINDOW_KEYS = ['lastSeenVersion', 'lastPromptedVersion', 'alarmCleanupDay', 'alarmClockMark', 'alarmCleanupUndo', 'lastBriefDate'] as const;
 export function inheritOtherWindowKeys(next: PetSettings): PetSettings {
   const stored = readStoredSettings();
   if (!stored) return next;

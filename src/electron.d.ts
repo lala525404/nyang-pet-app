@@ -13,8 +13,8 @@ export interface UpdateState {
 
 // 안내 카드(펫 옆): 메인이 카드 창에 알려 주는 내용. payload는 카드 종류마다 다르다(메인이 정한 값만 온다)
 export type NoticeKind = 'whatsnew' | 'update' | 'brief';
-export interface NoticeItem { id: number; kind: NoticeKind; payload: { version?: string; notes?: string[]; force?: boolean; replay?: boolean; fake?: boolean } | null }
-export type NoticeAction = 'ok' | 'later' | 'close' | 'update' | 'details';
+export interface NoticeItem { id: number; kind: NoticeKind; payload: { version?: string; notes?: string[]; force?: boolean; replay?: boolean; fake?: boolean; day?: string; manual?: boolean } | null }
+export type NoticeAction = 'ok' | 'later' | 'close' | 'update' | 'details' | 'week';   // week: 브리핑의 "+N개 더보기"(설정창 알람 캘린더의 오늘 주)
 
 // 컴퓨터를 켜면 자동 실행(OS의 실제 상태). supported가 false면 note에 이유가 있다
 export interface LoginItemState { supported: boolean; enabled: boolean; reason: string | null; note: string }
@@ -85,6 +85,8 @@ interface ElectronAPI {
   onNoticeClosing: (cb: () => void) => () => void;
   showWhatsNew: () => void;
   showUpdateNews: () => void;
+  showBrief: () => void;
+  peekWeather: (lat: number, lon: number) => Promise<{ data: WeatherData; stale: boolean; at: number } | null>;
   onQuickState: (cb: (open: boolean) => void) => () => void;
   onSettingsGoto: (cb: (target: SettingsTarget) => void) => () => void;
   takeSettingsGoto: () => Promise<SettingsTarget | null>;

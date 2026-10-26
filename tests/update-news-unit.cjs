@@ -124,7 +124,7 @@ t('설정창이 낡은 값으로 덮어쓰지 않는다: 저장할 때 다른 �
   assert.strictEqual(loadSettings().inheritOtherWindowKeys(stale).lastSeenVersion, '1.5.0');
   global.localStorage = fakeStorage();   // 저장값이 없으면 그대로
   assert.strictEqual(loadSettings().inheritOtherWindowKeys(stale), stale);
-  assert.deepStrictEqual([...S.OTHER_WINDOW_KEYS], ['lastSeenVersion', 'lastPromptedVersion', 'alarmCleanupDay', 'alarmClockMark', 'alarmCleanupUndo']);
+  assert.deepStrictEqual([...S.OTHER_WINDOW_KEYS], ['lastSeenVersion', 'lastPromptedVersion', 'alarmCleanupDay', 'alarmClockMark', 'alarmCleanupUndo', 'lastBriefDate']);
 });
 
 // ── 연결(정적 확인) ──
@@ -132,7 +132,7 @@ t('메인 연결: 카드는 한 번에 하나(큐), 퀵 메뉴가 열리면 치�
   const m = read('main.cjs');
   assert.ok(m.includes("require('./notice-card.cjs')") && m.includes("require('./release-notes.cjs')"));
   assert.ok(m.includes('deferActiveNotice();') && m.includes('showInactive()'));
-  assert.ok(/ipcMain\.on\('notice-action'/.test(m) && m.includes("const NOTICE_ACTIONS = ['ok', 'later', 'close', 'update', 'details']"), '카드 창이 보낸 동작은 정해진 값만');
+  assert.ok(/ipcMain\.on\('notice-action'/.test(m) && m.includes("const NOTICE_ACTIONS = ['ok', 'later', 'close', 'update', 'details', 'week']"), '카드 창이 보낸 동작은 정해진 값만');
   assert.ok(m.includes('releaseNotes.releaseUrl(it && it.payload && it.payload.version)'), '릴리스 주소는 카드의 버전(메인 값)으로만 만든다');
   assert.ok(/if \(url\) \{ try \{ shell\.openExternal\(url\)/.test(m));
   assert.ok(m.includes('parseNotes: releaseNotes.parseReleaseNotes'), '업데이터는 이미 받은 info.releaseNotes만 해석한다');

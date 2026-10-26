@@ -496,6 +496,7 @@ if (!gotLock) {
     createTray();
     initUpdater();
     startNoticeChecks();   // 업데이트 소식(안내 카드)
+    startBriefCheck();     // 부팅 후 오늘 브리핑(부팅 3분 뒤)
   });
 }
 
@@ -859,7 +860,7 @@ function openQuickMenu() {
   if (isQuitting || !petWindow || petWindow.isDestroyed()) return;
   if (quickWindow && !quickWindow.isDestroyed()) { closeQuickMenu(true); return; }   // 열려 있을 때의 우클릭은 닫는다(닫히는 중이면 그대로)
   deferActiveNotice();   // 안내 카드가 떠 있었다면 닫지 않고 치워 둔다(퀵 메뉴가 닫힌 뒤 다시 뜬다)
-  const size ={ width: quickMenu.QUICK_W, height: quickMenu.QUICK_INITIAL_H };
+  const size = { width: quickMenu.QUICK_W, height: quickMenu.QUICK_INITIAL_H };
   const win = new BrowserWindow({
     width: size.width, height: size.height, show: false,
     transparent: true, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
@@ -946,11 +947,13 @@ ipcMain.handle('settings-take-goto', () => { const t = pendingGoto; pendingGoto 
 //  - 카드가 떠 있는 동안 펫은 퀵 메뉴가 열렸을 때와 같이 쉰다(말풍선·움직임 정지: 'quick-state'를 그대로 쓴다).
 const noticeCard = require('./notice-card.cjs');
 const releaseNotes = require('./release-notes.cjs');
+const briefSchedule = require('./brief-schedule.cjs');   // 부팅 후 오늘 브리핑을 언제 쌓을지(부팅 3분: BRIEF_DELAY_SEC)
 const testEnv = noticeCard.readTestEnv(process.env);   // 시험용 환경변수(기본 꺼짐)
 const noticeQueue = noticeCard.createNoticeQueue();
 const noticeWaiters = new Map();   // 카드 id → [resolve]: 새 버전 안내 카드의 답("yes"|"later")을 기다리는 업데이터 호출들
 const NOTICE_WIN = { w: 368, h: 140 };   // 크기를 알려 오기 전의 임시 크기(카드 320 + 투명 여백 24×2)
 const WHATSNEW_DELAY_MS = 4000;          // 앱이 준비된 뒤 업데이트 소식 카드를 살피기까지(3~5초)
+let briefTimer = null;                   // 부팅 3분을 기다리는 한 번짜리 타이머(앱 시작 때 한 번만 건다)
 let noticeTimer = null;                  // 큐에 기다리는 카드가 있는 동안만 도는 재시도 타이머
 let noticeMoveHooked = false;
 
@@ -967,6 +970,7 @@ function noticeBlockers() {
 }
 function stopNoticeTimers() {
   if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
+  if (briefTimer) { clearTimeout(briefTimer); briefTimer = null; }
   if (noticeState) { clearTimeout(noticeState.closeTimer); clearTimeout(noticeState.autoTimer); }
 }
 function scheduleNoticePump(ms = noticeCard.RETRY_MS) {
@@ -1109,10 +1113,15 @@ ipcMain.on('notice-regions', (e, list) => {   // 클릭을 받을 영역(카드 
   const r = clickThroughOn ? clickThrough.sanitizeRegions(list) : null;
   noticeState.regions = r && r.length ? r : null;
 });
-const NOTICE_ACTIONS = ['ok', 'later', 'close', 'update', 'details'];
+const NOTICE_ACTIONS = ['ok', 'later', 'close', 'update', 'details', 'week'];
 ipcMain.on('notice-action', (e, action) => {
   if (!fromNotice(e) || !NOTICE_ACTIONS.includes(action)) return;
   const it = noticeQueue.active;
+  if (action === 'week') {   // 브리핑의 "+N개 더보기": 설정창 알람 화면을 열고 주간 캘린더를 오늘이 든 주로(주 시작일은 메인이 계산한다)
+    closeNotice('later');
+    openSettingsTo(quickMenu.settingsTargetFor('alarm-calendar', { weekStart: briefSchedule.weekStartOf(new Date()) }));
+    return;
+  }
   if (action === 'details') {   // 사용자가 누를 때만, 주소는 카드의 버전(메인이 정한 값)으로 만든다. 창이 보낸 값은 쓰지 않는다
     const url = releaseNotes.releaseUrl(it && it.payload && it.payload.version);
     if (url) { try { shell.openExternal(url); } catch {} }
@@ -1133,6 +1142,22 @@ ipcMain.on('update-news-show', () => {
   if (!s || s.status !== 'available' || !s.version) return;
   enqueueNotice('update', s.version, { version: s.version, notes: Array.isArray(s.notes) ? s.notes.slice(0, 4) : [], force: true });
 });
+// 설정창의 "지금 브리핑 보기": 켜기/끄기·요일·오늘 이미 띄웠는지와 상관없이 보여 주고, 마지막으로 띄운 날은 바꾸지 않는다
+ipcMain.on('brief-show', () => { enqueueNotice('brief', 'manual', { day: briefSchedule.ymdOf(new Date()), manual: true }); });
+// 부팅 후 오늘 브리핑: 앱 시작 때 한 번만 판단한다. 컴퓨터가 켜진 지(os.uptime) 3분이 되면(이미 지났으면 약 10초 뒤) 카드를 쌓고,
+// 기다리다 날짜가 바뀌었으면 포기한다. 오늘 이미 띄웠는지·요일·공휴일·켜기/끄기는 카드 창이 설정 저장값으로 정한다. 새 네트워크 요청은 없다.
+function startBriefCheck() {
+  const uptimeSec = testEnv.fakeUptimeSec !== null ? testEnv.fakeUptimeSec : require('os').uptime();
+  const delay = briefSchedule.planBrief({ uptimeSec, force: testEnv.forceBrief });
+  if (delay === null) return;
+  const startDay = briefSchedule.ymdOf(new Date());
+  briefTimer = setTimeout(() => {
+    briefTimer = null;
+    const now = new Date();
+    if (isQuitting || !briefSchedule.shouldEnqueue({ startDay, now, force: testEnv.forceBrief })) return;
+    enqueueNotice('brief', startDay, { day: briefSchedule.ymdOf(now), force: testEnv.forceBrief });
+  }, delay);
+}
 // 앱이 준비된 뒤: 업데이트 소식(저장값과 비교해 보일지는 카드 창이 정한다). 시험용 환경변수가 있으면 그에 맞는 카드도 쌓는다
 function startNoticeChecks() {
   setTimeout(() => {
@@ -1217,6 +1242,10 @@ ipcMain.handle('weather-get', async (_e, req) => {
     if (!req || typeof req !== 'object') return null;
     return await weatherService.get(req.lat, req.lon);
   } catch { return null; }
+});
+// 이미 받아 둔 날씨만 돌려준다(요청을 보내지 않는다): 부팅 브리핑의 날씨 한 줄. 캐시가 없으면 null
+ipcMain.handle('weather-peek', (_e, req) => {
+  try { return req && typeof req === 'object' ? weatherService.peek(req.lat, req.lon) : null; } catch { return null; }
 });
 
 // ★ 앱 시작시 설정 동기화 - PetPage에서 설정 로드 후 호출

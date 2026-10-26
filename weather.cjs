@@ -97,6 +97,12 @@ function createWeatherService(deps) {
     stats,
     setConsent(v) { consent = v === true; },
     hasConsent() { return consent; },
+    // 이미 받아 둔 값만 돌려준다(네트워크 요청·요청 통계 없음): 부팅 브리핑처럼 새 요청을 보내면 안 되는 곳에서 쓴다. 6시간이 지났거나 없으면 null
+    peek(lat, lon) {
+      if (!consent || !validCoords(lat, lon)) return null;
+      const e = usable(cache.get(keyOf(lat, lon)), STALE_MAX_MS);
+      return e ? { data: e.data, stale: now() - e.at > CACHE_MS, at: e.at } : null;
+    },
     // → { data, stale, at } | null   (at: 값을 받은 시각 ms)
     async get(lat, lon) {
       if (!consent || !validCoords(lat, lon)) return null;   // 동의 전에는 어떤 요청도 보내지 않는다

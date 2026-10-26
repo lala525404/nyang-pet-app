@@ -89,8 +89,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   showWhatsNew:     () => ipcRenderer.send('whatsnew-show'),      // 설정창: 이번 업데이트 소식 다시 보기
   showUpdateNews:   () => ipcRenderer.send('update-news-show'),   // 설정창: 새 버전 소식 보기
+  showBrief:        () => ipcRenderer.send('brief-show'),         // 설정창: 지금 브리핑 보기(켜기/끄기·요일과 상관없이, 마지막으로 띄운 날은 바꾸지 않는다)
   // ★ 날씨 안부: 요청은 메인만 보낸다(좌표만 전달). 동의 전에는 null
   getWeather:       (lat, lon) => ipcRenderer.invoke('weather-get', { lat, lon }),
+  peekWeather:      (lat, lon) => ipcRenderer.invoke('weather-peek', { lat, lon }),   // 이미 받아 둔 값만(새 요청 없음). 부팅 브리핑용
   // ★ 펫 우클릭 퀵 메뉴: 퀵 창이 닫기·크기·동작을 메인에 알린다. 펫 창은 열림 상태를 받아 평소 말풍선을 쉬고, 설정창은 가야 할 위치를 받는다
   quickClose:       () => ipcRenderer.send('quick-close'),
   setPetRegions:    (regions) => ipcRenderer.send('pet-regions', regions),   // 클릭 통과: 보이는 요소의 영역
