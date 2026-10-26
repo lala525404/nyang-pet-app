@@ -6,6 +6,17 @@ export interface ReleaseNote { version: string; items: string[] }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    // 1.7.1: 1.6.0에서 바로 올라오는 사용자는 1.7.0 소식을 못 보므로 1.7.0에서 추가된 기능까지 함께 담는다
+    version: '1.7.1',
+    items: [
+      '컴퓨터를 켜고 3분 뒤 오늘 브리핑을 알려 줘요',
+      '"오늘 브리핑해줘"는 초집중 중에도 바로 떠요',
+      '"10분 뒤에 알람 맞춰줘"로 타이머를 맞춰요',
+      '지난 알람은 7일 뒤에 알아서 정리돼요',
+      '일정·알람 구분과 업데이트 소식 카드',
+    ],
+  },
+  {
     version: '1.7.0',
     items: [
       '지난 알람은 7일 뒤에 알아서 정리돼요',
