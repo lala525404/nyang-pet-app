@@ -31,13 +31,15 @@ function createNoticeQueue() {
   const sameKey = (a, b) => a.kind === b.kind && a.key === b.key;
   return {
     // 같은 종류·같은 key의 카드가 이미 기다리거나 떠 있으면 새로 쌓지 않고 그 카드를 돌려준다(dup: true). 알 수 없는 종류는 거절(null)
-    enqueue({ kind, key = '', payload = null }) {
+    // priority: 사용자가 직접 요청한 카드(대화의 "브리핑해줘")는 자동 카드(소식·자동 브리핑)보다 앞에 선다. 떠 있는 카드를 끊지는 않고, 먼저 요청한 우선 카드 뒤에 선다
+    enqueue({ kind, key = '', payload = null, priority = false }) {
       if (!KINDS.includes(kind)) return null;
       const probe = { kind, key: String(key) };
       const found = (active && sameKey(active, probe) && active) || waiting.find(w => sameKey(w, probe));
       if (found) return { item: found, dup: true };
-      const item = { id: ++seq, kind, key: probe.key, payload };
-      waiting.push(item);
+      const item = { id: ++seq, kind, key: probe.key, payload, priority: priority === true };
+      if (item.priority) { const at = waiting.findIndex(w => !w.priority); waiting.splice(at < 0 ? waiting.length : at, 0, item); }
+      else waiting.push(item);
       return { item, dup: false };
     },
     // 지금 띄울 수 있는 카드: 떠 있는 카드가 없고, 막힌 이유가 없고, 앞 카드가 닫힌 지 GAP이 지났을 때 맨 앞 카드

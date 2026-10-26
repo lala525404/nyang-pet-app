@@ -249,6 +249,7 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
     if (cmd.kind === 'unknown') { setStep({ s: 'unknown' }); return; }
     if (cmd.kind === 'reject') { setStep({ s: 'reject', reason: cmd.reason }); return; }
     if (cmd.kind === 'query') { onShowDay(cmd.week ? { week: cmd.week } : { day: cmd.date }); return; }   // 조회는 기존 알람 카드를 날짜·주만 바꿔서 재사용
+    if (cmd.kind === 'brief') { api()?.quickAction('brief', { target: cmd.target }); return; }   // 조회성이라 확인 카드 없이 바로: 퀵 메뉴가 닫히고 부팅 브리핑과 같은 카드가 펫 옆에 뜬다
     if (cmd.kind === 'create') { setStep({ s: 'create', cmd }); return; }
     const targets = findTargets(cmd, deleteContext(), now);
     if (!targets.length) { setStep({ s: 'reject', reason: REASON_NOT_FOUND }); return; }

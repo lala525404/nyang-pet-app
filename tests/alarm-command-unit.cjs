@@ -429,7 +429,7 @@ t('확인 문구: 날짜·요일·오전/오후를 크게, 모호하면 안내, 
   assert.deepStrictEqual(CH.whenParts('2026-10-26', '12:00'), { dateText: '10월 26일 월요일', timeText: '오후 12시', noteText: '정오' });
   assert.strictEqual(CH.whenParts('2026-10-26', '07:05').timeText, '오전 7시 5분'); assert.strictEqual(CH.whenParts('2026-10-26', '23:30').timeText, '오후 11시 30분');
   const mid = CH.createQuestion({ kind: 'create', date: '2026-10-26', time: '00:00', title: '', midnight: true }); assert.ok(mid.note.includes('10월 25일 밤 12시') && mid.big.includes('자정'));
-  assert.strictEqual(CH.CHAT_PLACEHOLDER, '예: 내일 오후 3시에 회의 알람 만들어줘'); assert.strictEqual(CH.EXAMPLES.length, 3); assert.strictEqual(CH.UNDO_MS, 10000);
+  assert.strictEqual(CH.CHAT_PLACEHOLDER, '예: 내일 오후 3시에 회의 알람 만들어줘'); assert.strictEqual(CH.EXAMPLES.length, 4);   // 만들기·취소·조회 + 오늘 브리핑해줘 assert.strictEqual(CH.UNDO_MS, 10000);
 });
 t('알람 만들기·지우기·끄기·되돌리기(설정 값): 설정창과 같은 모양의 날짜 한 번짜리 알람, 50개 상한, 되돌리기는 같은 id를 중복하지 않는다', () => {
   const base = { ...settingsTs.DEFAULT_SETTINGS, alarms: [al('k', '08:00')], lunchEnabled: true, leaveEnabled: true };

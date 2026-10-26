@@ -12,6 +12,7 @@ export type AlarmCommand =
   | { kind: 'needsMeridiem'; hour: number; minute: number; title: string }   // "3시"처럼 오전/오후 구분이 없는 1~12시: 짐작하지 않고 되묻는다(hour 1~12). 답은 parseAlarmCommand(원문, now, Meridiem)로 다시 해석
   | { kind: 'cancel'; all: boolean; date: string | null; time: string | null; hour12: number | null; minute: number | null; title: string }   // hour12: 오전/오후 없이 말한 시(0~11, 오전·오후 모두 해당)
   | { kind: 'query'; date: string; week?: { start: string; label: string } }   // week: 주 단위 조회(start = 그 주 월요일 YYYY-MM-DD, label = "이번 주"·"다음 주" 등). 날짜는 그 주 월요일
+  | { kind: 'brief'; target: 'today' | 'tomorrow'; date: string }   // "오늘 브리핑해줘": 부팅 브리핑과 같은 카드를 바로 띄운다(조회성이라 확인 카드 없음). date = 그날 YYYY-MM-DD
   | { kind: 'reject'; intent: 'create' | 'cancel' | 'query'; reason: string }
   | { kind: 'unknown' };
 
@@ -25,6 +26,7 @@ export const REASON = {
   thisYearOnly: '올해 안의 날짜만 말할 수 있어요',
   pastTimeAsk: '이미 지난 시간이에요. 내일로 하려면 "내일 오전 3시"처럼 날짜를 같이 말해 주세요',
   weekQueryOnly: '주차는 알람 조회에서만 쓸 수 있어요. 날짜나 요일로 말해 주세요',
+  briefOnly: '오늘이나 내일 브리핑만 해드릴 수 있어요',
 } as const;
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -207,6 +209,24 @@ const reject = (intent: 'create' | 'cancel' | 'query', reason: string): AlarmCom
 const at = (date: Date, h: number, mi: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, mi, 0, 0);
 const hhmm = (h: number, mi: number) => `${pad2(h)}:${pad2(mi)}`;
 
+// ── 브리핑 ───────────────────────────────────────────────────────────────────
+// "브리핑"이 들어 있으면 브리핑이 우선이다("오늘 알람 브리핑해줘" → 브리핑). 단, 만들기·지우기 문장에 우연히 들어 있으면 기존 동작이 우선한다:
+// 확실한 만들기 말(만들·추가·설정·맞춰·등록·잡아·깨워·울려)이 알람·시각 말과 같이 있거나, 취소·삭제 말이 알람 말과 같이 있을 때("브리핑 회의 3시에 알람 만들어줘").
+// "해줘"처럼 약한 말은 브리핑을 이기지 못한다. 오늘·내일만 지원하고, 이번 주·다음 주·주차·다른 날짜·요일은 안내 문구로 거절한다.
+const RE_BRIEF = /브리핑/;
+function parseBrief(text: string, now: Date): AlarmCommand {
+  const bad = reject('query', REASON.briefOnly);
+  if (matchWeekWord(text, now) || matchWeekOfMonth(text, now)) return bad;
+  const today = startOfDay(now);
+  const d = extractDate(text, now);
+  if (!d.hit) return { kind: 'brief', target: 'today', date: ymd(today) };
+  if (!d.hit.ok || d.hit.weekdayOnly !== undefined) return bad;
+  const day = ymd(d.hit.date);
+  if (day === ymd(today)) return { kind: 'brief', target: 'today', date: day };
+  if (day === ymd(addDays(today, 1))) return { kind: 'brief', target: 'tomorrow', date: day };
+  return bad;
+}
+
 // 되묻기의 답: 'am' 오전, 'pm' 오후(12시는 정오), 'night' 밤(12시는 자정=그날 밤 12시)
 export type Meridiem = 'am' | 'pm' | 'night';
 export function parseAlarmCommand(raw: unknown, now: Date, meridiem?: Meridiem): AlarmCommand {
@@ -216,6 +236,7 @@ export function parseAlarmCommand(raw: unknown, now: Date, meridiem?: Meridiem):
   const cancel = RE_CANCEL.test(text), createStrong = RE_CREATE_STRONG.test(text), createWeak = RE_CREATE_WEAK.test(text), queryWord = RE_QUERY.test(text);
   // 날짜·시간 말이 있는지(의도 판별용): 실제 해석은 아래에서
   const hasTimeWord = extractTime(text).hit !== null;
+  if (RE_BRIEF.test(text) && !((createStrong && (alarmWord || hasTimeWord)) || (cancel && alarmWord))) return parseBrief(text, now);
   let intent: 'create' | 'cancel' | 'query' | null = null;
   if (cancel && alarmWord) intent = 'cancel';
   else if ((createStrong || createWeak) && alarmWord) intent = 'create';

@@ -251,7 +251,7 @@ function pickWorkArea(pet, displays) {
 }
 
 // 퀵 창이 보낸 동작만 받는다
-const QUICK_ACTIONS = ['open', 'weather-setup', 'alarm-settings', 'alarm-calendar', 'quit'];
+const QUICK_ACTIONS = ['open', 'weather-setup', 'alarm-settings', 'alarm-calendar', 'brief', 'quit'];   // brief: 대화의 "브리핑해줘"(arg { target: 'today'|'tomorrow' })
 const isQuickAction = (a) => typeof a === 'string' && QUICK_ACTIONS.includes(a);
 
 // 동작 → 설정창이 갈 곳(null이면 그냥 설정창 열기)

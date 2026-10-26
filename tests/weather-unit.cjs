@@ -116,7 +116,7 @@ t('알람과 충돌하지 않는다: 날씨 요청을 몰아 보내도(느린 �
   const ps = []; for (let i = 0; i < 40; i++) ps.push(svc.get(30 + i * 0.1, 127 + i * 0.1));
   const ticks = []; const iv = setInterval(() => ticks.push(Date.now()), 10);
   await Promise.all(ps); clearInterval(iv);
-  assert.ok(ticks.length >= 8, `대기 중 틱 ${ticks.length}`);
+  assert.ok(ticks.length >= 5, `대기 중 틱 ${ticks.length}`);   // 120ms 동안 10ms 간격이면 이론상 12개지만, Windows 타이머 해상도(약 15.6ms)에서는 7~8개라 8 이상을 요구하면 가끔 실패했다. 막힘 여부는 아래 최대 간격 검사가 본다
   const gaps = ticks.slice(1).map((x, i) => x - ticks[i]); assert.ok(Math.max(...gaps) < 60, `최대 간격 ${Math.max(...gaps)}ms`);
   assert.ok(!/weather/.test(read('alarms.cjs')), '알람 스케줄러는 날씨 코드를 쓰지 않는다');
 });

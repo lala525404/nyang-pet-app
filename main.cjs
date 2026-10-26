@@ -927,6 +927,7 @@ ipcMain.on('quick-action', (e, action, arg) => {
   if (!fromQuick(e) || !quickMenu.isQuickAction(action) || (quickState && quickState.closing)) return;   // 닫히는 중의 눌림은 무시
   closeQuickMenu();
   if (action === 'quit') { requestQuit(); return; }   // 정상 종료 경로(저장·정리 후 app.quit, 막히면 QUIT_TIMEOUT_MS 뒤 app.exit)
+  if (action === 'brief') { requestBrief(arg && arg.target); return; }   // 대화의 "브리핑해줘"
   openSettingsTo(quickMenu.settingsTargetFor(action, arg));
 });
 
@@ -991,8 +992,8 @@ function pumpNotices() {
   }
   if (noticeQueue.size > 0) scheduleNoticePump();
 }
-function enqueueNotice(kind, key, payload) {
-  const r = noticeQueue.enqueue({ kind, key, payload });
+function enqueueNotice(kind, key, payload, priority = false) {
+  const r = noticeQueue.enqueue({ kind, key, payload, priority });
   if (r) pumpNotices();
   return r;
 }
@@ -1118,8 +1119,9 @@ ipcMain.on('notice-action', (e, action) => {
   if (!fromNotice(e) || !NOTICE_ACTIONS.includes(action)) return;
   const it = noticeQueue.active;
   if (action === 'week') {   // 브리핑의 "+N개 더보기": 설정창 알람 화면을 열고 주간 캘린더를 오늘이 든 주로(주 시작일은 메인이 계산한다)
+    const day = new Date(); if (it && it.payload && it.payload.target === 'tomorrow') day.setDate(day.getDate() + 1);   // 내일 브리핑이면 내일이 든 주
     closeNotice('later');
-    openSettingsTo(quickMenu.settingsTargetFor('alarm-calendar', { weekStart: briefSchedule.weekStartOf(new Date()) }));
+    openSettingsTo(quickMenu.settingsTargetFor('alarm-calendar', { weekStart: briefSchedule.weekStartOf(day) }));
     return;
   }
   if (action === 'details') {   // 사용자가 누를 때만, 주소는 카드의 버전(메인이 정한 값)으로 만든다. 창이 보낸 값은 쓰지 않는다
@@ -1142,8 +1144,14 @@ ipcMain.on('update-news-show', () => {
   if (!s || s.status !== 'available' || !s.version) return;
   enqueueNotice('update', s.version, { version: s.version, notes: Array.isArray(s.notes) ? s.notes.slice(0, 4) : [], force: true });
 });
-// 설정창의 "지금 브리핑 보기": 켜기/끄기·요일·오늘 이미 띄웠는지와 상관없이 보여 주고, 마지막으로 띄운 날은 바꾸지 않는다
-ipcMain.on('brief-show', () => { enqueueNotice('brief', 'manual', { day: briefSchedule.ymdOf(new Date()), manual: true }); });
+// 사용자가 직접 요청한 브리핑(설정창의 "지금 브리핑 보기"·대화의 "오늘/내일 브리핑해줘"): 켜기/끄기·요일·공휴일·오늘 이미 띄웠는지와 상관없이 보여 주고,
+// 마지막으로 띄운 날은 바꾸지 않는다. 3분 대기도 없다. 큐 규칙(한 번에 하나, 초집중·퀵 메뉴·알람 울림 중 대기)은 그대로이고, 자동 카드보다 앞에 선다.
+// 같은 카드·내용 생성(src/utils/brief.ts)을 쓴다. target은 'today'|'tomorrow'만 받는다(그 밖의 값은 오늘).
+function requestBrief(target) {
+  const t = target === 'tomorrow' ? 'tomorrow' : 'today';
+  enqueueNotice('brief', `manual-${t}`, { day: briefSchedule.ymdOf(new Date()), manual: true, target: t }, true);
+}
+ipcMain.on('brief-show', () => { requestBrief('today'); });
 // 부팅 후 오늘 브리핑: 앱 시작 때 한 번만 판단한다. 컴퓨터가 켜진 지(os.uptime) 3분이 되면(이미 지났으면 약 10초 뒤) 카드를 쌓고,
 // 기다리다 날짜가 바뀌었으면 포기한다. 오늘 이미 띄웠는지·요일·공휴일·켜기/끄기는 카드 창이 설정 저장값으로 정한다. 새 네트워크 요청은 없다.
 function startBriefCheck() {

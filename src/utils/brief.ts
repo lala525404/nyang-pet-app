@@ -11,6 +11,7 @@ import { formatTemp, todayDay, weatherLabel } from './weatherCard';
 
 export const BRIEF_MAX_ITEMS = 3;
 export const BRIEF_EMPTY_TEXT = '오늘은 등록된 일정이 없어요';
+export const BRIEF_EMPTY_TOMORROW_TEXT = '내일은 등록된 일정이 없어요';
 export const BRIEF_ALL_PAST_TEXT = '오늘 남은 일정은 없어요';
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -25,7 +26,8 @@ export interface BriefContent {
   emptyText: string | null;    // 보일 항목이 없을 때의 문구
   hasToday: boolean;           // 오늘 사용자 일정/알람이 하나라도 있는가(이미 지난 것 포함: 주말·공휴일에 띄울지 정한다)
   weather: string | null;      // 캐시된 날씨 한 줄(없으면 생략)
-  leave: string | null;        // "퇴근 18:00"(퇴근 시간 설정이 있을 때)
+  leave: string | null;        // "퇴근 18:00"(퇴근 시간 설정이 있을 때, 오늘 브리핑에서만)
+  label: '오늘' | '내일';       // 어느 날의 브리핑인가
 }
 
 export interface BriefInput {
@@ -34,13 +36,24 @@ export interface BriefInput {
   leaveEnabled: boolean;
   leaveTime: string;
   weather: WeatherData | null;           // 이미 받아 둔 캐시만(없으면 null)
+  tomorrow?: boolean;                    // 내일 브리핑: now는 내일 0시. 지난 시각 걸러내기·퇴근 줄·현재 기온이 없다
 }
 
 const isTime = (v: unknown): v is string => typeof v === 'string' && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
 
 // 날씨 한 줄: "맑음 18° · 최고 22° / 최저 12°" (+ 강수 확률이 높으면 " · 비 올 확률 60%")
-export function weatherLine(data: WeatherData | null | undefined, nowMs: number): string | null {
+// 내일(tomorrow): 지금 기온은 내일 것이 아니므로 쓰지 않고, 내일의 최고·최저(+정오 무렵 날씨)만. 내일 값이 없으면 생략
+export function weatherLine(data: WeatherData | null | undefined, nowMs: number, tomorrow = false): string | null {
   if (!data || typeof data.temp !== 'number' || !Number.isFinite(data.temp) || typeof data.code !== 'number') return null;
+  if (tomorrow) {
+    const day = todayDay(data, nowMs);
+    if (!day || typeof day.max !== 'number' || typeof day.min !== 'number') return null;
+    const d = new Date(nowMs), noon = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
+    const h = (data.hours ?? []).find(x => x.at === noon);
+    const parts = [...(h ? [weatherLabel(h.code).text] : []), `최고 ${formatTemp(day.max)} / 최저 ${formatTemp(day.min)}`];
+    if (typeof day.pop === 'number' && day.pop >= 50) parts.push(`비 올 확률 ${Math.round(day.pop)}%`);
+    return parts.join(' · ');
+  }
   const parts = [`${weatherLabel(data.code).text} ${formatTemp(data.temp)}`];
   const day = todayDay(data, nowMs);
   if (day && typeof day.max === 'number' && typeof day.min === 'number') parts.push(`최고 ${formatTemp(day.max)} / 최저 ${formatTemp(day.min)}`);
@@ -49,7 +62,7 @@ export function weatherLine(data: WeatherData | null | undefined, nowMs: number)
 }
 
 export function buildBrief(input: BriefInput): BriefContent {
-  const { now } = input;
+  const { now } = input, tomorrow = input.tomorrow === true;
   const all = todayAlarmList(input.settings, now);   // 오늘 켜져 있고 건너뛰지 않은 사용자 알람(시각순). 점심·퇴근 기본 알림은 목록에 없다
   const left = all.filter(a => !a.past);
   const items = left.slice(0, BRIEF_MAX_ITEMS).map(a => ({ time: a.time, title: a.title, label: KIND_LABEL[a.sched] }));
@@ -59,10 +72,11 @@ export function buildBrief(input: BriefInput): BriefContent {
     holiday: hol,
     items,
     more: Math.max(0, left.length - BRIEF_MAX_ITEMS),
-    emptyText: all.length === 0 ? BRIEF_EMPTY_TEXT : left.length === 0 ? BRIEF_ALL_PAST_TEXT : null,
+    emptyText: all.length === 0 ? (tomorrow ? BRIEF_EMPTY_TOMORROW_TEXT : BRIEF_EMPTY_TEXT) : left.length === 0 ? BRIEF_ALL_PAST_TEXT : null,
     hasToday: all.length > 0,
-    weather: weatherLine(input.weather, now.getTime()),
-    leave: input.leaveEnabled && isTime(input.leaveTime) ? `퇴근 ${input.leaveTime.padStart(5, '0')}` : null,
+    weather: weatherLine(input.weather, now.getTime(), tomorrow),
+    leave: !tomorrow && input.leaveEnabled && isTime(input.leaveTime) ? `퇴근 ${input.leaveTime.padStart(5, '0')}` : null,
+    label: tomorrow ? '내일' : '오늘',
   };
 }
 
@@ -78,7 +92,7 @@ export function shouldShowBrief(a: { enabled: unknown; lastBriefDate: unknown; n
   return !offDay || a.hasToday;
 }
 
-export interface BriefPayload { day?: string; force?: boolean; manual?: boolean }
+export interface BriefPayload { day?: string; force?: boolean; manual?: boolean; target?: 'today' | 'tomorrow' }
 export type BriefDecision = { view: { kind: 'brief'; content: BriefContent; persist: boolean; day: string } } | { skip: true };
 
 // 카드 창이 부르는 최종 판단. persist: 보인 날을 lastBriefDate로 저장할지(시험용·수동 보기는 저장하지 않는다)
@@ -91,8 +105,11 @@ export function decideBrief(p: BriefPayload | null, a: { stored: Record<string, 
     if (!a.stored) return { skip: true };
     if (!p || p.day !== today) return { skip: true };
   }
-  const content = buildBrief({ now: a.now, settings: a.settings, leaveEnabled: a.leaveEnabled, leaveTime: a.leaveTime, weather: a.weather });
-  const ok = shouldShowBrief({ enabled: a.stored ? a.stored.briefEnabled : undefined, lastBriefDate: a.stored ? a.stored.lastBriefDate : undefined, now: a.now, hasToday: content.hasToday, force });
+  // 내일 브리핑(대화 "내일 브리핑해줘"): 내일 0시를 기준으로 내일의 반복·날짜 알람을 시각순으로. 직접 요청이라 force와 같이 조건을 모두 무시한다
+  const tomorrow = !!(p && p.manual && p.target === 'tomorrow');
+  const ref = tomorrow ? new Date(a.now.getFullYear(), a.now.getMonth(), a.now.getDate() + 1) : a.now;
+  const content = buildBrief({ now: ref, settings: a.settings, leaveEnabled: a.leaveEnabled, leaveTime: a.leaveTime, weather: a.weather, tomorrow });
+  const ok = shouldShowBrief({ enabled: a.stored ? a.stored.briefEnabled : undefined, lastBriefDate: a.stored ? a.stored.lastBriefDate : undefined, now: a.now, hasToday: content.hasToday, force });   // 수동 요청(manual)은 force: 끔·이미 띄움·주말·공휴일과 상관없이 보인다
   if (!ok) return { skip: true };
   return { view: { kind: 'brief', content, persist: !force, day: today } };
 }

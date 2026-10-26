@@ -25,7 +25,7 @@ type BriefView = { kind: 'brief'; content: BriefContent; persist: boolean; day: 
 type View = NoticeView | BriefView;
 
 // 브리핑을 보일지 정하고 내용을 만든다(없으면 null = 조용히 넘김). 날씨는 이미 받아 둔 것만 묻는다(동네와 동의가 있을 때, 새 요청 없음)
-async function decideBriefCard(payload: { day?: string; force?: boolean; manual?: boolean } | null): Promise<BriefView | null> {
+async function decideBriefCard(payload: { day?: string; force?: boolean; manual?: boolean; target?: 'today' | 'tomorrow' } | null): Promise<BriefView | null> {
   const stored = readStoredSettings();
   const alarms = stored && Array.isArray(stored.alarms) ? stored.alarms : [];
   const settings = stored ? { lunchOn: !!stored.lunchEnabled, leaveOn: !!stored.leaveEnabled, lunchTime: String(stored.lunchTime ?? '12:00'), leaveTime: String(stored.leaveTime ?? '18:00'), alarms } as QuickAlarmSettings : null;
@@ -101,12 +101,12 @@ export default function NoticePage() {
     const c = view.content;
     return (
       <div className="qk-root nt-root" {...rootProps}>
-        <section className="qk-card nt-card" role="dialog" aria-label={`오늘의 브리핑 ${c.dateText}`}>
+        <section className="qk-card nt-card" role="dialog" aria-label={`${c.label}의 브리핑 ${c.dateText}`}>
           <header className="nt-head">
             <Sunrise className="nt-i" strokeWidth={1.7} aria-hidden />
             <div className="nt-titles">
               <h2 className="nt-title">{c.dateText}</h2>
-              <p className="nt-sub">{c.holiday ? `${c.holiday} · 오늘의 브리핑` : '오늘의 브리핑'}</p>
+              <p className="nt-sub">{c.holiday ? `${c.holiday} · ${c.label}의 브리핑` : `${c.label}의 브리핑`}</p>
             </div>
             <button type="button" className="qk-iconbtn" onClick={() => act('close')} aria-label="닫기"><X className="qk-i" strokeWidth={1.7} aria-hidden /></button>
           </header>

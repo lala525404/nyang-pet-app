@@ -28,7 +28,7 @@ export interface WeatherDay { at: number; max: number | null; min: number | null
 export interface WeatherData { temp: number; feels: number; code: number; wind: number | null; hours: WeatherHour[]; days?: WeatherDay[] }
 
 // 펫 우클릭 퀵 메뉴: 퀵 창이 메인에 보내는 동작, 설정창을 특정 위치로 여는 목적지
-export type QuickAction = 'open' | 'weather-setup' | 'alarm-settings' | 'alarm-calendar' | 'quit';   // alarm-calendar: arg { weekStart }로 설정창 알람 캘린더를 그 주로 연다
+export type QuickAction = 'open' | 'weather-setup' | 'alarm-settings' | 'alarm-calendar' | 'brief' | 'quit';   // alarm-calendar: arg { weekStart }로 설정창 알람 캘린더를 그 주로 연다. brief: arg { target }로 오늘/내일 브리핑 카드를 띄운다(대화의 "브리핑해줘")
 // 메인이 계산해서 보내는 퀵 메뉴 배치. 호: 버튼 중심(창 안 좌표)과 펫 중심에서 버튼까지의 벡터, 카드·종료 안내 상자. 알약 바: 펫 위/아래만.
 export interface QuickBox { x: number; y: number; w: number; h: number }
 export type QuickLayout =
@@ -73,7 +73,7 @@ interface ElectronAPI {
   onQuickLayout: (cb: (layout: QuickLayout) => void) => () => void;
   onQuickOpen: (cb: () => void) => () => void;
   onQuickClosing: (cb: () => void) => () => void;
-  quickAction: (action: QuickAction, arg?: { weekStart: string }) => void;
+  quickAction: (action: QuickAction, arg?: { weekStart: string } | { target: 'today' | 'tomorrow' }) => void;
   getQuickAlarmSettings: () => Promise<QuickAlarmSettings>;
   noticeGet: () => Promise<NoticeItem | null>;
   noticeSkip: () => void;
