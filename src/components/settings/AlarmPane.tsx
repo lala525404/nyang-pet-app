@@ -9,14 +9,37 @@ import NoticeCard from './NoticeCard';
 import { ALARM_NAME_MAX } from '../../utils/alarmText';
 import { MAX_ALARMS, isPastOneShot, isYmd, newAlarm, parseYmd, repeatSummary, ymd } from '../../utils/alarmSchedule';
 import { openAfterAdd, openAfterRemove, openIfExists, toggleOpen } from '../../utils/alarmList';
+import { cleanupNoticeText, restoreCleaned, sanitizeUndo } from '../../utils/alarmCleanup';
+import { patchStoredSettings } from '../../utils/settings';
 import type { Alarm } from '../../utils/settings';
 import type { PaneProps } from './shared';
 
 const newId = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const LIMIT_NOTE = `알람은 최대 ${MAX_ALARMS}개까지 만들 수 있어요. 지난 알람을 정리하거나 쓰지 않는 알람을 지워 주세요.`;
 
-export default function AlarmPane({ settings: s, update, gotoWeek }: PaneProps & { gotoWeek?: { start: string; n: number } | null }) {
+export default function AlarmPane({ settings: s, update, patch, gotoWeek }: PaneProps & { gotoWeek?: { start: string; n: number } | null }) {
   const alarms = s.alarms || [];
+  // 지난 알람 자동 정리 안내: 정리된 알람이 있으면 알람 화면을 처음 여는 이번 한 번만 "N개를 정리했어요 [되돌리기]"를 보여 준다(다시 열면 사라지고, 보관분은 다음 앱 실행 때까지 남는다).
+  // 보여 줬다는 표시(shown)와 되돌리기는 정리를 돌리는 버디 창과 같은 저장값을 통해서만 주고받는다(설정창은 이 기록을 자기 값으로 덮어쓰지 않는다: inheritOtherWindowKeys).
+  const undo = sanitizeUndo(s.alarmCleanupUndo);
+  const [bannerAt, setBannerAt] = useState<number | null>(null);
+  const [restored, setRestored] = useState<{ n: number; skipped: number } | null>(null);
+  useEffect(() => {
+    if (!undo || undo.shown) return;
+    setBannerAt(undo.at);
+    patchStoredSettings({ alarmCleanupUndo: { ...undo, shown: true } });
+    patch({ alarmCleanupUndo: { ...undo, shown: true } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo?.at, undo?.shown]);
+  useEffect(() => { if (!restored) return; const t = setTimeout(() => setRestored(null), 7000); return () => clearTimeout(t); }, [restored]);
+  const doRestore = () => {
+    if (!undo) return;
+    const r = restoreCleaned(alarms, undo);
+    patchStoredSettings({ alarmCleanupUndo: null });
+    update({ alarms: r.alarms, alarmCleanupUndo: null });
+    setBannerAt(null); setRestored({ n: r.restored, skipped: r.skipped });
+  };
+  const showBanner = !!undo && bannerAt === undo.at;
   const [now, setNow] = useState(new Date());
   const [openId, setOpenId] = useState<string | null>(null);   // 목록에서 "자세히"가 펼쳐진 알람(한 번에 하나)
   const [editing, setEditing] = useState<{ id: string; draft?: Alarm; anchor?: Date } | null>(null);   // 캘린더 편집 창(새 알람은 draft로 시작)
@@ -137,7 +160,7 @@ export default function AlarmPane({ settings: s, update, gotoWeek }: PaneProps &
                     <ChevronDown className="ui-i" strokeWidth={1.5} aria-hidden data-open={open ? '' : undefined} />
                     <span>자세히</span>
                     {!open && hasDetails(alarm) && <span className="st-more-dot" aria-label="자세한 내용이 있어요" />}
-                    {alarm.repeat && <small className="st-more-sub">{isPastOneShot(alarm, now) ? '완료 · ' : ''}{repeatSummary(alarm)}</small>}
+                    {alarm.repeat && <small className="st-more-sub">{isPastOneShot(alarm, now) ? '지남 · ' : ''}{repeatSummary(alarm)}</small>}
                   </button>
                   <AlarmAccordion open={open} id={`alarm-detail-${alarm.id}`} onOpened={() => scrollRowIntoView(alarm.id)}>
                     <AlarmDetailFields alarm={alarm} label={`알람 ${idx + 1}`} now={now} cloneDisabled={atLimit} onClone={() => { cloneAlarm(alarm.id); }}
@@ -164,6 +187,12 @@ export default function AlarmPane({ settings: s, update, gotoWeek }: PaneProps &
         <AlarmEditor alarm={editingAlarm} isNew={editingIsNew} anchorDate={editing.anchor} now={now} patch={patchEditing}
           cloneDisabled={atLimit} onClone={() => { const id = cloneAlarm(editing.id, false); if (id) setEditing({ id }); }}
           onDelete={() => { removeAlarm(editing.id); setEditing(null); }} onClose={() => setEditing(null)} />
+      )}
+      {(showBanner || restored) && (
+        <p className="st-cleanup" role="status">
+          <span>{restored ? `알람 ${restored.n}개를 되돌렸어요${restored.skipped ? ` (자리가 없거나 이미 있어서 ${restored.skipped}개는 건너뛰었어요)` : ''}` : cleanupNoticeText(undo ? undo.alarms.length : 0)}</span>
+          {!restored && <button type="button" className="ui-btn ui-btn--sm" onClick={doRestore}>되돌리기</button>}
+        </p>
       )}
     </section>
   );

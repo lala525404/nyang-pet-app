@@ -1,9 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { holidayName, holidayShort } from '../../data/holidays';   // 공휴일 표시(내장 데이터, 표시만 — 알람 동작에는 영향 없음)
 import { PAST_DAY_NOTICE, dayLabel, defaultTimeFor, isPastDay, stackDay, tooltipInfo, upcomingOneShots, weekDates, weekRangeLabel, weekdayLabel } from '../../utils/alarmCalendar';
 import { WEEKDAY_LABELS, addDays, isPastOneShot, mondayOf, repeatSummary, startOfDay, ymd } from '../../utils/alarmSchedule';
 import { alarmTitle } from '../../utils/alarmText';
+import { KIND_LEGEND, alarmKind, kindLabel, rangeText } from '../../utils/alarmKind';   // 일정(이름·종료 시각·참석자가 있는 것) / 알람(시각만) 구분
 import { formatTime } from '../../utils/settings';
 import type { DayEvent, Zone } from '../../utils/alarmCalendar';
 import type { Alarm } from '../../utils/settings';
@@ -22,7 +23,7 @@ interface Props {
 }
 
 const eventAria = (a: Alarm, day: Date, past: boolean) =>
-  `${day.getMonth() + 1}월 ${day.getDate()}일 ${weekdayLabel(day)}요일 ${formatTime(a.time)} ${alarmTitle(a)}, ${repeatSummary(a)}${!a.enabled ? ', 꺼짐' : ''}${a.skipDate === ymd(day) ? ', 오늘 건너뜀' : ''}${past ? ', 완료' : ''}. 누르면 수정`;
+  `${day.getMonth() + 1}월 ${day.getDate()}일 ${weekdayLabel(day)}요일 ${kindLabel(a)} ${formatTime(a.time)} ${alarmTitle(a)}, ${repeatSummary(a)}${!a.enabled ? ', 꺼짐' : ''}${a.skipDate === ymd(day) ? ', 오늘 건너뜀' : ''}${past ? ', 지남' : ''}. 누르면 수정`;
 
 // 주간 알람 캘린더: 월~일 일자 열 아래로 그날의 알람 블록이 시각 순으로 쌓이고, 오전/오후만 구분선으로 나눈다(시간 축 없음).
 // 알람이 있는 날은 길어지고 없는 날은 비어 있어 한눈에 차이가 보인다. 블록에 마우스를 올리면 간단한 정보가 뜨고, 누르면 수정 창이 열린다.
@@ -96,13 +97,18 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
   };
 
   const renderBlock = (ev: DayEvent, day: Date, col: number) => {
-    const a = ev.alarm; const tip = tooltipInfo(a, day, ev.past);
+    const a = ev.alarm; const tip = tooltipInfo(a, day, ev.past); const kind = alarmKind(a);
     return (
-      <button key={a.id} type="button" className="st-cal-block" data-dim={ev.dim ? '' : undefined} data-past={ev.past ? '' : undefined} data-align={col >= 4 ? 'right' : 'left'}
+      <button key={a.id} type="button" className="st-cal-block" data-kind={kind} data-dim={ev.dim ? '' : undefined} data-past={ev.past ? '' : undefined} data-align={col >= 4 ? 'right' : 'left'}
         aria-label={eventAria(a, day, ev.past)} onClick={() => onEdit(a.id)}>
-        <span className="st-cal-block-text"><b className="st-cal-block-time">{a.time}</b> {tip.title}</span>
+        {/* 일정은 시간 범위 막대(14:00–15:00 + 이름), 알람은 종 아이콘 점 + 시각 */}
+        <span className="st-cal-block-text">
+          {kind === 'alarm'
+            ? <><Bell className="st-cal-bell" strokeWidth={2.2} aria-hidden /><b className="st-cal-block-time">{a.time}</b></>
+            : <><b className="st-cal-block-time">{rangeText(a.time, a.endTime)}</b> {tip.title}</>}
+        </span>
         <span className="st-cal-tip" role="tooltip" aria-hidden="true">
-          <b>{tip.title}{tip.status && <i>{tip.status}</i>}</b>
+          <b>{tip.title}<i>{[kindLabel(a), tip.status].filter(Boolean).join(' · ')}</i></b>
           {tip.lines.map((l, i) => <span key={i}>{l}</span>)}
           <em>누르면 수정</em>
         </span>
@@ -141,6 +147,11 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
           {pastCount > 0 && <button type="button" className="ui-btn ui-btn--sm" onClick={onClearPast}>지난 알람 정리 ({pastCount})</button>}
         </div>
       </div>
+      <p className="st-cal-legend">
+        <span className="st-cal-lg"><i className="st-cal-lg-bar" aria-hidden /><b>일정</b><small>{KIND_LEGEND.event.replace('일정: ', '')}</small></span>
+        <span className="st-cal-lg"><Bell className="st-cal-bell" strokeWidth={2.2} aria-hidden /><b>알람</b><small>{KIND_LEGEND.alarm.replace('알람: ', '')}</small></span>
+        <span className="st-cal-lg st-cal-lg--past"><i className="st-cal-lg-dim" aria-hidden /><b>지남</b><small>7일이 지나면 자동으로 정리돼요</small></span>
+      </p>
       {jump && (
         <button type="button" className="st-cal-jump" onClick={() => setWeekStart(mondayOf(jump.at))}>
           다음 날짜 알람 · {dayLabel(jump.at)}({WEEKDAY_LABELS[jump.at.getDay()]}) {formatTime(`${jump.at.getHours()}:${jump.at.getMinutes()}`)} {alarmTitle(jump.alarm)} <span>그 주로 이동</span>
@@ -161,10 +172,10 @@ export default function AlarmCalendar({ alarms, now, focus, atLimit, onCreate, o
                   <ul>
                     {all.map(ev => (
                       <li key={ev.alarm.id}>
-                        <button type="button" className="st-agenda-ev" data-dim={ev.dim ? '' : undefined} aria-label={eventAria(ev.alarm, d, ev.past)} onClick={() => onEdit(ev.alarm.id)}>
+                        <button type="button" className="st-agenda-ev" data-kind={alarmKind(ev.alarm)} data-dim={ev.dim ? '' : undefined} aria-label={eventAria(ev.alarm, d, ev.past)} onClick={() => onEdit(ev.alarm.id)}>
                           <span className="st-agenda-time">{formatTime(ev.alarm.time)}</span>
-                          <span className="st-agenda-name">{alarmTitle(ev.alarm)}</span>
-                          <small>{ev.past ? '완료' : repeatSummary(ev.alarm)}</small>
+                          <span className="st-agenda-name"><i className="st-kindchip">{kindLabel(ev.alarm)}</i>{alarmKind(ev.alarm) === 'event' ? alarmTitle(ev.alarm) : ''}</span>
+                          <small>{ev.past ? '지남' : repeatSummary(ev.alarm)}</small>
                         </button>
                       </li>
                     ))}

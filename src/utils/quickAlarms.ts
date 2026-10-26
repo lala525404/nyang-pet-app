@@ -1,6 +1,8 @@
 import type { Alarm } from './settings';
 import { addDays, isSkipped, occursOn, startOfDay, toMin, ymd } from './alarmSchedule';
 import { alarmTitle } from './alarmText';
+import { alarmKind } from './alarmKind';
+import type { AlarmKind } from './alarmKind';
 
 // 퀵 메뉴의 "오늘 울리는 알람" 목록(화면과 분리해 시험한다: tests/quick-menu-unit.cjs).
 // 오늘 울리는지는 스케줄러(alarms.cjs의 dueActions)와 같은 규칙이다: 켜져 있고, 반복(요일·날짜·그 주만)이 오늘에 해당하고, "오늘만 건너뛰기"가 아닐 때.
@@ -17,6 +19,7 @@ export interface TodayAlarmItem {
   past: boolean;         // 이미 지난 시각(분 단위로 비교: 지금 이 분은 지난 게 아니다)
   next: boolean;         // 아직 안 지난 것 중 가장 이른 것
   minutesUntil: number | null;   // next일 때만: 몇 분 뒤
+  sched: AlarmKind;      // 일정(이름·종료 시각·참석자가 있는 것) / 알람(시각만): 항목 앞 라벨
 }
 
 const isTime = (v: unknown): v is string => typeof v === 'string' && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
@@ -28,11 +31,11 @@ export function todayAlarmList(s: QuickAlarmSettings | null, now: Date, day: Dat
   if (!s) return [];
   const sameDay = day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth() && day.getDate() === now.getDate();
   const nowMin = sameDay ? now.getHours() * 60 + now.getMinutes() : -1;
-  const raw: { id: string; time: string; title: string; kind: TodayAlarmItem['kind']; order: number }[] = [];
+  const raw: { id: string; time: string; title: string; kind: TodayAlarmItem['kind']; order: number; sched: AlarmKind }[] = [];
   for (const a of s.alarms ?? []) {
     if (!a || !a.enabled || !isTime(a.time)) continue;
     if (!occursOn(a, day) || isSkipped(a, day)) continue;
-    raw.push({ id: a.id, time: normTime(a.time), title: alarmTitle({ name: a.name }), kind: 'alarm', order: 1 });
+    raw.push({ id: a.id, time: normTime(a.time), title: alarmTitle({ name: a.name }), kind: 'alarm', order: 1, sched: alarmKind(a) });
   }
   raw.sort((x, y) => toMin(x.time) - toMin(y.time) || x.order - y.order || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
   let nextSeen = false;
@@ -40,7 +43,7 @@ export function todayAlarmList(s: QuickAlarmSettings | null, now: Date, day: Dat
     const past = sameDay && toMin(r.time) < nowMin;
     const next = sameDay && !past && !nextSeen;
     if (next) nextSeen = true;
-    return { id: r.id, time: r.time, title: r.title, kind: r.kind, past, next, minutesUntil: next ? toMin(r.time) - nowMin : null };
+    return { id: r.id, time: r.time, title: r.title, kind: r.kind, past, next, minutesUntil: next ? toMin(r.time) - nowMin : null, sched: r.sched };
   });
 }
 

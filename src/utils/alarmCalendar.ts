@@ -67,7 +67,7 @@ export function tooltipInfo(a: Alarm, day: Date, past: boolean): TipInfo {
   const att = formatAttendees(a.attendees); if (att) lines.push(att);
   const memo = (a.memo || '').trim(); if (memo) lines.push(memo);
   if ((a.preMinutes ?? 0) > 0) lines.push(`${a.preMinutes}분 전에 미리 알림`);
-  const status = past ? '완료' : !a.enabled ? '꺼짐' : isSkipped(a, day) ? '오늘은 건너뜀' : '';
+  const status = past ? '지남' : !a.enabled ? '꺼짐' : isSkipped(a, day) ? '오늘은 건너뜀' : '';
   return { title: alarmTitle(a), lines, status };
 }
 

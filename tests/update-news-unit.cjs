@@ -124,7 +124,7 @@ t('설정창이 낡은 값으로 덮어쓰지 않는다: 저장할 때 다른 �
   assert.strictEqual(loadSettings().inheritOtherWindowKeys(stale).lastSeenVersion, '1.5.0');
   global.localStorage = fakeStorage();   // 저장값이 없으면 그대로
   assert.strictEqual(loadSettings().inheritOtherWindowKeys(stale), stale);
-  assert.deepStrictEqual([...S.OTHER_WINDOW_KEYS], ['lastSeenVersion', 'lastPromptedVersion']);
+  assert.deepStrictEqual([...S.OTHER_WINDOW_KEYS], ['lastSeenVersion', 'lastPromptedVersion', 'alarmCleanupDay', 'alarmClockMark', 'alarmCleanupUndo']);
 });
 
 // ── 연결(정적 확인) ──

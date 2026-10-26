@@ -11,6 +11,7 @@ import { QUIT_CONFIRM_MS, SPARKLE_COOLDOWN_MS, SPARKLE_LIFETIME_MS, barRows, can
 import type { Sparkle } from '../utils/quickMenu';
 import { dayTitle, limitItems, noAlarmText, noWeekAlarmText, todayAlarmList, untilText, weekAlarmList, weekTitle } from '../utils/quickAlarms';
 import type { WeekAlarmItem } from '../utils/quickAlarms';
+import { KIND_LABEL, alarmKind, kindLabel } from '../utils/alarmKind';   // 항목 앞 "일정"/"알람" 라벨
 import { parseAlarmCommand } from '../utils/alarmCommand';
 import type { Meridiem } from '../utils/alarmCommand';
 import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, meridiemQuestion, newAlarmId, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
@@ -184,6 +185,7 @@ function AlarmCard({ onBack, query }: { onBack: () => void; query?: AlarmQuery }
               <Fragment key={`${a.date}-${a.id}`}>
                 {head && <li className="qk-al-head" aria-hidden>{head}</li>}
                 <li data-past={a.past ? '' : undefined} data-next={a.next ? '' : undefined}>
+                  <i className="qk-al-kind">{KIND_LABEL[a.sched]}</i>
                   <span className="qk-al-time">{formatTime(a.time)}</span>
                   <span className="qk-al-title">{a.title}</span>
                   {a.next && a.minutesUntil !== null && <span className="qk-al-until">{untilText(a.minutesUntil)}</span>}
@@ -305,7 +307,7 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
     const q = createQuestion(step.cmd);
     body = (
       <div className="qk-chat-confirm" role="group" aria-label={q.question}>
-        <p className="qk-chat-head">{q.head}</p>
+        <p className="qk-chat-head"><i className="qk-al-kind">{KIND_LABEL[alarmKind({ name: step.cmd.title })]}</i> {q.head}</p>
         <p className="qk-chat-big">{q.big}</p>
         {step.cmd.title && <p className="qk-chat-title">‘{step.cmd.title}’</p>}
         {q.note && <p className="qk-note qk-chat-note">{q.note}</p>}
@@ -319,7 +321,7 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
         <p className="qk-chat-q">어느 알람인가요?</p>
         <ul>{step.targets.map((t, i) => (
           <li key={t.kind === 'alarm' ? t.alarm.id : t.kind}>
-            <button type="button" className="qk-chat-row" onClick={() => setStep({ s: 'delete', targets: [t], stage: 1, all: false })} data-autofocus={i === 0 ? '' : undefined}>{t.label}</button>
+            <button type="button" className="qk-chat-row" onClick={() => setStep({ s: 'delete', targets: [t], stage: 1, all: false })} data-autofocus={i === 0 ? '' : undefined}>{t.kind === 'alarm' && <i className="qk-al-kind">{kindLabel(t.alarm)}</i>}{t.label}</button>
           </li>))}
         </ul>
         <button type="button" className="qk-btn" onClick={goInput}>취소</button>
@@ -340,7 +342,7 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
       body = (
         <div className="qk-chat-confirm" role="group" aria-label={only ? `${only.label} 알람을 지울까요?` : `알람 ${t.length}개를 지울까요?`}>
           {step.all ? <p className="qk-chat-big">{t.length}개</p> : null}
-          <ul className="qk-chat-list">{t.slice(0, step.all ? DELETE_ALL_MAX_SHOWN : 1).map(x => <li key={x.kind === 'alarm' ? x.alarm.id : x.kind}>{x.label}</li>)}{step.all && t.length > DELETE_ALL_MAX_SHOWN && <li className="qk-note">외 {t.length - DELETE_ALL_MAX_SHOWN}개</li>}</ul>
+          <ul className="qk-chat-list">{t.slice(0, step.all ? DELETE_ALL_MAX_SHOWN : 1).map(x => <li key={x.kind === 'alarm' ? x.alarm.id : x.kind}>{x.kind === 'alarm' && <i className="qk-al-kind">{kindLabel(x.alarm)}</i>}{x.label}</li>)}{step.all && t.length > DELETE_ALL_MAX_SHOWN && <li className="qk-note">외 {t.length - DELETE_ALL_MAX_SHOWN}개</li>}</ul>
           {defaultOnly && <p className="qk-note qk-chat-note">기본 알림은 지우지 않고 꺼 둬요</p>}
           <p className="qk-chat-q">{defaultOnly ? '이 알림을 끌까요?' : step.all ? `알람 ${t.length}개를 지울까요?` : '이 알람을 지울까요?'}</p>
           <Actions okLabel={defaultOnly ? '끄기' : step.all ? '계속' : '지우기'} onOk={() => (step.all ? setStep({ ...step, stage: 2 }) : doDelete(t))} />

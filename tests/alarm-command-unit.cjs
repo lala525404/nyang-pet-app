@@ -13,7 +13,8 @@ const text = load('src/utils/alarmText.ts', { './settings': settingsTs });
 const WOM = load('src/utils/weekOfMonth.ts', { './alarmSchedule': sched });
 const P = load('src/utils/alarmCommand.ts', { './alarmSchedule': sched, './weekOfMonth': WOM });
 const CH = load('src/utils/alarmChat.ts', { './alarmSchedule': sched, './alarmText': text, './alarmCommand': P });
-const QA = load('src/utils/quickAlarms.ts', { './alarmSchedule': sched, './alarmText': text });
+const KIND = load('src/utils/alarmKind.ts', { './alarmSchedule': sched, './alarmText': text });
+const QA = load('src/utils/quickAlarms.ts', { './alarmSchedule': sched, './alarmText': text, './alarmKind': KIND });
 const FFFD = String.fromCharCode(0xFFFD);
 const D = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi, 0, 0);
 

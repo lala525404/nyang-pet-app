@@ -439,6 +439,25 @@ html[data-theme="dark"] .st-agenda-hol { color: #FF8A80; }
 .st-agenda-ev:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .st-daychip, .st-cal-block, .st-cal-add, .st-cal-tip { transition: none; } .st-daychip:active:not(:disabled) { transform: none; } }
 
+/* ── 일정/알람 구분(흑백): 일정은 왼쪽 굵은 막대 + 시간 범위, 알람은 윤곽선 + 종 아이콘 점 + 시각. 지난 것은 흐리게(회색) ── */
+.st-cal-block[data-kind="event"], .st-agenda-ev[data-kind="event"] { background: var(--ui-item); box-shadow: inset 4px 0 0 var(--ui-ink); }
+.st-cal-block[data-kind="alarm"], .st-agenda-ev[data-kind="alarm"] { background: transparent; box-shadow: inset 0 0 0 1px var(--ui-line); }
+.st-cal-block[data-kind="event"] .st-cal-block-time { font-weight: 800; }
+.st-cal-bell { width: 11px; height: 11px; margin: -2px 4px 0 0; vertical-align: middle; flex: none; }
+@media (hover: hover) and (pointer: fine) { .st-cal-block[data-kind]:hover, .st-agenda-ev[data-kind]:hover { background: var(--ui-item); } }
+.st-cal-block[data-past] .st-cal-block-text { text-decoration: none; filter: grayscale(1); }
+.st-cal-block[data-past], .st-agenda-ev[data-dim] { opacity: 0.5; }
+.st-kindchip { display: inline-block; margin-right: 6px; padding: 0 6px; border: 1px solid var(--ui-line); border-radius: var(--ui-r-pill); font-style: normal; font-size: 11px; font-weight: 700; line-height: 18px; color: var(--ui-sub); }
+.st-cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0 0 8px; font-size: 12px; color: var(--ui-sub); }
+.st-cal-lg { display: inline-flex; align-items: center; gap: 6px; }
+.st-cal-lg b { color: var(--ui-ink); font-weight: 700; }
+.st-cal-lg small { font-size: 12px; }
+.st-cal-lg-bar { width: 14px; height: 12px; border-radius: 3px; background: var(--ui-item); box-shadow: inset 3px 0 0 var(--ui-ink); }
+.st-cal-lg-dim { width: 14px; height: 12px; border-radius: 3px; background: var(--ui-item); opacity: 0.5; box-shadow: inset 0 0 0 1px var(--ui-line); }
+/* 지난 알람 자동 정리 안내(알람 화면 아래에 붙어 있다) */
+.st-cleanup { position: sticky; bottom: 12px; z-index: 6; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0 0; padding: 10px 14px; border-radius: var(--ui-r-inner); background: var(--ui-ink); color: var(--ui-panel); font-size: 13px; font-weight: 600; box-shadow: var(--ui-shadow-float); }
+.st-cleanup .ui-btn { flex: none; background: transparent; color: inherit; border-color: color-mix(in srgb, var(--ui-panel) 45%, transparent); }
+
 /* "자세히" 접이식 영역: 높이가 200~300ms로 부드럽게 늘고 줄어든다(0fr ↔ 1fr). 움직임 줄이기에서는 즉시 전환 */
 .st-acc { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--acc-ms, 240ms) var(--ui-ease-out), opacity var(--acc-ms, 240ms) var(--ui-ease-out); }
 .st-acc[data-open] { grid-template-rows: 1fr; opacity: 1; }

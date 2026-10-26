@@ -1,5 +1,6 @@
 import type { CustomShape } from '../components/CatEmoji';
 import type { AlarmRepeat } from './alarmSchedule';
+import type { CleanupUndo } from './alarmCleanup';
 import { seedFreshTheme } from './theme';
 
 export interface Alarm {
@@ -40,6 +41,10 @@ export interface PetSettings {
   // 안내 카드(v1.7.0): 모두 새 키라서 예전 설정에는 없고, 비어 있으면 "아직 기록 없음"이다
   lastSeenVersion: string;     // 업데이트 소식 카드를 본(닫은) 마지막 버전. 비어 있으면 현재 버전을 저장만 하고 카드는 없다
   lastPromptedVersion: string; // 새 버전 안내 카드를 자동으로 보여 준 마지막 버전(같은 버전에는 한 번만)
+  // 지난 알람 자동 정리(v1.7.0, 펫 창이 쓰고 설정창은 읽기만): 마지막으로 정리한 날(YYYY-MM-DD)·마지막으로 확인한 시각(ms, 시계 이상 판단)·직전 정리분(되돌리기용)
+  alarmCleanupDay: string;
+  alarmClockMark: number;
+  alarmCleanupUndo: CleanupUndo | null;
   moveSpeed: number;
   zone: number;
   monitor: number; // -1 = 전체 모니터
@@ -68,7 +73,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   workStart: '09:00', workEnd: '18:00', animalId: 'cat',
   customImages: [null, null, null], distractInterval: 30,
   imageRotateInterval: 60, imageRotateEnabled: true,
-  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, weatherCityId: '', weatherConsent: false, introEnabled: true, lastSeenVersion: '', lastPromptedVersion: '', useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
+  bubbleEnabled: true, bubbleMessages: [], bubbleShowSec: 5, bubbleGapSec: 30, bubbleClock: true, weatherCityId: '', weatherConsent: false, introEnabled: true, lastSeenVersion: '', lastPromptedVersion: '', alarmCleanupDay: '', alarmClockMark: 0, alarmCleanupUndo: null, useCustomMode: true, customShape: 'round', moveSpeed: 5, zone: 0, monitor: -1,
   yarEnabled: false, yarInterval: 60, buddyMode: 'buddy', size: 100,
   lunchEnabled: false, leaveEnabled: false, lunchTime: '12:00', leaveTime: '18:00',
   lunchPreAlertMinutes: 5, leavePreAlertMinutes: 5, lunchPreAlertEnabled: false, leavePreAlertEnabled: false, alarms: [],
@@ -164,7 +169,7 @@ export function patchStoredSettings(patch: Partial<PetSettings>): boolean {
 
 // 다른 창(안내 카드·펫 창)이 저장값에 직접 써 넣는 기록 키. 설정창은 이 키를 스스로 바꾸지 않고, 저장할 때마다 저장값의 것을 이어받는다
 // (그렇지 않으면 설정창이 자기 메모리의 낡은 값으로 통째로 덮어써서, 방금 저장한 "마지막으로 본 버전" 같은 기록이 되돌아간다).
-export const OTHER_WINDOW_KEYS = ['lastSeenVersion', 'lastPromptedVersion'] as const;
+export const OTHER_WINDOW_KEYS = ['lastSeenVersion', 'lastPromptedVersion', 'alarmCleanupDay', 'alarmClockMark', 'alarmCleanupUndo'] as const;
 export function inheritOtherWindowKeys(next: PetSettings): PetSettings {
   const stored = readStoredSettings();
   if (!stored) return next;

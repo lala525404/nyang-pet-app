@@ -378,7 +378,7 @@ t('블록 말풍선 정보: 이름·시간(범위)·반복·참석자·메모·�
   const full = CAL.tooltipInfo(al({ name: '디자인 리뷰', time: '14:00', endTime: '15:00', attendees: '김OO, 이OO, 박OO, 최OO', memo: '시안 3종', preMinutes: 10, repeat: { kind: 'weekly', days: [3] } }), day, false);
   assert.deepStrictEqual(full, { title: '디자인 리뷰', lines: ['오후 2:00 – 오후 3:00', '매주 수', '참석 김OO, 이OO, 박OO 외 1명', '시안 3종', '10분 전에 미리 알림'], status: '' });
   const bare = CAL.tooltipInfo({ id: 'x', time: '09:00', enabled: false }, day, false); assert.deepStrictEqual(bare, { title: '알람', lines: ['오전 9:00', '매일'], status: '꺼짐' });
-  assert.strictEqual(CAL.tooltipInfo(al({ skipDate: '2026-10-28' }), day, false).status, '오늘은 건너뜀'); assert.strictEqual(CAL.tooltipInfo(al({ repeat: { kind: 'date', date: '2026-10-20' } }), day, true).status, '완료');
+  assert.strictEqual(CAL.tooltipInfo(al({ skipDate: '2026-10-28' }), day, false).status, '오늘은 건너뜀'); assert.strictEqual(CAL.tooltipInfo(al({ repeat: { kind: 'date', date: '2026-10-20' } }), day, true).status, '지남');   // v1.7.0: 지난 알람 표기는 "완료"에서 "지남"으로
 });
 t('다가오는 한 번짜리 알람(다른 주 이동 안내): 날짜·그 주만, 시각 순, 꺼짐·지난 것 제외', () => {
   const nowD = D(2026, 10, 28, 12, 0);

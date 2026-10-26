@@ -11,7 +11,8 @@ const M = load('src/utils/quickMenu.ts');
 const C = load('src/utils/weatherCard.ts');
 const sched = load('src/utils/alarmSchedule.ts', { './settings': load('src/utils/settings.ts', {}) });
 const text = load('src/utils/alarmText.ts', { './settings': load('src/utils/settings.ts', {}) });
-const QA = load('src/utils/quickAlarms.ts', { './alarmSchedule': sched, './alarmText': text });
+const KIND = load('src/utils/alarmKind.ts', { './alarmSchedule': sched, './alarmText': text });
+const QA = load('src/utils/quickAlarms.ts', { './alarmSchedule': sched, './alarmText': text, './alarmKind': KIND });
 const FFFD = String.fromCharCode(0xFFFD);
 const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi, 0, 0);
 

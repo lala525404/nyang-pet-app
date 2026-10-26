@@ -5,12 +5,13 @@ import YarPage from './pages/YarPage';
 import BreakTimePage from './pages/BreakTimePage';
 import QuickPage from './pages/QuickPage';
 import NoticePage from './pages/NoticePage';
+import AlarmCleanupRunner from './components/AlarmCleanupRunner';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/settings" element={<SettingsPage />} />
-      <Route path="/pet" element={<PetPage />} />
+      <Route path="/pet" element={<><PetPage /><AlarmCleanupRunner /></>} />
       <Route path="/yar" element={<YarPage />} />
       <Route path="/breaktime" element={<BreakTimePage />} />
       <Route path="/quick" element={<QuickPage />} />
