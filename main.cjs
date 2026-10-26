@@ -568,6 +568,9 @@ function updateFocus(change) {
   if (!r.changed) return { ...focusState };
   focusState = r.state; focusMode.saveFocus(focusFile(), focusState);
   if (r.enabledChanged) { petInteractive = false; petMeasured = null; applyPetMouse(); applyYar(); rebuildTrayMenu(); }   // petMeasured: 모드가 바뀌면 이전 모드에서 잰 펫 위치를 버린다
+  if (r.enabledChanged && noticeState && noticeState.shown && !noticeState.closing) {   // 카드(브리핑)가 떠 있는 중에 초집중이 켜지고 꺼지면 펫 이미지 위치가 바뀌므로, 펫이 새 위치를 알려 온 뒤 카드를 다시 붙인다
+    const cur = noticeState; setTimeout(() => { if (noticeState === cur && !cur.closing) placeNotice(cur.size); }, 600);
+  }
   if (!r.onlyAnchor) broadcastFocus();   // 기준 위치만 바뀐 것은 버디 창이 스스로 알린 것이라 다시 알리지 않는다
   return { ...focusState };
 }
@@ -990,7 +993,8 @@ function pumpNotices() {
     }
     openNotice(item); return;
   }
-  if (noticeQueue.size > 0) scheduleNoticePump();
+  // 퀵 메뉴가 닫히는 중이어서 막힌 것이면(대화하기의 "브리핑해줘"가 메뉴를 닫은 직후) 금방 다시 살펴 바로 띄운다. 그 밖의 이유는 천천히
+  if (noticeQueue.size > 0) scheduleNoticePump(quickWindow && !quickWindow.isDestroyed() ? 250 : undefined);
 }
 function enqueueNotice(kind, key, payload, priority = false) {
   const r = noticeQueue.enqueue({ kind, key, payload, priority });

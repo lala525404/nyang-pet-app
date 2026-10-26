@@ -113,7 +113,8 @@ t('큐: 직접 요청은 자동 카드보다 앞에 서고(떠 있는 카드는 
   const m1 = q.enqueue({ kind: 'brief', key: 'manual-today', payload: { manual: true }, priority: true }), m2 = q.enqueue({ kind: 'brief', key: 'manual-tomorrow', payload: { manual: true, target: 'tomorrow' }, priority: true });
   assert.deepStrictEqual(q.list().map(x => x.key), ['manual-today', 'manual-tomorrow', '1.7.0', '2026-10-24']);
   assert.strictEqual(q.enqueue({ kind: 'brief', key: 'manual-today', priority: true }).dup, true, '같은 요청은 한 장');
-  for (const b of [{ focus: true }, { quickOpen: true }, { alertCount: 1 }]) assert.strictEqual(q.peek({ now: 1e9, blockers: { ...FREE, ...b } }), null, JSON.stringify(b));
+  for (const b of [{ quickOpen: true }, { alertCount: 1 }]) assert.strictEqual(q.peek({ now: 1e9, blockers: { ...FREE, ...b } }), null, JSON.stringify(b));   // 초집중 중에는 브리핑이 대기하지 않는다(notice-card-unit)
+  assert.strictEqual(q.peek({ now: 1e9, blockers: { ...FREE, focus: true } }).id, m1.item.id, '초집중 중에도 직접 요청 브리핑이 먼저');
   const first = q.peek({ now: 1e9, blockers: FREE }); assert.strictEqual(first.id, m1.item.id); q.start(first.id);
   const m3 = q.enqueue({ kind: 'brief', key: 'x', priority: true }); assert.strictEqual(q.active.id, m1.item.id, '떠 있는 카드는 그대로'); assert.ok(m3);
   assert.strictEqual(q.peek({ now: 1e9, blockers: FREE }), null, '한 번에 하나');

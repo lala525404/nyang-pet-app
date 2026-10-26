@@ -138,11 +138,12 @@ t('날씨는 캐시만: peek는 요청을 보내지 않는다(요청 수 변화 
   clock += W.STALE_MAX_MS; assert.strictEqual(svc.peek(37.5, 127), null, '6시간이 지나면 버린다');
   assert.strictEqual(svc.peek(NaN, 127), null); assert.strictEqual(calls, 1);
 });
-t('큐: 브리핑도 한 번에 하나, 초집중·퀵 메뉴·알람 울림 중에는 끝날 때까지 대기, 같은 날 같은 브리핑은 중복 안 됨', () => {
+t('큐: 브리핑도 한 번에 하나, 퀵 메뉴·알람 울림 중에는 끝날 때까지 대기(초집중 중에는 대기하지 않음), 같은 날 같은 브리핑은 중복 안 됨', () => {
   const FREE = { petVisible: true, focus: false, quickOpen: false, alertCount: 0, quitting: false };
   const q = N.createNoticeQueue(); const a = q.enqueue({ kind: 'brief', key: '2026-10-26', payload: { day: '2026-10-26' } });
   assert.ok(a && !a.dup); assert.strictEqual(q.enqueue({ kind: 'brief', key: '2026-10-26' }).dup, true, '같은 날은 한 장');
-  for (const b of [{ focus: true }, { quickOpen: true }, { alertCount: 1 }]) assert.strictEqual(q.peek({ now: 1e9, blockers: { ...FREE, ...b } }), null);
+  for (const b of [{ quickOpen: true }, { alertCount: 1 }]) assert.strictEqual(q.peek({ now: 1e9, blockers: { ...FREE, ...b } }), null);
+  assert.strictEqual(q.peek({ now: 1e9, blockers: { ...FREE, focus: true } }).kind, 'brief', '초집중 중에도 브리핑은 나온다(v1.7.0 수정)');
   assert.strictEqual(q.peek({ now: 1e9, blockers: FREE }).kind, 'brief');
   assert.strictEqual(N.AUTO_CLOSE_MS.brief, 60000, '브리핑은 60초 뒤 스스로 닫힌다');
 });

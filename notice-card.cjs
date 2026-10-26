@@ -1,7 +1,7 @@
 'use strict';
 // 펫 옆에 뜨는 안내 카드(업데이트 소식·새 버전 안내·부팅 브리핑)의 메인 쪽 순수 계산(창을 직접 만지지 않는다: tests/notice-card-unit.cjs).
 //  - 카드는 한 번에 하나만 뜨고, 나머지는 큐에서 차례를 기다린다(먼저 들어온 순서).
-//  - 초집중 모드·퀵 메뉴 열림·알람 울림(전체화면 알림)·펫이 안 보임·종료 중에는 끝날 때까지 기다린다. 카드 사이에는 짧은 쉼(GAP)을 둔다.
+//  - 초집중 모드·퀵 메뉴 열림·알람 울림(전체화면 알림)·펫이 안 보임·종료 중에는 끝날 때까지 기다린다(오늘 브리핑은 초집중 모드를 기다리지 않는다). 카드 사이에는 짧은 쉼(GAP)을 둔다.
 //  - 위치·크기는 퀵 메뉴(quick-menu.cjs)와 같은 계산을 쓴다(반올림·유한값 검사·화면 가장자리 보정).
 //  - 시험용 환경변수(기본 꺼짐): CHOEAE_FORCE_WHATSNEW=1, CHOEAE_FAKE_UPDATE_NOTES=<파일>, CHOEAE_FORCE_BRIEF=1, CHOEAE_FAKE_UPTIME_SEC=<초>
 const quickMenu = require('./quick-menu.cjs');
@@ -13,11 +13,13 @@ const SHOW_FALLBACK_MS = 800;   // 카드 창이 크기를 알려 오지 않아�
 const AUTO_CLOSE_MS = { brief: 60 * 1000 };   // 브리핑은 한 번 훑어보면 되는 카드라 60초 뒤 스스로 닫힌다(소식·새 버전 안내는 사용자가 누를 때까지)
 const NOTICE_CLOSE_MS = 170;    // 닫힘 모션 뒤에 창을 없앤다(퀵 메뉴와 같다)
 
-// 카드를 지금 띄우면 안 되는 이유(없으면 null). 모두 메인이 이미 알고 있는 상태다.
-function blockReason(s) {
+// 카드를 지금 띄우면 안 되는 이유(없으면 null). 모두 메인이 이미 알고 있는 상태다. kind를 주면 그 종류에는 해당하지 않는 이유는 뺀다:
+// 오늘 브리핑(brief)은 초집중 모드 중에도 보인다(초집중은 이미 펫이 제자리라 카드를 펫 이미지에 붙여 띄워도 상태가 꼬이지 않는다).
+// 소식·새 버전 안내 카드는 kind를 몰라도(생략) 초집중 중에 기다린다. 알람 울림·퀵 메뉴 열림은 모든 카드가 기다린다.
+function blockReason(s, kind) {
   if (!s || s.quitting) return 'quitting';
   if (!s.petVisible) return 'pet-hidden';        // 펫이 없거나 숨겨져 있으면 붙을 곳이 없다
-  if (s.focus) return 'focus';                   // 초집중 모드
+  if (s.focus && kind !== 'brief') return 'focus';   // 초집중 모드(브리핑만 예외)
   if (s.quickOpen) return 'quick-menu';          // 우클릭 퀵 메뉴가 열려 있는 동안
   if (s.alertCount > 0) return 'alarm';          // 점심·퇴근·알람 카드·야르 같은 전체화면 알림이 떠 있는 동안
   return null;
@@ -45,9 +47,9 @@ function createNoticeQueue() {
     // 지금 띄울 수 있는 카드: 떠 있는 카드가 없고, 막힌 이유가 없고, 앞 카드가 닫힌 지 GAP이 지났을 때 맨 앞 카드
     peek({ now, blockers }) {
       if (active || !waiting.length) return null;
-      if (blockReason(blockers)) return null;
       if (now - lastClosedAt < GAP_MS) return null;
-      return waiting[0];
+      // 대기열 앞에서부터 "지금 띄울 수 있는" 첫 카드: 앞 카드가 자기 이유(예: 소식 카드의 초집중)로 막혀 있어도 뒤의 브리핑은 나갈 수 있다. 순서는 그대로 지킨다
+      return waiting.find(w => !blockReason(blockers, w.kind)) || null;
     },
     start(id) {
       const i = waiting.findIndex(w => w.id === id);

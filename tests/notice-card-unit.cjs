@@ -33,11 +33,48 @@ t('한 번에 하나: 먼저 들어온 카드부터, 떠 있는 동안에는 다
 });
 t('막힌 동안에는 카드를 내보내지 않고 큐에 남아 있다가, 풀리면 나온다(끝날 때까지 대기)', () => {
   const q = N.createNoticeQueue(); q.enqueue({ kind: 'brief', key: 'd' });
-  for (const b of [{ focus: true }, { quickOpen: true }, { alertCount: 2 }, { petVisible: false }, { quitting: true }]) {
+  for (const b of [{ quickOpen: true }, { alertCount: 2 }, { petVisible: false }, { quitting: true }]) {   // 초집중은 브리핑을 막지 않는다(아래 별도 테스트)
     assert.strictEqual(q.peek({ now: 1e6, blockers: { ...FREE, ...b } }), null, JSON.stringify(b));
     assert.strictEqual(q.size, 1);
   }
   assert.strictEqual(q.peek({ now: 1e6, blockers: FREE }).kind, 'brief');
+});
+t('초집중 모드: 브리핑은 기다리지 않고, 소식·새 버전 안내 카드는 끝날 때까지 기다린다. 알람 울림·퀵 메뉴 열림 중에는 브리핑도 기다린다', () => {
+  const FOCUS = { ...FREE, focus: true };
+  assert.strictEqual(N.blockReason(FOCUS, 'brief'), null, '브리핑은 초집중 중에도');
+  for (const k of ['whatsnew', 'update']) assert.strictEqual(N.blockReason(FOCUS, k), 'focus', k + ' 카드는 초집중 중 대기');
+  assert.strictEqual(N.blockReason(FOCUS), 'focus', '종류를 모르면 기다린다(기존 동작)');
+  assert.strictEqual(N.blockReason({ ...FOCUS, alertCount: 1 }, 'brief'), 'alarm', '알람 울림 중에는 초집중이어도 브리핑 대기');
+  assert.strictEqual(N.blockReason({ ...FOCUS, quickOpen: true }, 'brief'), 'quick-menu');
+  assert.strictEqual(N.blockReason({ ...FOCUS, petVisible: false }, 'brief'), 'pet-hidden'); assert.strictEqual(N.blockReason({ ...FOCUS, quitting: true }, 'brief'), 'quitting');
+  const q = N.createNoticeQueue(); q.enqueue({ kind: 'brief', key: 'd' });
+  assert.strictEqual(q.peek({ now: 1e6, blockers: FOCUS }).kind, 'brief', '초집중 중 브리핑은 바로 나온다');
+  assert.strictEqual(q.peek({ now: 1e6, blockers: { ...FOCUS, alertCount: 1 } }), null);
+  const w = N.createNoticeQueue(); w.enqueue({ kind: 'whatsnew', key: '1.7.0' }); w.enqueue({ kind: 'update', key: '1.8.0' });
+  assert.strictEqual(w.peek({ now: 1e6, blockers: FOCUS }), null, '소식 카드는 초집중 중 대기'); assert.strictEqual(w.size, 2);
+  assert.strictEqual(w.peek({ now: 1e6, blockers: FREE }).kind, 'whatsnew', '초집중이 끝나면 나온다');
+});
+t('초집중 중 대기열: 앞의 소식 카드가 막혀 있어도 뒤의 브리핑은 나가고(소식 카드는 그대로 남음), 직접 요청 브리핑이 먼저, 떠 있는 카드는 덮어쓰지 않는다', () => {
+  const FOCUS = { ...FREE, focus: true };
+  const q = N.createNoticeQueue(); q.enqueue({ kind: 'whatsnew', key: '1.7.0' }); q.enqueue({ kind: 'brief', key: '2026-10-26' });
+  const m = q.enqueue({ kind: 'brief', key: 'manual-today', priority: true });
+  assert.deepStrictEqual(q.list().map(x => x.key), ['manual-today', '1.7.0', '2026-10-26']);
+  const first = q.peek({ now: 1e6, blockers: FOCUS }); assert.strictEqual(first.key, 'manual-today'); q.start(first.id);
+  assert.strictEqual(q.peek({ now: 1e6, blockers: FOCUS }), null, '떠 있는 동안은 아무것도 나오지 않는다(덮어쓰지 않음)');
+  q.finish(first.id, 1e6);
+  assert.strictEqual(q.peek({ now: 1e6 + N.GAP_MS - 1, blockers: FOCUS }), null, '닫힌 직후 쉼은 그대로');
+  const second = q.peek({ now: 1e6 + N.GAP_MS, blockers: FOCUS }); assert.strictEqual(second.key, '2026-10-26', '막힌 소식 카드를 건너뛰고 자동 브리핑'); q.start(second.id); q.finish(second.id, 2e6);
+  assert.strictEqual(q.peek({ now: 3e6, blockers: FOCUS }), null, '남은 소식 카드는 초집중 중 계속 대기'); assert.strictEqual(q.size, 1);
+  assert.strictEqual(q.peek({ now: 3e6, blockers: FREE }).key, '1.7.0'); void m;
+});
+t('초집중 연결(정적): 카드는 초집중 모드를 인식한 위치 계산을 쓰고, 초집중이 바뀌면 카드를 다시 붙이며, 펫 정지는 초집중과 충돌하지 않는다', () => {
+  const main = read('main.cjs'), pet = read('src/pages/PetPage.tsx');
+  assert.ok(/noticeCard\.placeNotice\(\{ pet, size, work, sizePct: petSizePct, focus: !!focusState\.enabled, measured \}\)/.test(main), '모드 인식 위치(petImageRect·PET_FOCUS)');
+  assert.ok(/quickMenu\.pickWorkArea/.test(main) && /petMeasured\.focus === !!focusState\.enabled/.test(main), '측정값은 현재 모드의 것만');
+  assert.ok(/r\.enabledChanged && noticeState && noticeState\.shown && !noticeState\.closing/.test(main) && /placeNotice\(cur\.size\)/.test(main), '초집중이 바뀌면 다시 붙인다');
+  assert.ok(/noticeQueue\.peek\(\{ now: Date\.now\(\), blockers: noticeBlockers\(\) \}\)/.test(main) && /focus: !!focusState\.enabled/.test(main), '막힘은 큐가 종류별로 정한다');
+  assert.ok(/focusPausedRef\.current = focusRef\.current\.enabled \|\| open/.test(pet), '카드를 닫아도(open=false) 초집중이면 계속 정지 상태');
+  assert.ok(/if \(focusRef\.current\.enabled \|\| quickOpenRef\.current\) return;/.test(pet), '초집중에서는 도망·움직임 없음');
 });
 t('같은 종류·같은 key는 중복으로 쌓이지 않는다(기다리는 중이든 떠 있든). key가 다르면 따로', () => {
   const q = N.createNoticeQueue();
