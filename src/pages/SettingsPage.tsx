@@ -15,7 +15,7 @@ import type { EntranceKind } from '../components/Intro';
 import Onboarding from '../components/Onboarding';
 import { createPortal } from 'react-dom';
 import type { Monitor } from '../components/settings/shared';
-import { MODE_PRESETS, loadSettings, readStoredSettings, saveSettings, seedFreshInstall } from '../utils/settings';
+import { MODE_PRESETS, OTHER_WINDOW_KEYS, inheritOtherWindowKeys, loadSettings, readStoredSettings, saveSettings, seedFreshInstall } from '../utils/settings';
 import type { PetSettings } from '../utils/settings';
 import { getThemePref, nextThemePref, setThemePref } from '../utils/theme';
 import type { ThemePref } from '../utils/theme';
@@ -91,7 +91,8 @@ export default function SettingsPage() {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     if (!dirtyRef.current) return;
     dirtyRef.current = false;
-    const next = latestRef.current;
+    const next = inheritOtherWindowKeys(latestRef.current);   // 다른 창이 저장값에 써 둔 기록(마지막으로 본 버전 등)은 이 창의 낡은 값으로 덮어쓰지 않는다
+    latestRef.current = next;
     if (!saveSettings(next)) {
       if (!saveFailedRef.current) alert('저장 공간이 부족해요. 이미지 수를 줄여 주세요.');
       saveFailedRef.current = true;
@@ -139,8 +140,9 @@ export default function SettingsPage() {
       const fresh = readStoredSettings() as Partial<PetSettings> | null;
       if (!fresh || !Array.isArray(fresh.alarms)) return;
       const cur = latestRef.current;
-      const pick = { alarms: fresh.alarms, lunchEnabled: fresh.lunchEnabled ?? cur.lunchEnabled, leaveEnabled: fresh.leaveEnabled ?? cur.leaveEnabled };
-      if (JSON.stringify(pick) === JSON.stringify({ alarms: cur.alarms, lunchEnabled: cur.lunchEnabled, leaveEnabled: cur.leaveEnabled })) return;
+      const others = Object.fromEntries(OTHER_WINDOW_KEYS.filter(k => k in fresh).map(k => [k, fresh[k]]));   // 다른 창이 쓰는 기록도 같이 가져온다
+      const pick = { alarms: fresh.alarms, lunchEnabled: fresh.lunchEnabled ?? cur.lunchEnabled, leaveEnabled: fresh.leaveEnabled ?? cur.leaveEnabled, ...others };
+      if (JSON.stringify(pick) === JSON.stringify({ alarms: cur.alarms, lunchEnabled: cur.lunchEnabled, leaveEnabled: cur.leaveEnabled, ...Object.fromEntries(Object.keys(others).map(k => [k, (cur as unknown as Record<string, unknown>)[k]])) })) return;
       latestRef.current = { ...cur, ...pick }; appliedRef.current = { ...appliedRef.current, ...pick };
       setSettings(latestRef.current);
     };

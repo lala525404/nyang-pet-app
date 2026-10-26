@@ -32,7 +32,8 @@
 
 ## 2. 순서
 
-1. **준비** — 버전을 올리고(`package.json`과 `package-lock.json`의 version) `npm ci` → `npx tsc --noEmit` → `npm test`.
+1. **준비** — 버전을 올리고(`package.json`과 `package-lock.json`의 version) **`src/data/releaseNotes.ts`에 그 버전의 소식(3~5줄)을 추가한다**(업데이트 후 첫 실행 때 카드로 보여 주는 글이고, 없으면 `tests/update-news-unit.cjs`가 실패한다). 그다음 `npm ci` → `npx tsc --noEmit` → `npm test`.
+   GitHub 릴리스 본문은 "새로 생겼어요"·"다듬었어요" 구역에 `- 제목: 설명` 줄로 쓰면, 아직 업데이트하지 않은 사용자의 "새 버전 v○" 카드가 콜론 앞 제목을 최대 4개 보여 준다(`release-notes.cjs`).
    Electron 바이너리가 불완전하게 설치되면(`node_modules/electron/path.txt` 없음) 캐시된 zip을 `ditto -x -k <zip> node_modules/electron/dist`로 풀고 `path.txt`·`dist/version`을 만든다.
 2. **main에 반영·푸시** — 릴리스할 커밋을 `main`에 머지하고 푸시한다. (태그는 4번에서 릴리스를 만들 때 붙인다.)
 3. **빌드 (이 맥에서)**

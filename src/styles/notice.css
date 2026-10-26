@@ -1,0 +1,25 @@
+/* 펫 옆 안내 카드(/notice): 색·그림자·버튼은 quick.css의 --quick-bar-* 변수와 .qk-card·.qk-btn을 그대로 쓴다(라이트: 흰 배경+검정, 다크: 검정+흰).
+   여기서는 카드 안의 배치만 더한다. 등장 모션은 창이 실제로 보인 뒤(data-open)에 시작하고, 움직임 줄이기에서는 모션 없이 바로 보인다. */
+.qk-card.nt-card { opacity: 0; animation: none; gap: 10px; }
+.nt-root[data-open]:not([data-closing]) .qk-card.nt-card { opacity: 1; animation: qk-card-in 180ms var(--quick-ease) both; }
+.nt-root[data-closing] .qk-card.nt-card { opacity: 0; animation: qk-card-out 120ms ease-in both; }
+.nt-root[data-side="below"] .qk-card.nt-card { transform-origin: 50% 0; }
+.nt-root[data-side="above"] .qk-card.nt-card { transform-origin: 50% 100%; }
+
+.nt-head { display: flex; align-items: flex-start; gap: 10px; margin: -2px -6px 0 0; }
+.nt-i { width: 20px; height: 20px; flex: none; margin-top: 2px; }
+.nt-titles { min-width: 0; flex: 1 1 auto; }
+.nt-title { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.35; }
+.nt-sub { font-size: 12px; opacity: 0.62; line-height: 1.4; }
+
+.nt-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.nt-list li { position: relative; padding: 8px 12px 8px 26px; border-radius: 12px; background: var(--quick-bar-hover); font-size: 13px; font-weight: 600; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
+.nt-list li::before { content: ""; position: absolute; left: 12px; top: 15px; width: 5px; height: 5px; border-radius: 50%; background: var(--quick-bar-fg); opacity: 0.7; }
+
+.nt-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 2px; }
+.nt-actions .qk-btn { flex: 1 1 0; min-width: 0; padding: 0 12px; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nt-root[data-open] .qk-card.nt-card, .nt-root .qk-card.nt-card { opacity: 1; }
+  .nt-root[data-closing] .qk-card.nt-card { opacity: 0; }
+}

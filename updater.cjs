@@ -60,7 +60,8 @@ function createUpdater(deps) {
     enabled = false,
     location = { ok: true, reason: null },
     isBusy = () => false,        // 알람·전체화면 알림이 떠 있는지
-    showPrompt = async () => 'later',   // (kind, ctx) → 'yes' | 'later' | 'ok'   kind: available | downloaded | location
+    showPrompt = async () => 'later',   // (kind, ctx) → 'yes' | 'later' | 'ok'   kind: available | downloaded | location   (available의 ctx: { version, notes })
+    parseNotes = () => [],              // info.releaseNotes → 달라지는 점 제목들(release-notes.cjs). 못 뽑으면 빈 배열
     requestInstallQuit = () => {},      // 재시작 요청: main이 설치 표시를 하고 requestQuit()을 호출한다
     onState = () => {},
     timers = { setTimeout, clearTimeout, setInterval, clearInterval },
@@ -72,6 +73,7 @@ function createUpdater(deps) {
   let promptToken = 0;           // 지나간 대화상자의 답이 늦게 도착해도 무시하기 위한 번호
   let checkManual = false, checkErrored = false;
   let installRequested = false, locationNoticeShown = false;
+  let notes = [];                // 새 버전의 "달라지는 점"(받기에 실패해 available로 돌아갈 때도 다시 보여 주려고 기억한다)
 
   const setState = (next) => { state = next; try { onState({ ...state }); } catch (e) { log('onState 오류', e && e.message); } return state; };
   const getState = () => ({ ...state });
@@ -130,13 +132,17 @@ function createUpdater(deps) {
       if (checkManual || !locationNoticeShown) { locationNoticeShown = true; promptLocation(version); }
       return;
     }
-    setState({ status: 'available', version });
-    promptAvailable(version);
+    // 달라지는 점: 이미 받은 info.releaseNotes만 읽는다(새 요청 없음). 못 뽑으면 빈 배열
+    let parsed = [];
+    try { const r = parseNotes(info && info.releaseNotes); if (Array.isArray(r)) parsed = r.filter(x => typeof x === 'string' && x).slice(0, 4); } catch (e) { log('릴리스 노트 해석 오류', e && e.message); }
+    notes = parsed;
+    setState({ status: 'available', version, notes });
+    promptAvailable(version, notes);
   }
 
-  async function promptAvailable(version) {
+  async function promptAvailable(version, notesForPrompt = []) {
     const token = ++promptToken;
-    const answer = await showPrompt('available', { version }).catch(() => 'later');
+    const answer = await showPrompt('available', { version, notes: notesForPrompt }).catch(() => 'later');
     if (token !== promptToken || state.status !== 'available') return;   // 그 사이 상태가 바뀜(버튼으로 이미 진행 등)
     if (answer === 'yes') download();
     // 'later': 상태는 available로 남고(설정창에 "새 버전이 있어요"), 다음 확인 때 다시 묻는다
@@ -194,10 +200,10 @@ function createUpdater(deps) {
     const kind = classifyUpdateError(err);
     log(`업데이트 ${opts.downloading ? '받기' : '확인'} 오류 [${ERROR_KIND_LOG[kind]}]`, err && err.message);
     if (opts.downloading) {
-      setState({ status: 'available', version: opts.version, error: MESSAGES.downloadFailed });   // 다시 받을 수 있게 되돌린다
+      setState({ status: 'available', version: opts.version, notes, error: MESSAGES.downloadFailed });   // 다시 받을 수 있게 되돌린다
       return;
     }
-    if (state.status === 'downloading') { setState({ status: 'available', version: state.version, error: MESSAGES.downloadFailed }); return; }
+    if (state.status === 'downloading') { setState({ status: 'available', version: state.version, notes, error: MESSAGES.downloadFailed }); return; }
     // 수동 확인 실패는 설정창 상태 문구로만 알린다(네이티브 대화상자 없음: 대화상자는 알람 스케줄러를 멈출 수 있고, 설정창이 닫혀 있으면 보여 줄 곳도 없다)
     if (checkManual) setState({ status: 'error', message: MESSAGES.checkFailed, errorKind: kind });
     else setState({ status: 'idle' });                                                                                              // 자동 확인은 조용히

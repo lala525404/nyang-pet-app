@@ -8,7 +8,13 @@ export interface UpdateState {
   errorKind?: 'notfound' | 'network' | 'other';
   reason?: string | null;
   pendingInstall?: boolean;
+  notes?: string[];   // available일 때: 새 버전에서 달라지는 점의 제목들(릴리스 노트에서 뽑은 일반 텍스트, 최대 4개). 못 뽑았으면 빈 배열
 }
+
+// 안내 카드(펫 옆): 메인이 카드 창에 알려 주는 내용. payload는 카드 종류마다 다르다(메인이 정한 값만 온다)
+export type NoticeKind = 'whatsnew' | 'update' | 'brief';
+export interface NoticeItem { id: number; kind: NoticeKind; payload: { version?: string; notes?: string[]; force?: boolean; replay?: boolean; fake?: boolean } | null }
+export type NoticeAction = 'ok' | 'later' | 'close' | 'update' | 'details';
 
 // 컴퓨터를 켜면 자동 실행(OS의 실제 상태). supported가 false면 note에 이유가 있다
 export interface LoginItemState { supported: boolean; enabled: boolean; reason: string | null; note: string }
@@ -69,6 +75,16 @@ interface ElectronAPI {
   onQuickClosing: (cb: () => void) => () => void;
   quickAction: (action: QuickAction, arg?: { weekStart: string }) => void;
   getQuickAlarmSettings: () => Promise<QuickAlarmSettings>;
+  noticeGet: () => Promise<NoticeItem | null>;
+  noticeSkip: () => void;
+  noticeResize: (width: number, height: number) => void;
+  noticeRegions: (regions: unknown[]) => void;
+  noticeAction: (action: NoticeAction) => void;
+  onNoticeLayout: (cb: (layout: { side: 'above' | 'below' }) => void) => () => void;
+  onNoticeOpen: (cb: () => void) => () => void;
+  onNoticeClosing: (cb: () => void) => () => void;
+  showWhatsNew: () => void;
+  showUpdateNews: () => void;
   onQuickState: (cb: (open: boolean) => void) => () => void;
   onSettingsGoto: (cb: (target: SettingsTarget) => void) => () => void;
   takeSettingsGoto: () => Promise<SettingsTarget | null>;

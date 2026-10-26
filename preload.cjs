@@ -66,6 +66,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-state', handler);
     return () => ipcRenderer.removeListener('update-state', handler);
   },
+  // ★ 안내 카드(업데이트 소식·새 버전 안내·부팅 브리핑): 카드 창(/notice)은 "나는 어떤 카드인가"를 묻고, 보일지 정한 뒤 크기·동작을 메인에 알린다
+  noticeGet:        () => ipcRenderer.invoke('notice-get'),
+  noticeSkip:       () => ipcRenderer.send('notice-skip'),   // 보이지 않기로 했다(이미 본 소식 등)
+  noticeResize:     (width, height) => ipcRenderer.send('notice-resize', { width, height }),
+  noticeRegions:    (regions) => ipcRenderer.send('notice-regions', regions),
+  noticeAction:     (action) => ipcRenderer.send('notice-action', action),   // ok | later | close | update | details
+  onNoticeLayout:   (cb) => {
+    const handler = (_e, layout) => cb(layout);
+    ipcRenderer.on('notice-layout', handler);
+    return () => ipcRenderer.removeListener('notice-layout', handler);
+  },
+  onNoticeOpen:     (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('notice-open', handler);
+    return () => ipcRenderer.removeListener('notice-open', handler);
+  },
+  onNoticeClosing:  (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('notice-closing', handler);
+    return () => ipcRenderer.removeListener('notice-closing', handler);
+  },
+  showWhatsNew:     () => ipcRenderer.send('whatsnew-show'),      // 설정창: 이번 업데이트 소식 다시 보기
+  showUpdateNews:   () => ipcRenderer.send('update-news-show'),   // 설정창: 새 버전 소식 보기
   // ★ 날씨 안부: 요청은 메인만 보낸다(좌표만 전달). 동의 전에는 null
   getWeather:       (lat, lon) => ipcRenderer.invoke('weather-get', { lat, lon }),
   // ★ 펫 우클릭 퀵 메뉴: 퀵 창이 닫기·크기·동작을 메인에 알린다. 펫 창은 열림 상태를 받아 평소 말풍선을 쉬고, 설정창은 가야 할 위치를 받는다

@@ -70,6 +70,10 @@ html[data-theme="dark"] .settings-root { color-scheme: dark; }
 .st-update-btn:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) { .st-update-btn:not(:disabled):hover { background: var(--ui-item); } }
 @media (prefers-reduced-motion: reduce) { .st-update-btn, .st-update-bar::-webkit-progress-value { transition: none; } }
+/* 소식 링크(이번 업데이트 소식 다시 보기 · 새 버전 소식 보기): 업데이트 확인 옆의 작은 글자 링크 */
+.st-update-link { padding: 0; border: 0; background: none; color: var(--ui-sub); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; cursor: pointer; }
+.st-update-link:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; border-radius: 2px; }
+@media (hover: hover) and (pointer: fine) { .st-update-link:hover { color: var(--ui-ink); } }
 .st-title { font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
 .st-desc { margin-top: 4px; font-size: 14px; color: var(--ui-sub); }
 .st-pillbtn {

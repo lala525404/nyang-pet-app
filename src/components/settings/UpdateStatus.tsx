@@ -25,7 +25,17 @@ export default function UpdateStatus() {
     const off = api.onUpdateState(v => { if (v) setS(v); });
     return () => { alive = false; off(); };
   }, [api]);
-  if (!api?.getUpdateState || s.status === 'disabled') return null;
+  const updaterOn = !!api?.getUpdateState && s.status !== 'disabled';
+  if (!api || (!updaterOn && !api.showWhatsNew)) return null;   // 개발 모드(업데이터 꺼짐)에서도 "소식 다시 보기" 링크는 보인다
+
+  // 소식 링크: 이번 업데이트 소식 다시 보기(저장값은 바꾸지 않는다) · 새 버전이 있으면 "새 버전 v○ 소식 보기"(같은 버전에 이미 카드를 봤어도 다시)
+  const links = (
+    <>
+      {s.status === 'available' && s.version && api.showUpdateNews && <button type="button" className="st-update-link" onClick={() => api.showUpdateNews?.()}>새 버전 v{s.version} 소식 보기</button>}
+      {api.showWhatsNew && <button type="button" className="st-update-link" onClick={() => api.showWhatsNew?.()}>이번 업데이트 소식 다시 보기</button>}
+    </>
+  );
+  if (!updaterOn) return <span className="st-update">{links}</span>;
 
   const note = (NOTE[s.status] ?? NOTE.idle)(s);
   const downloading = s.status === 'downloading';
@@ -40,6 +50,7 @@ export default function UpdateStatus() {
       {downloading && <progress className="st-update-bar" max={100} value={s.percent ?? 0} aria-label="업데이트 다운로드" />}
       {note && <span className="st-update-note" role="status" aria-live={downloading ? 'off' : 'polite'} aria-hidden={downloading || undefined}>{note}</span>}
       {action && <button type="button" className="st-update-btn" disabled={s.status === 'checking'} onClick={action.onClick}>{action.label}</button>}
+      {links}
     </span>
   );
 }

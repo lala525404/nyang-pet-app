@@ -16,6 +16,7 @@ let settingsWindow = null;
 let petWindow = null;
 let yarWindow = null;
 let quickWindow = null;   // 펫 우클릭 퀵 메뉴(아래 "퀵 메뉴" 구역)
+let noticeState = null;   // 펫 옆 안내 카드(업데이트 소식·새 버전 안내·브리핑)의 지금 카드(아래 "안내 카드" 구역)
 let tray = null;
 let updater = null;       // 자동 업데이트(initUpdater에서 만든다)
 let focusState = { enabled: false, seconds: false, anchor: null };   // 초집중 모드 상태(시작할 때 파일에서 읽는다)
@@ -425,6 +426,7 @@ function stopAllTimers() {
   stopYarTimer();
   stopBreakTimeChecker();
   stopPhotoRotation();
+  stopNoticeTimers();
   if (updater) updater.stop();
 }
 
@@ -450,7 +452,7 @@ function finishQuit() {
   for (const w of BrowserWindow.getAllWindows()) {
     try { if (!w.isDestroyed()) w.destroy(); } catch {}
   }
-  settingsWindow = null; petWindow = null; yarWindow = null; breakTimeWindow = null; quickWindow = null;
+  settingsWindow = null; petWindow = null; yarWindow = null; breakTimeWindow = null; quickWindow = null; noticeState = null;
   trayBeatTimers.forEach(clearTimeout);
   if (tray) { try { tray.destroy(); } catch {} tray = null; }
   // 업데이트 재시작이 요청된 종료면, 정리가 모두 끝난 지금 설치하고 종료한다(quitAndInstall이 app.quit()을 대신한다). 아니면 평소처럼 종료.
@@ -493,6 +495,7 @@ if (!gotLock) {
     createPetWindow();
     createTray();
     initUpdater();
+    startNoticeChecks();   // 업데이트 소식(안내 카드)
   });
 }
 
@@ -544,6 +547,13 @@ function pollClickThrough() {
     const next = full ? { interactive: true, miss: 0 } : clickThrough.step(prev, { cursor, bounds: quickWindow.getBounds(), regions: quickState.regions });
     quickState.ct = next;
     if (next.interactive !== prev.interactive) { try { quickWindow.setIgnoreMouseEvents(!next.interactive, { forward: true }); } catch {} }
+  }
+  // 안내 카드 창: 카드 위에서만 클릭을 받는다(투명 여백은 통과). 카드가 보이기 전·영역을 모를 때는 창 전체가 받는다
+  if (noticeState && noticeState.shown && !noticeState.closing && !noticeState.win.isDestroyed() && noticeState.regions) {
+    const prev = noticeState.ct || { interactive: true, miss: 0 };
+    const next = clickThrough.step(prev, { cursor, bounds: noticeState.win.getBounds(), regions: noticeState.regions });
+    noticeState.ct = next;
+    if (next.interactive !== prev.interactive) { try { noticeState.win.setIgnoreMouseEvents(!next.interactive, { forward: true }); } catch {} }
   }
 }
 function startClickThrough() { if (clickThroughOn && !clickThroughTimer) clickThroughTimer = setInterval(pollClickThrough, clickThrough.POLL_MS); }
@@ -598,13 +608,24 @@ function promptParent() {
   return null;
 }
 
+// 새 버전 안내("available")는 대화상자 대신 펫 옆 카드로 보여 준다(위 "안내 카드"): 달라지는 점과 [지금 업데이트] [나중에]. 같은 버전에는 자동으로 한 번만(카드 창이 lastPromptedVersion으로 판단하고, 이미 본 버전이면 조용히 "나중에"로 끝난다).
+// 카드가 큐에서 기다리는 동안 답은 미뤄지고, 같은 버전의 중복 호출은 한 카드에 모인다. 카드의 [지금 업데이트]는 'yes'로 돌아가 업데이터의 기존 download() 흐름을 그대로 탄다.
+function promptAvailableCard(ctx) {
+  const version = ctx && typeof ctx.version === 'string' ? ctx.version : '';
+  const r = noticeQueue.enqueue({ kind: 'update', key: version, payload: { version, notes: Array.isArray(ctx && ctx.notes) ? ctx.notes.slice(0, 4) : [], force: false } });
+  if (!r) return Promise.resolve('later');
+  const answer = new Promise((resolve) => { const list = noticeWaiters.get(r.item.id) || []; list.push(resolve); noticeWaiters.set(r.item.id, list); });
+  pumpNotices();
+  return answer;
+}
+
 async function promptUpdate(kind, ctx) {
+  if (kind === 'available') return promptAvailableCard(ctx);
   const parent = promptParent();
   if (!parent) return 'later';   // 보이는 창이 없으면 묻지 않는다(다음 확인이나 설정창에서 다시 알린다)
   const B = UPDATE_MESSAGES.buttons;
   const spec = {
-    available:   { message: UPDATE_MESSAGES.available(ctx.version), buttons: [B.updateNow, B.later] },
-    downloaded:  { message: UPDATE_MESSAGES.downloaded, buttons: [B.restart, B.later] },
+    downloaded: { message: UPDATE_MESSAGES.downloaded, buttons: [B.restart, B.later] },
     location:    { message: UPDATE_MESSAGES.moveToApplications, detail: UPDATE_MESSAGES.moveToApplicationsDetail(ctx.version), buttons: [B.ok] },
   }[kind];
   const { response } = await dialog.showMessageBox(parent, {   // 부모 창에 붙인다(위 주석: 부모 없이 띄우면 알람 타이머가 멈춘다)
@@ -640,6 +661,7 @@ function initUpdater() {
     location: installLocationStatus({ platform: process.platform, exePath: app.getPath('exe'), home: require('os').homedir() }),
     isBusy: () => alertCount > 0,           // 알람·점심·퇴근·야르 같은 전체화면 알림이 떠 있는 동안은 재시작을 미룬다
     showPrompt: promptUpdate,
+    parseNotes: releaseNotes.parseReleaseNotes,   // info.releaseNotes(이미 받은 응답)에서 달라지는 점 제목만 뽑는다
     requestInstallQuit: () => requestQuit(),
     onState: broadcastUpdateState,
     log: (...a) => console.log('[updater]', ...a),
@@ -836,7 +858,8 @@ function showQuick() {
 function openQuickMenu() {
   if (isQuitting || !petWindow || petWindow.isDestroyed()) return;
   if (quickWindow && !quickWindow.isDestroyed()) { closeQuickMenu(true); return; }   // 열려 있을 때의 우클릭은 닫는다(닫히는 중이면 그대로)
-  const size = { width: quickMenu.QUICK_W, height: quickMenu.QUICK_INITIAL_H };
+  deferActiveNotice();   // 안내 카드가 떠 있었다면 닫지 않고 치워 둔다(퀵 메뉴가 닫힌 뒤 다시 뜬다)
+  const size ={ width: quickMenu.QUICK_W, height: quickMenu.QUICK_INITIAL_H };
   const win = new BrowserWindow({
     width: size.width, height: size.height, show: false,
     transparent: true, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
@@ -915,6 +938,214 @@ function openSettingsTo(target) {
   if (existed && t) { try { settingsWindow.webContents.send('settings-goto', t); } catch {} }
 }
 ipcMain.handle('settings-take-goto', () => { const t = pendingGoto; pendingGoto = null; return t; });
+
+// ★ 안내 카드(업데이트 소식·새 버전 안내·부팅 브리핑): 펫 옆에 한 번에 하나씩 뜬다. 큐·막힘 규칙·배치 계산은 notice-card.cjs(시험됨).
+//  - 카드 창(/notice)은 퀵 메뉴처럼 투명 창이고, 열 때 만들고 닫을 때 없앤다. 위치는 setQuickBounds와 같은 검사(정수·유한값·가장자리 보정)를 거치고, 클릭은 카드 위에서만 받는다.
+//  - "보일지 말지"와 내용은 창 안(렌더러, 설정 저장값을 읽는다)이 정한다. 보이지 않기로 하면 notice-skip으로 알려 조용히 닫는다(다음 카드가 바로 이어진다).
+//  - 초집중 모드·퀵 메뉴 열림·알람 울림(전체화면 알림) 중에는 큐에서 기다린다. 퀵 메뉴가 열리면 떠 있던 카드는 닫지 않고 치웠다가 다시 띄운다.
+//  - 카드가 떠 있는 동안 펫은 퀵 메뉴가 열렸을 때와 같이 쉰다(말풍선·움직임 정지: 'quick-state'를 그대로 쓴다).
+const noticeCard = require('./notice-card.cjs');
+const releaseNotes = require('./release-notes.cjs');
+const testEnv = noticeCard.readTestEnv(process.env);   // 시험용 환경변수(기본 꺼짐)
+const noticeQueue = noticeCard.createNoticeQueue();
+const noticeWaiters = new Map();   // 카드 id → [resolve]: 새 버전 안내 카드의 답("yes"|"later")을 기다리는 업데이터 호출들
+const NOTICE_WIN = { w: 368, h: 140 };   // 크기를 알려 오기 전의 임시 크기(카드 320 + 투명 여백 24×2)
+const WHATSNEW_DELAY_MS = 4000;          // 앱이 준비된 뒤 업데이트 소식 카드를 살피기까지(3~5초)
+let noticeTimer = null;                  // 큐에 기다리는 카드가 있는 동안만 도는 재시도 타이머
+let noticeMoveHooked = false;
+
+function settleNoticeWaiters(id, answer) {
+  const list = noticeWaiters.get(id); noticeWaiters.delete(id);
+  for (const r of list || []) { try { r(answer); } catch {} }
+}
+function setNoticePetPause(open) { if (petWindow && !petWindow.isDestroyed()) { try { petWindow.webContents.send('quick-state', open); } catch {} } }
+function noticeBlockers() {
+  return {
+    quitting: isQuitting, petVisible: !!petWindow && !petWindow.isDestroyed() && petWindow.isVisible(), focus: !!focusState.enabled,
+    quickOpen: !!quickWindow && !quickWindow.isDestroyed(), alertCount,
+  };
+}
+function stopNoticeTimers() {
+  if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
+  if (noticeState) { clearTimeout(noticeState.closeTimer); clearTimeout(noticeState.autoTimer); }
+}
+function scheduleNoticePump(ms = noticeCard.RETRY_MS) {
+  if (noticeTimer || isQuitting) return;
+  noticeTimer = setTimeout(() => { noticeTimer = null; pumpNotices(); }, ms);
+}
+// 지금 띄울 수 있으면 다음 카드를 연다. 아직 막혀 있으면 잠시 뒤 다시 살핀다(기다리는 카드가 없으면 타이머도 없다)
+function pumpNotices() {
+  if (isQuitting || noticeQueue.active) return;
+  const next = noticeQueue.peek({ now: Date.now(), blockers: noticeBlockers() });
+  if (next) {
+    const item = noticeQueue.start(next.id);
+    // 새 버전 안내인데 그 사이 상태가 바뀌었으면(이미 받는 중·최신 등) 낡은 카드이므로 보이지 않고 넘긴다. 시험용(fake)은 업데이터 상태와 무관하다
+    if (item.kind === 'update' && !(item.payload && item.payload.fake) && !(updater && updater.getState().status === 'available')) {
+      settleNoticeWaiters(item.id, 'later'); noticeQueue.finish(item.id, Date.now(), { silent: true }); scheduleNoticePump(0); return;
+    }
+    openNotice(item); return;
+  }
+  if (noticeQueue.size > 0) scheduleNoticePump();
+}
+function enqueueNotice(kind, key, payload) {
+  const r = noticeQueue.enqueue({ kind, key, payload });
+  if (r) pumpNotices();
+  return r;
+}
+
+function openNotice(item) {
+  const win = new BrowserWindow({
+    width: NOTICE_WIN.w, height: NOTICE_WIN.h, show: false,
+    transparent: true, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, hasShadow: false, focusable: true, backgroundColor: '#00000000',
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false },
+  });
+  const st = { id: item.id, kind: item.kind, win, shown: false, closing: false, closeTimer: null, autoTimer: null, ct: { interactive: true, miss: 0 }, regions: null, lastBounds: null, size: { width: NOTICE_WIN.w, height: NOTICE_WIN.h }, moveTimer: null };
+  noticeState = st;
+  placeNotice({ width: NOTICE_WIN.w, height: NOTICE_WIN.h });
+  win.loadURL(getPageURL('/notice'));
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  // 렌더러가 크기를 알려 오면(notice-resize) 그때 보여 준다. 판단이 늦어도(개발 서버 로딩 등) 투명한 빈 창이라 눈에 띄지 않는다
+  setTimeout(() => { if (noticeState === st && !st.closing) showNotice(); }, noticeCard.SHOW_FALLBACK_MS);
+  win.on('closed', () => { if (noticeState === st) { noticeState = null; setNoticePetPause(false); settleNoticeWaiters(st.id, 'later'); noticeQueue.finish(st.id, Date.now()); scheduleNoticePump(noticeCard.GAP_MS + 50); } });
+  if (!noticeMoveHooked && petWindow && !petWindow.isDestroyed()) {   // 펫을 끌어 옮기면 카드도 따라간다
+    noticeMoveHooked = true;
+    petWindow.on('move', () => {   // 움직이는 동안 잦게 오는 이벤트라 멈춘 뒤 한 번만 다시 놓는다
+      const cur = noticeState; if (!cur || !cur.shown || cur.closing) return;
+      clearTimeout(cur.moveTimer);
+      cur.moveTimer = setTimeout(() => { if (noticeState === cur && !cur.closing) placeNotice(cur.size); }, 80);
+    });
+    petWindow.on('closed', () => { noticeMoveHooked = false; });
+  }
+}
+// 카드 창의 setBounds는 이 함수로만 부른다(setQuickBounds와 같은 검사): 못 쓰는 값이면 마지막 정상 위치 → 펫 근처 기본 위치 순으로 바꿔 쓰고, 예외는 던지지 않는다
+function placeNotice(size) {
+  const st = noticeState;
+  if (!st || st.win.isDestroyed() || !petWindow || petWindow.isDestroyed()) return false;
+  const pet = petWindow.getBounds();
+  const work = quickMenu.pickWorkArea(pet, screen.getAllDisplays()) || screen.getPrimaryDisplay().workArea;
+  const measured = petMeasured && petMeasured.focus === !!focusState.enabled ? { cx: petMeasured.cx, cy: petMeasured.cy } : null;
+  const p = noticeCard.placeNotice({ pet, size, work, sizePct: petSizePct, focus: !!focusState.enabled, measured });
+  const r = quickMenu.boundsOrFallback(p, st.lastBounds, quickMenu.defaultNearPet(pet, size));
+  if (!r) { console.warn('[notice] 창 위치 값이 올바르지 않아 건너뛰었어요'); return false; }
+  if (r.used === 'fallback') console.warn('[notice] 창 위치 값이 올바르지 않아 마지막 정상 위치(또는 펫 근처)를 썼어요');
+  try { st.win.setBounds(r.bounds); } catch { console.warn('[notice] 창 위치를 바꾸지 못했어요'); return false; }
+  if (r.used === 'given') st.lastBounds = r.bounds;
+  try { st.win.webContents.send('notice-layout', { side: (p && p.side) || 'above' }); } catch {}
+  return true;
+}
+function showNotice() {
+  const st = noticeState;
+  if (!st || st.shown || st.closing || st.win.isDestroyed()) return;
+  st.shown = true;
+  st.win.setAlwaysOnTop(true, 'screen-saver');
+  st.win.showInactive();   // 다른 앱에서 하던 입력(포커스)을 빼앗지 않는다. 카드를 누르면 그때 포커스가 온다
+  setNoticePetPause(true);
+  try { st.win.webContents.send('notice-open'); } catch {}
+  const auto = noticeCard.AUTO_CLOSE_MS[st.kind];
+  if (auto) st.autoTimer = setTimeout(() => { if (noticeState === st) closeNotice('later'); }, auto);
+}
+// 닫기: 보이는 카드면 닫힘 모션 뒤에 창을 없애고, answer를 기다리는 업데이터 호출들에 알린다. 다음 카드는 쉼(GAP) 뒤에
+function closeNotice(answer = 'later') {
+  const st = noticeState;
+  if (!st || st.closing) return;
+  st.closing = true;
+  clearTimeout(st.autoTimer);
+  settleNoticeWaiters(st.id, answer);
+  setNoticePetPause(false);
+  const done = () => {
+    if (noticeState === st) noticeState = null;
+    if (st.win && !st.win.isDestroyed()) { try { st.win.destroy(); } catch {} }
+    noticeQueue.finish(st.id, Date.now());
+    scheduleNoticePump(noticeCard.GAP_MS + 50);
+  };
+  if (st.shown && !st.win.isDestroyed()) {
+    try { st.win.webContents.send('notice-closing'); } catch {}
+    st.closeTimer = setTimeout(done, noticeCard.NOTICE_CLOSE_MS);
+  } else done();
+}
+// 보이지 않기로 한 카드(이미 본 소식 등): 조용히 닫고 쉼 없이 다음 카드로
+function skipNotice() {
+  const st = noticeState;
+  if (!st || st.closing) return;
+  st.closing = true;
+  clearTimeout(st.autoTimer);
+  settleNoticeWaiters(st.id, 'later');
+  if (st.shown) setNoticePetPause(false);
+  if (noticeState === st) noticeState = null;
+  if (st.win && !st.win.isDestroyed()) { try { st.win.destroy(); } catch {} }
+  noticeQueue.finish(st.id, Date.now(), { silent: !st.shown });
+  scheduleNoticePump(0);
+}
+// 퀵 메뉴가 열릴 때: 떠 있던 카드는 닫지 않고 치웠다가(큐 맨 앞으로) 퀵 메뉴가 닫힌 뒤 다시 띄운다. 답을 기다리는 업데이터 호출은 그대로 둔다
+function deferActiveNotice() {
+  const st = noticeState;
+  if (!st) return;
+  st.closing = true;
+  clearTimeout(st.autoTimer); clearTimeout(st.closeTimer);
+  noticeState = null;
+  if (st.shown) setNoticePetPause(false);
+  if (st.win && !st.win.isDestroyed()) { try { st.win.destroy(); } catch {} }
+  noticeQueue.defer(st.id);
+  scheduleNoticePump();
+}
+
+const fromNotice = (e) => !!noticeState && !noticeState.closing && !noticeState.win.isDestroyed() && e.sender === noticeState.win.webContents;
+ipcMain.handle('notice-get', (e) => {   // 카드 창이 "나는 어떤 카드인가"를 묻는다(지금 뜬 카드만)
+  if (!fromNotice(e)) return null;
+  const it = noticeQueue.active;
+  return it && it.id === noticeState.id ? { id: it.id, kind: it.kind, payload: it.payload } : null;
+});
+ipcMain.on('notice-skip', (e) => { if (fromNotice(e)) skipNotice(); });
+ipcMain.on('notice-resize', (e, size) => {
+  if (!fromNotice(e)) return;
+  const s = noticeCard.clampSize(size && size.width, size && size.height);
+  if (!s) return;
+  noticeState.size = s; placeNotice(s); showNotice();
+});
+ipcMain.on('notice-regions', (e, list) => {   // 클릭을 받을 영역(카드 사각형, 창 안 좌표)
+  if (!fromNotice(e)) return;
+  const r = clickThroughOn ? clickThrough.sanitizeRegions(list) : null;
+  noticeState.regions = r && r.length ? r : null;
+});
+const NOTICE_ACTIONS = ['ok', 'later', 'close', 'update', 'details'];
+ipcMain.on('notice-action', (e, action) => {
+  if (!fromNotice(e) || !NOTICE_ACTIONS.includes(action)) return;
+  const it = noticeQueue.active;
+  if (action === 'details') {   // 사용자가 누를 때만, 주소는 카드의 버전(메인이 정한 값)으로 만든다. 창이 보낸 값은 쓰지 않는다
+    const url = releaseNotes.releaseUrl(it && it.payload && it.payload.version);
+    if (url) { try { shell.openExternal(url); } catch {} }
+    closeNotice('later'); return;
+  }
+  if (action === 'update') {
+    const hadWaiters = (noticeWaiters.get(noticeState.id) || []).length > 0;
+    closeNotice('yes');   // 기다리던 업데이터 호출이 있으면 기존 흐름(download)을 그대로 탄다
+    if (!hadWaiters && it && !(it.payload && it.payload.fake) && updater) updater.download();   // 설정창의 "소식 보기"로 띄운 카드: 같은 download()를 직접 부른다
+    return;
+  }
+  closeNotice('later');
+});
+// 설정창의 링크: 이번 업데이트 소식 다시 보기(저장값은 바꾸지 않는다) · 새 버전 소식 보기(같은 버전에 이미 자동으로 보여 줬어도 다시)
+ipcMain.on('whatsnew-show', () => { enqueueNotice('whatsnew', 'replay', { version: app.getVersion(), force: true, replay: true }); });
+ipcMain.on('update-news-show', () => {
+  const s = updater && updater.getState();
+  if (!s || s.status !== 'available' || !s.version) return;
+  enqueueNotice('update', s.version, { version: s.version, notes: Array.isArray(s.notes) ? s.notes.slice(0, 4) : [], force: true });
+});
+// 앱이 준비된 뒤: 업데이트 소식(저장값과 비교해 보일지는 카드 창이 정한다). 시험용 환경변수가 있으면 그에 맞는 카드도 쌓는다
+function startNoticeChecks() {
+  setTimeout(() => {
+    if (isQuitting) return;
+    enqueueNotice('whatsnew', app.getVersion(), { version: app.getVersion(), force: testEnv.forceWhatsNew });
+    if (testEnv.fakeNotesPath) {   // 파일 내용을 릴리스 노트로 가정한 "새 버전 안내" 카드(업데이터 없이)
+      let text = '';
+      try { text = fs.readFileSync(testEnv.fakeNotesPath, 'utf8').slice(0, 20000); } catch { console.warn('[notice] 시험용 노트 파일을 읽지 못했어요'); }
+      const [maj, min] = app.getVersion().split('.').map(Number);
+      enqueueNotice('update', 'fake', { version: `${maj}.${(min || 0) + 1}.0`, notes: releaseNotes.parseReleaseNotes(text), force: true, fake: true });
+    }
+  }, WHATSNEW_DELAY_MS);
+}
 
 // ★ 야르타임 IPC
 ipcMain.handle('get-pet-position', () => {

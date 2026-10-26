@@ -20,7 +20,7 @@ function fakeTimers() {   // advance(ms)로 시간을 흘린다
 }
 function fakeAutoUpdater() {   // 확인 결과를 미리 정해 둔다: next = 'available' | 'none' | 'error' | 'reject'
   const a = new EventEmitter(); a.calls = { check: 0, download: 0, quitAndInstall: [] }; a.next = 'none'; a.version = '1.4.0';
-  a.checkForUpdates = async () => { a.calls.check++; if (a.next === 'available') a.emit('update-available', { version: a.version }); else if (a.next === 'none') a.emit('update-not-available', {}); else if (a.next === 'error') a.emit('error', new Error('net')); else if (a.next === 'reject') throw new Error('offline'); else if (a.next === 'both') { a.emit('error', new Error('net')); throw new Error('net'); } };
+  a.checkForUpdates = async () => { a.calls.check++; if (a.next === 'available') a.emit('update-available', { version: a.version, releaseNotes: a.releaseNotes }); else if (a.next === 'none') a.emit('update-not-available', {}); else if (a.next === 'error') a.emit('error', new Error('net')); else if (a.next === 'reject') throw new Error('offline'); else if (a.next === 'both') { a.emit('error', new Error('net')); throw new Error('net'); } };
   a.downloadUpdate = async () => { a.calls.download++; if (a.failDownload) { a.emit('error', new Error('dl')); throw new Error('dl'); } };
   a.quitAndInstall = (...args) => { a.calls.quitAndInstall.push(args); };
   return a;
@@ -29,7 +29,7 @@ function make(over = {}) {
   const au = over.autoUpdater === undefined ? fakeAutoUpdater() : over.autoUpdater, timers = fakeTimers();
   const prompts = [], states = [], logs = []; let busy = false, installQuit = 0; const answers = over.answers || {};
   const up = U.createUpdater({
-    autoUpdater: au, enabled: over.enabled ?? true, location: over.location, timers,
+    autoUpdater: au, enabled: over.enabled ?? true, location: over.location, timers, parseNotes: over.parseNotes,
     isBusy: () => busy, showPrompt: async (kind, ctx) => { prompts.push({ kind, ...ctx }); const a = answers[kind]; return typeof a === 'function' ? a(ctx) : (a || 'later'); },
     requestInstallQuit: () => { installQuit++; }, onState: (s) => states.push(s), log: (...a) => logs.push(a.join(' ')),
   });
@@ -165,6 +165,32 @@ t('다운로드 실패: 대화상자 없이 available로 되돌려 다시 받을
   m.au.failDownload = false; await m.up.download(); assert.strictEqual(m.up.getState().status, 'downloading');
 });
 
+// ── 새 버전 안내 카드: 이미 받은 info.releaseNotes만 읽는다 ───────────────────
+t('달라지는 점: info.releaseNotes를 해석해 상태(notes)와 안내(prompt ctx)에 싣는다. 새 네트워크 요청은 없다(업데이터 호출 횟수 그대로)', async () => {
+  const seen = []; const m = make({ parseNotes: (raw) => { seen.push(raw); return ['제목1', '제목2']; } }); m.au.next = 'available'; m.au.releaseNotes = '<p>노트</p>';
+  await m.up.check({ manual: false }); await tick();
+  assert.deepStrictEqual(seen, ['<p>노트</p>']); assert.deepStrictEqual(m.up.getState().notes, ['제목1', '제목2']);
+  assert.deepStrictEqual(m.prompts[0].notes, ['제목1', '제목2']); assert.strictEqual(m.au.calls.check, 1); assert.strictEqual(m.au.calls.download, 0);
+});
+t('달라지는 점: 해석이 던지거나 이상한 값을 주면 빈 배열(안내는 그대로 뜬다), 최대 4개·문자열만', async () => {
+  for (const parseNotes of [() => { throw new Error('x'); }, () => null, () => 'abc', () => [1, null, {}]]) {
+    const m = make({ parseNotes }); m.au.next = 'available'; await m.up.check({ manual: false }); await tick();
+    assert.deepStrictEqual(m.up.getState().notes, []); assert.deepStrictEqual(m.prompts.map(p => p.kind), ['available']); assert.deepStrictEqual(m.prompts[0].notes, []);
+  }
+  const m = make({ parseNotes: () => ['a', 'b', 'c', 'd', 'e', 'f'] }); m.au.next = 'available'; await m.up.check({ manual: false });
+  assert.deepStrictEqual(m.up.getState().notes, ['a', 'b', 'c', 'd']);
+  const m2 = make(); m2.au.next = 'available'; await m2.up.check({ manual: false }); assert.deepStrictEqual(m2.up.getState().notes, [], '해석기를 안 넣으면 빈 배열');
+});
+t('달라지는 점: 받기에 실패해 available로 돌아가도 notes를 잃지 않는다. 받는 중·받은 뒤에는 상태에 notes가 없어도 된다', async () => {
+  const m = make({ parseNotes: () => ['제목'], answers: { available: 'yes' } }); m.au.next = 'available'; m.au.failDownload = true;
+  await m.up.check({ manual: false }); await tick(); await tick();
+  const s = m.up.getState(); assert.strictEqual(s.status, 'available'); assert.deepStrictEqual(s.notes, ['제목']); assert.strictEqual(s.error, '업데이트를 받지 못했어요');
+});
+t('응용 프로그램 폴더 밖(blocked)은 안내 카드 대신 위치 안내만(notes 없음)', async () => {
+  const m = make({ parseNotes: () => ['제목'], location: { ok: false, reason: 'dmg' } }); m.au.next = 'available'; await m.up.check({ manual: true }); await tick();
+  assert.strictEqual(m.up.getState().status, 'blocked'); assert.deepStrictEqual(m.prompts.map(p => p.kind), ['location']);
+});
+
 // ── 알람·전체화면 알림 중에는 재시작 미루기 ─────────────────────────────────
 t('알람·전체화면 알림이 떠 있으면 재시작을 미루고, 끝나면 이어서 requestQuit 한다', async () => {
   const m = make({ answers: { available: 'yes', downloaded: 'yes' } }); m.au.next = 'available'; m.setBusy(true);
@@ -228,7 +254,10 @@ t('preload·타입·설정창 UI 연결', () => {
   assert.match(page, /<small>v\{__APP_VERSION__\}<\/small><UpdateStatus \/>/);                                            // 버전 표시 바로 옆
   assert.ok(ui.includes(U.MESSAGES.upToDate) && ui.includes(U.MESSAGES.checkFailed) && ui.includes("'다시 확인'"), '상태 문구가 updater 메시지와 같다');
   for (const s of ['최신 버전이에요 :)', '새 버전 v', '다운로드 중', '재시작하면 설치돼요', '업데이트 확인', '응용 프로그램 폴더로 옮겨서 실행해 주세요']) assert.ok(ui.includes(s), s);
-  assert.match(ui, /s\.status === 'disabled'\) return null/);                                                              // 개발 모드에서는 그리지 않는다
+  assert.match(ui, /const updaterOn = !!api\?\.getUpdateState && s\.status !== 'disabled'/);                                // 개발 모드(꺼짐)에서는 업데이트 확인·상태를 그리지 않는다
+  assert.match(ui, /if \(!updaterOn\) return <span className="st-update">\{links\}<\/span>/);                              // …소식 다시 보기 링크만 보인다
+  for (const f of ['showWhatsNew', 'showUpdateNews']) { assert.ok(pre.includes(f), `preload ${f}`); assert.ok(d.includes(f), `d.ts ${f}`); }
+  assert.ok(ui.includes('이번 업데이트 소식 다시 보기') && ui.includes('소식 보기'));
   assert.match(css, /\.st-update-btn \{[^}]*var\(--ui-track\)[^}]*var\(--ui-ink\)/);                                      // 토큰 색(라이트·다크 모두)
   assert.ok(!/#[0-9a-fA-F]{3,6}\b/.test(css.split('.st-update {')[1].split('@media (prefers-reduced-motion')[0]), '업데이트 스타일은 하드코딩 색 없이 토큰만');
 });
