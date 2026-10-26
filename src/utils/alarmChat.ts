@@ -1,5 +1,5 @@
 import type { Alarm, PetSettings } from './settings';
-import { MAX_ALARMS, WEEKDAY_LABELS, addDays, isPastOneShot, isSkipped, occursOn, parseYmd, startOfDay, toMin } from './alarmSchedule';
+import { MAX_ALARMS, TIMER_ID_PREFIX, WEEKDAY_LABELS, addDays, isPastOneShot, isSkipped, isTimerAlarm, lastOccurrence, occursOn, parseYmd, startOfDay, toMin } from './alarmSchedule';
 import { alarmTitle } from './alarmText';
 import type { AlarmCommand, Meridiem } from './alarmCommand';
 
@@ -12,8 +12,20 @@ export type CancelCommand = Extract<AlarmCommand, { kind: 'cancel' }>;
 export const newAlarmId = (): string => `${Date.now()}${Math.floor(Math.random() * 1000)}`;   // 설정창(AlarmPane)과 같은 형식
 
 // 날짜 한 번짜리 알람(repeat: date): 설정창 캘린더가 만드는 것과 같은 모양. 그날 그 시각에 한 번만 울리고 지나면 "완료"로 흐려진다(스케줄러 규칙 그대로)
+// 타이머("N분 뒤")는 이름을 말했을 때만 name을 넣어 이름 없는 타이머가 "알람"(종 아이콘)으로 남게 하고, 울림 카드의 작은 문구에 "5분 타이머"가 나오도록 memo에 적는다
+// (memo는 일정/알람 구분에 쓰이지 않는다). id는 "timer-" 접두어: 정리·취소·남은 시간 조회가 이것으로 알아본다.
 export function buildAlarm(cmd: CreateCommand, id: string): Alarm {
-  return { id, time: cmd.time, enabled: true, ...(cmd.title ? { name: cmd.title } : {}), repeat: { kind: 'date', date: cmd.date } };
+  return { id, time: cmd.time, enabled: true, ...(cmd.title ? { name: cmd.title } : {}), ...(cmd.timer ? { memo: `${cmd.timer.label} 타이머` } : {}), repeat: { kind: 'date', date: cmd.date } };
+}
+export const newTimerId = (): string => `${TIMER_ID_PREFIX}${newAlarmId()}`;
+
+// 남은 시간 글: 90 → "1분 30초", 3600 → "1시간", 3700 → "1시간 1분"(1시간 넘으면 초는 버린다)
+export function leftText(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s}초`;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  if (h) return `${h}시간${m ? ` ${m}분` : ''}`;
+  return `${m}분${r ? ` ${r}초` : ''}`;
 }
 
 // ── 문구 ─────────────────────────────────────────────────────────────────────
@@ -29,6 +41,10 @@ export function createQuestion(cmd: CreateCommand): { head: string; big: string;
   const p = whenParts(cmd.date, cmd.time);
   const prev = cmd.midnight ? parseYmd(cmd.date) : null;
   const night = prev ? `${addDays(prev, -1).getMonth() + 1}월 ${addDays(prev, -1).getDate()}일 밤 12시` : '';
+  if (cmd.timer) {   // "5분 후 오후 11시 38분에 울려요(약 1분 20초 뒤)": 분 단위로 올림한 울림 시각을 그대로 알린다
+    const t = cmd.timer;
+    return { head: `${t.label} 후`, big: p.timeText, note: `약 ${leftText(t.secondsLeft)} 뒤에 울려요`, question: `${t.label} 후 ${p.timeText}에 ${cmd.title ? `'${cmd.title}' ` : ''}알람을 만들까요?` };
+  }
   return {
     head: p.dateText,
     big: `${p.timeText}${p.noteText ? ` (${p.noteText})` : ''}`,
@@ -108,6 +124,25 @@ export function findTargets(cmd: CancelCommand, ctx: DeleteContext, now: Date): 
   return out.sort((a, b) => a.sortKey - b.sortKey);
 }
 
+// ── 타이머(timer- 알람) 취소·남은 시간 ─────────────────────────────────────────────
+export const REASON_NO_TIMER = '맞춰 둔 타이머가 없어요';
+// 아직 안 울린 타이머: 켜져 있고 울림 시각이 지금 이후인 것, 가까운 것부터
+export function pendingTimers(alarms: Alarm[], now: Date): { alarm: Alarm; at: Date }[] {
+  return (Array.isArray(alarms) ? alarms : []).filter(a => isTimerAlarm(a) && a.enabled).flatMap(a => { const at = lastOccurrence(a); return at && at.getTime() > now.getTime() ? [{ alarm: a, at }] : []; }).sort((x, y) => x.at.getTime() - y.at.getTime());
+}
+const clockKo = (at: Date): string => `${at.getHours() < 12 ? '오전' : '오후'} ${at.getHours() % 12 === 0 ? 12 : at.getHours() % 12}:${pad2(at.getMinutes())}`;
+const timerWhat = (a: Alarm): string => (a.name && a.name.trim() ? a.name.trim() : (a.memo || '타이머'));
+const timerLine = (a: Alarm, at: Date, now: Date): string => `${timerWhat(a)} · ${clockKo(at)}에 울려요 (${leftText((at.getTime() - now.getTime()) / 1000)} 남음)`;
+// "타이머 취소": 삭제 확인 카드(기존 삭제 흐름)에 넘길 대상. 가까운 것부터
+export function findTimerTargets(alarms: Alarm[], now: Date): Target[] {
+  return pendingTimers(alarms, now).map(({ alarm, at }) => ({ kind: 'alarm' as const, alarm, label: timerLine(alarm, at, now), sortKey: at.getTime() }));
+}
+// "타이머 얼마나 남았어?": 한 줄씩. 없으면 안내 한 줄
+export function timerLeftLines(alarms: Alarm[], now: Date): string[] {
+  const list = pendingTimers(alarms, now);
+  return list.length ? list.map(({ alarm, at }) => timerLine(alarm, at, now)) : [REASON_NO_TIMER];
+}
+
 // ── 설정 값 바꾸기(순수) ─────────────────────────────────────────────────────────
 export type Mutation = { ok: true; settings: PetSettings } | { ok: false; reason: 'limit' };
 export function withAlarmAdded(s: PetSettings, alarm: Alarm): Mutation {
@@ -124,6 +159,6 @@ export function withAlarmsRestored(s: PetSettings, alarms: Alarm[]): PetSettings
 }
 
 export const DELETE_ALL_MAX_SHOWN = 4;   // "다 지워줘" 확인 카드에 이름을 보여 주는 개수
-export const EXAMPLES = ['내일 오후 3시에 회의 알람 만들어줘', '내일 오후 3시 알람 취소해줘', '다음 주 알람 알려줘', '오늘 브리핑해줘'] as const;
+export const EXAMPLES = ['내일 오후 3시에 회의 알람 만들어줘', '내일 오후 3시 알람 취소해줘', '다음 주 알람 알려줘', '오늘 브리핑해줘', '10분 뒤에 알람 맞춰줘'] as const;
 export const CHAT_PLACEHOLDER = '예: 내일 오후 3시에 회의 알람 만들어줘';
 export const UNDO_MS = 10000;   // 되돌리기 버튼이 보이는 시간

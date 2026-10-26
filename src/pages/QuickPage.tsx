@@ -12,9 +12,9 @@ import type { Sparkle } from '../utils/quickMenu';
 import { dayTitle, limitItems, noAlarmText, noWeekAlarmText, todayAlarmList, untilText, weekAlarmList, weekTitle } from '../utils/quickAlarms';
 import type { WeekAlarmItem } from '../utils/quickAlarms';
 import { KIND_LABEL, alarmKind, kindLabel } from '../utils/alarmKind';   // 항목 앞 "일정"/"알람" 라벨
-import { parseAlarmCommand } from '../utils/alarmCommand';
+import { parseAlarmCommand, timerCommand } from '../utils/alarmCommand';
 import type { Meridiem } from '../utils/alarmCommand';
-import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, meridiemQuestion, newAlarmId, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
+import { CHAT_PLACEHOLDER, DELETE_ALL_MAX_SHOWN, EXAMPLES, UNDO_MS, buildAlarm, createQuestion, findTargets, findTimerTargets, meridiemQuestion, newAlarmId, newTimerId, REASON_NO_TIMER, timerLeftLines, withAlarmAdded, withAlarmsRemoved, withAlarmsRestored, withDefaultOff, withDefaultOn } from '../utils/alarmChat';
 import type { CreateCommand, MeridiemAsk, Target } from '../utils/alarmChat';
 import { applyToStoredSettings } from '../utils/alarmStore';
 import type { Alarm } from '../utils/settings';
@@ -215,6 +215,7 @@ type ChatStep =
   | { s: 'unknown' }
   | { s: 'ask'; ask: MeridiemAsk; text: string }   // 오전/오후 되묻기(문장은 화면 상태로만 보관)
   | { s: 'create'; cmd: CreateCommand }
+  | { s: 'timerLeft'; lines: string[] }   // "타이머 얼마나 남았어?" 안내(조회만)
   | { s: 'pick'; targets: Target[] }
   | { s: 'delete'; targets: Target[]; stage: 1 | 2; all: boolean }
   | { s: 'done'; text: string; undo: (() => void) | null };
@@ -251,6 +252,12 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
     if (cmd.kind === 'query') { onShowDay(cmd.week ? { week: cmd.week } : { day: cmd.date }); return; }   // 조회는 기존 알람 카드를 날짜·주만 바꿔서 재사용
     if (cmd.kind === 'brief') { api()?.quickAction('brief', { target: cmd.target }); return; }   // 조회성이라 확인 카드 없이 바로: 퀵 메뉴가 닫히고 부팅 브리핑과 같은 카드가 펫 옆에 뜬다
     if (cmd.kind === 'create') { setStep({ s: 'create', cmd }); return; }
+    if (cmd.kind === 'timerLeft') { setStep({ s: 'timerLeft', lines: timerLeftLines(loadSettings().alarms, now) }); return; }
+    if (cmd.kind === 'cancelTimer') {   // 기존 삭제 확인 흐름 재사용: 하나면 바로 확인, 여러 개면 가까운 것부터 고르게
+      const list = findTimerTargets(loadSettings().alarms, now);
+      if (!list.length) { setStep({ s: 'reject', reason: REASON_NO_TIMER }); return; }
+      setStep(list.length === 1 ? { s: 'delete', targets: list, stage: 1, all: false } : { s: 'pick', targets: list }); return;
+    }
     const targets = findTargets(cmd, deleteContext(), now);
     if (!targets.length) { setStep({ s: 'reject', reason: REASON_NOT_FOUND }); return; }
     if (cmd.all) setStep({ s: 'delete', targets, stage: 1, all: true });
@@ -265,11 +272,12 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
     else if (cmd.kind === 'reject') setStep({ s: 'reject', reason: cmd.reason });
     else setStep({ s: 'unknown' });
   };
-  const doCreate = (cmd: CreateCommand) => {
-    const [h, m] = cmd.time.split(':').map(Number);
-    const day = parseYmd(cmd.date);
-    if (new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime() <= Date.now()) { setStep({ s: 'reject', reason: '이미 지난 시간이에요' }); return; }   // 확인하는 사이에 지났을 수 있다
-    const alarm = buildAlarm(cmd, newAlarmId());
+  const doCreate = (given: CreateCommand) => {
+    const passed = (c: CreateCommand) => { const [h, m] = c.time.split(':').map(Number); const day = parseYmd(c.date); return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime() <= Date.now(); };
+    let cmd = given;
+    if (cmd.timer && passed(cmd)) { const t = timerCommand(cmd.timer.minutes, cmd.title, new Date()); if (t.kind === 'create') cmd = t; }   // 확인하는 사이 울릴 시각이 지났으면 지금부터 N분으로 다시 계산한다
+    if (passed(cmd)) { setStep({ s: 'reject', reason: '이미 지난 시간이에요' }); return; }   // 확인하는 사이에 지났을 수 있다
+    const alarm = buildAlarm(cmd, cmd.timer ? newTimerId() : newAlarmId());
     const r = applyToStoredSettings(s => { const x = withAlarmAdded(s, alarm); return x.ok ? x.settings : null; });
     if (!r.ok) { setStep({ s: 'reject', reason: applyReason(r.reason) }); return; }
     finish('만들었어요', () => { applyToStoredSettings(s => withAlarmsRemoved(s, [alarm.id])); setStep({ s: 'done', text: '되돌렸어요', undo: null }); });
@@ -302,6 +310,14 @@ function ChatCard({ onBack, onShowDay }: { onBack: () => void; onShowDay: (q: Al
           ))}
         </div>
         <button type="button" className="qk-btn" onClick={goInput}>취소</button>
+      </div>
+    );
+  } else if (step.s === 'timerLeft') {
+    body = (
+      <div className="qk-chat-confirm" role="status">
+        <p className="qk-chat-head">타이머</p>
+        <ul className="qk-chat-list">{step.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
+        <div className="qk-chat-actions"><button type="button" className="qk-btn qk-btn--solid" onClick={goInput} data-autofocus="">계속 말하기</button></div>
       </div>
     );
   } else if (step.s === 'create') {

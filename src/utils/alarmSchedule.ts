@@ -9,6 +9,10 @@ export type AlarmRepeat =
 
 export const MAX_ALARMS = 50;
 
+// 대화로 만든 "N분 뒤" 타이머 알람은 id 접두어로 알아본다(새 필드·새 설정 키 없이). 날짜 한 번짜리 알람과 같은 모양이다.
+export const TIMER_ID_PREFIX = 'timer-';
+export const isTimerAlarm = (a: { id?: unknown } | null | undefined): boolean => !!a && typeof a.id === 'string' && a.id.startsWith(TIMER_ID_PREFIX);
+
 // 새 알람의 기본 시각: 지금보다 뒤인 가장 가까운 30분 단위(09:46 → 10:00, 10:00 정각 → 10:30). 초는 무시한다.
 // 23:30 이후는 그날 안에 들어갈 30분 칸이 없어서 다음 날 00:00이 된다(날짜도 함께 내일로 넘어간다. 오늘 23:59로 두면 23:59 이후에 바로 "완료"가 되기 때문).
 export function nextHalfHour(now: Date): { date: Date; time: string } {

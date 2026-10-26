@@ -7,8 +7,12 @@ import { WEEK_BASIS, weekOfMonthStart, weeksInMonth } from './weekOfMonth';
 export const MAX_INPUT_CHARS = 200;   // 이보다 긴 입력은 알람 말이 아니라고 본다
 export const TITLE_MAX = 20;          // 알람 제목 최대 글자(이모지 1개 = 1글자)
 
+export interface TimerInfo { minutes: number; label: string; secondsLeft: number }   // label: "5분"·"1시간 30분", secondsLeft: 만든 순간부터 울림 시각까지(초)
+
 export type AlarmCommand =
-  | { kind: 'create'; date: string; time: string; title: string; midnight?: boolean }
+  | { kind: 'create'; date: string; time: string; title: string; midnight?: boolean; timer?: TimerInfo }   // timer: "N분 뒤" 상대 시간 알람(타이머). 울림 시각은 분 단위로 올림한 값
+  | { kind: 'cancelTimer' }   // "타이머 취소해줘": 아직 안 울린 타이머를 취소 확인 카드로
+  | { kind: 'timerLeft' }     // "타이머 얼마나 남았어?"
   | { kind: 'needsMeridiem'; hour: number; minute: number; title: string }   // "3시"처럼 오전/오후 구분이 없는 1~12시: 짐작하지 않고 되묻는다(hour 1~12). 답은 parseAlarmCommand(원문, now, Meridiem)로 다시 해석
   | { kind: 'cancel'; all: boolean; date: string | null; time: string | null; hour12: number | null; minute: number | null; title: string }   // hour12: 오전/오후 없이 말한 시(0~11, 오전·오후 모두 해당)
   | { kind: 'query'; date: string; week?: { start: string; label: string } }   // week: 주 단위 조회(start = 그 주 월요일 YYYY-MM-DD, label = "이번 주"·"다음 주" 등). 날짜는 그 주 월요일
@@ -27,7 +31,11 @@ export const REASON = {
   pastTimeAsk: '이미 지난 시간이에요. 내일로 하려면 "내일 오전 3시"처럼 날짜를 같이 말해 주세요',
   weekQueryOnly: '주차는 알람 조회에서만 쓸 수 있어요. 날짜나 요일로 말해 주세요',
   briefOnly: '오늘이나 내일 브리핑만 해드릴 수 있어요',
+  timerUnit: '알람은 분 단위예요. 1분 이상으로 말해 주세요',
+  timerMax: '타이머는 24시간까지 맞출 수 있어요',
+  timerNeedMinutes: '몇 분 뒤에 울릴지 알려 주세요',
 } as const;
+export const TIMER_MAX_MINUTES = 24 * 60;
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const daysInMonth = (y: number, m: number) => new Date(y, m, 0).getDate();   // m: 1~12
@@ -209,6 +217,82 @@ const reject = (intent: 'create' | 'cancel' | 'query', reason: string): AlarmCom
 const at = (date: Date, h: number, mi: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, mi, 0, 0);
 const hhmm = (h: number, mi: number) => `${pad2(h)}:${pad2(mi)}`;
 
+// ── 타이머("N분 뒤 알람") ─────────────────────────────────────────────────────────
+// 상대 시간 알람. 스케줄러(alarms.cjs)는 "HH:MM"이 같은 분의 첫 초에 울리는 분 단위라서, 지금 + N분의 초 나머지를 올림한다(울림 시각 ≥ 요청 시각:
+// 11:36:40에 "1분 후" → 11:37:40 → 11:38에 울림, 약 1분 20초 뒤). 그래서 N분보다 일찍 울리는 일이 없다.
+// 인식: 숫자·한글 수사(한/두/세/…/십/이십오/스물다섯)의 분·시간(시간 반·반 시간·조합) + 후/뒤/뒤에/후에/있다가("이따가"는 아님), 또는 "타이머"가 있는 문장.
+// "5분"만 있고 후/뒤/타이머 단서가 없거나 "5시 30분"·"3:30" 같은 절대 시각이면 건드리지 않는다(기존 흐름).
+const SINO_DIGIT: Record<string, number> = { 일: 1, 이: 2, 삼: 3, 사: 4, 오: 5, 육: 6, 륙: 6, 칠: 7, 팔: 8, 구: 9 };
+const NATIVE_TENS: Record<string, number> = { 열: 10, 스물: 20, 스무: 20, 서른: 30, 마흔: 40, 쉰: 50, 예순: 60, 일흔: 70, 여든: 80, 아흔: 90 };
+const NATIVE_ONES: Record<string, number> = { 한: 1, 두: 2, 세: 3, 네: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9 };
+// 숫자 → 수. 숫자·한글 수사(고유어 한~아흔아홉, 한자어 일~구백구십구). 아니면 NaN
+export function koNumber(raw: string): number {
+  const s = raw.trim(); if (!s) return NaN;
+  if (/^\d+$/.test(s)) return Number(s);
+  let m = /^(열|스물|스무|서른|마흔|쉰|예순|일흔|여든|아흔)?(한|두|세|네|다섯|여섯|일곱|여덟|아홉)?$/.exec(s);
+  if (m && (m[1] || m[2])) return (m[1] ? NATIVE_TENS[m[1]] : 0) + (m[2] ? NATIVE_ONES[m[2]] : 0);
+  m = /^(?:([일이삼사오육륙칠팔구])?백)?(?:([일이삼사오육륙칠팔구])?십)?([일이삼사오육륙칠팔구])?$/.exec(s);
+  if (m && s.length > 0) return (/백/.test(s) ? (m[1] ? SINO_DIGIT[m[1]] : 1) * 100 : 0) + (/십/.test(s) ? (m[2] ? SINO_DIGIT[m[2]] : 1) * 10 : 0) + (m[3] ? SINO_DIGIT[m[3]] : 0);
+  return NaN;
+}
+
+interface Duration { minutes: number; seconds: boolean; start: number; end: number; cued: boolean }
+const RE_CUE = /^\s*(?:후에?|뒤에?|있다가)/;
+// 시간 말 묶음을 찾는다: "1시간 30분", "한 시간 반", "반 시간", "90분", "삼십 분". "5시 30분"의 30분은 절대 시각이라 제외
+export function findDuration(text: string, needCue: boolean): Duration | null {
+  const re = /(\d+|[가-힣]{1,4})\s*(시간|분|초)(\s*반)?|반\s*시간/g;
+  const toks: { start: number; end: number; min: number; sec: boolean; unit: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m[1] === undefined || (m[1] === '반' && m[2] === '시간')) { toks.push({ start: m.index, end: m.index + m[0].length, min: 30, sec: false, unit: '시간' }); continue; }
+    const n = koNumber(m[1]);
+    if (!Number.isFinite(n)) { re.lastIndex = m.index + 1; continue; }   // "기분" 같은 단어: 숫자가 아니다
+    toks.push({ start: m.index, end: m.index + m[0].length, min: m[2] === '시간' ? n * 60 + (m[3] ? 30 : 0) : m[2] === '분' ? n : 0, sec: m[2] === '초', unit: m[2] });
+  }
+  const groups: typeof toks[] = [];
+  for (const t of toks) { const g = groups[groups.length - 1]; if (g && /^\s*$/.test(text.slice(g[g.length - 1].end, t.start))) g.push(t); else groups.push([t]); }
+  let fallback: Duration | null = null;
+  for (const g of groups) {
+    const start = g[0].start, end = g[g.length - 1].end;
+    if (g[0].unit === '분' && /(?:\d|[가-힣])\s*시\s*$/.test(text.slice(0, start))) continue;   // "5시 30분": 절대 시각
+    const d: Duration = { minutes: g.reduce((a, t) => a + t.min, 0), seconds: g.some(t => t.sec), start, end, cued: RE_CUE.test(text.slice(end)) };
+    if (d.cued) return d;
+    if (!fallback) fallback = d;
+  }
+  return needCue ? null : fallback;
+}
+
+const RE_TIMER_WORD = /타이머/;
+const RE_TIMER_ACTION = /알람|알림|타이머|맞춰|맞추|만들|설정|등록|울려|띄워|띄우|알려|깨워|부탁|해\s*줘|해줘|해\s*주세요/;
+const RE_TIMER_LEFT = /남|얼마|몇\s*분|언제|있어|있나|있니|확인|조회|보여|알려/;
+const RE_TIMER_QUERY_ONLY = /뭐\s*있|뭐가\s*있|있어|있나|있니|조회|목록|몇\s*개/;
+export const timerLabel = (minutes: number): string => { const h = Math.floor(minutes / 60), m = minutes % 60; return `${h ? `${h}시간` : ''}${h && m ? ' ' : ''}${m || !h ? `${m}분` : ''}`; };
+
+// N분 뒤 타이머 명령 만들기(올림 규칙). 확인하는 사이 시간이 지났을 때 다시 계산하는 데도 쓴다
+export function timerCommand(minutes: number, title: string, now: Date): AlarmCommand {
+  const ring = Math.ceil((now.getTime() + minutes * 60000) / 60000) * 60000;
+  const at = new Date(ring);
+  return { kind: 'create', date: ymd(at), time: hhmm(at.getHours(), at.getMinutes()), title, timer: { minutes, label: timerLabel(minutes), secondsLeft: Math.ceil((ring - now.getTime()) / 1000) } };
+}
+
+function parseTimer(text: string, now: Date): AlarmCommand | null {
+  const hasWord = RE_TIMER_WORD.test(text);
+  const cancel = RE_CANCEL.test(text), alarmWord = RE_ALARM.test(text);
+  if (hasWord && cancel) return { kind: 'cancelTimer' };
+  const dur = findDuration(text, !hasWord);
+  if (!dur) {   // 시간 말이 없는 "타이머" 문장: 조회 말("남았어·언제·얼마·알려줘")이 있거나 부탁 말이 없으면 남은 시간, 맞춰 달라는 말이면 몇 분인지 되묻는다
+    if (!hasWord) return null;
+    return RE_TIMER_LEFT.test(text) || !(RE_CREATE_STRONG.test(text) || RE_CREATE_WEAK.test(text)) ? { kind: 'timerLeft' } : reject('create', REASON.timerNeedMinutes);
+  }
+  if (!hasWord && (!RE_TIMER_ACTION.test(text) || RE_TIMER_QUERY_ONLY.test(text) || (cancel && alarmWord))) return null;   // 단서만 있고 부탁이 아니면 기존 흐름(조회·취소 등)
+  if (dur.seconds) return reject('create', REASON.timerUnit);
+  if (dur.minutes < 1) return reject('create', REASON.timerUnit);
+  if (dur.minutes > TIMER_MAX_MINUTES) return reject('create', REASON.timerMax);
+  const quoted = /["“”'‘’「」『』]/.test(text);
+  const rest = `${text.slice(0, dur.start)} ${text.slice(dur.end).replace(RE_CUE, ' ')}`.replace(/타이머|띄워\s*(?:줘|주세요)?|띄우/g, BLANK);
+  return timerCommand(dur.minutes, extractTitle(quoted ? text : rest), now);
+}
+
 // ── 브리핑 ───────────────────────────────────────────────────────────────────
 // "브리핑"이 들어 있으면 브리핑이 우선이다("오늘 알람 브리핑해줘" → 브리핑). 단, 만들기·지우기 문장에 우연히 들어 있으면 기존 동작이 우선한다:
 // 확실한 만들기 말(만들·추가·설정·맞춰·등록·잡아·깨워·울려)이 알람·시각 말과 같이 있거나, 취소·삭제 말이 알람 말과 같이 있을 때("브리핑 회의 3시에 알람 만들어줘").
@@ -237,6 +321,8 @@ export function parseAlarmCommand(raw: unknown, now: Date, meridiem?: Meridiem):
   // 날짜·시간 말이 있는지(의도 판별용): 실제 해석은 아래에서
   const hasTimeWord = extractTime(text).hit !== null;
   if (RE_BRIEF.test(text) && !((createStrong && (alarmWord || hasTimeWord)) || (cancel && alarmWord))) return parseBrief(text, now);
+  const timer = parseTimer(text, now);   // "N분 뒤에 알람 맞춰줘"·"N분 타이머"·"타이머 취소"·"타이머 얼마나 남았어"
+  if (timer) return timer;
   let intent: 'create' | 'cancel' | 'query' | null = null;
   if (cancel && alarmWord) intent = 'cancel';
   else if ((createStrong || createWeak) && alarmWord) intent = 'create';

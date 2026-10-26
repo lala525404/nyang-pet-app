@@ -1,5 +1,5 @@
 import type { Alarm } from './settings';
-import { MAX_ALARMS, lastOccurrence, ymd } from './alarmSchedule';
+import { MAX_ALARMS, isTimerAlarm, lastOccurrence, ymd } from './alarmSchedule';
 
 // 지난 알람 자동 정리(화면·저장과 분리한 순수 계산: tests/alarm-cleanup-unit.cjs). 시각은 모두 인자(nowMs)로 받는다.
 //  - 지우는 것: 날짜를 정해 한 번만 울리는 알람(repeat.kind === 'date')이고, 그 시각이 지난 지 7일이 넘은 것 하나뿐이다.
@@ -24,13 +24,18 @@ export function clockVerdict(nowMs: number, mark: number): ClockVerdict {
   return 'ok';
 }
 
-// 지울 수 있는 알람인가: 날짜 한 번짜리이고, 마지막으로 울릴 시각에서 7일을 넘게 지났을 때(정확히 7일은 아직 남긴다)
-export function isCleanable(a: Pick<Alarm, 'repeat' | 'time'>, nowMs: number): boolean {
+// 대화로 만든 타이머("timer-" id의 날짜 한 번짜리 알람)는 울린 지 1시간이 지나면 정리한다(7일 동안 목록·캘린더에 남지 않게). 반복·점심·퇴근은 그대로 보호.
+export const TIMER_CLEANUP_AFTER_MS = 60 * 60 * 1000;
+
+// 지울 수 있는 알람인가: 날짜 한 번짜리이고, 마지막으로 울릴 시각에서 7일을 넘게 지났을 때(정확히 7일은 아직 남긴다). 타이머는 1시간
+export function isCleanable(a: Pick<Alarm, 'repeat' | 'time'> & { id?: string }, nowMs: number): boolean {
   if (!a || !a.repeat || a.repeat.kind !== 'date') return false;
   const last = lastOccurrence(a);
   if (!last || !Number.isFinite(last.getTime())) return false;
-  return nowMs - last.getTime() > CLEANUP_AFTER_MS;
+  return nowMs - last.getTime() > (isTimerAlarm(a) ? TIMER_CLEANUP_AFTER_MS : CLEANUP_AFTER_MS);
 }
+// 정리할 타이머가 있는가(펫 창이 1분마다 살피다가, 있을 때만 정리를 돌린다)
+export const hasCleanableTimer = (alarms: Alarm[], nowMs: number): boolean => (Array.isArray(alarms) ? alarms : []).some(a => isTimerAlarm(a) && isCleanable(a, nowMs));
 
 export function planCleanup(alarms: Alarm[], nowMs: number, mark: number): { verdict: ClockVerdict; removed: Alarm[]; kept: Alarm[] } {
   const list = Array.isArray(alarms) ? alarms : [];
@@ -55,7 +60,7 @@ export interface CleanupRun { alarms: Alarm[]; meta: CleanupMeta; removedCount: 
 // 한 번의 정리. reason: 'start'(앱 시작) | 'daily'(자정 이후 첫 확인).
 //  - 시계 이상이면 지우지 않는다. 'clock-back'은 새 시각을 받아들이고(마지막 확인 시각을 지금으로) 오늘은 건너뛴다. 'clock-invalid'는 아무것도 바꾸지 않는다.
 //  - 지울 게 있으면 그 목록을 undo로 보관한다(이전 undo는 대체). 앱 시작에서는 이미 보여 준 undo를 비운다("다음 실행 때까지 보관").
-export function runCleanup(input: { alarms: Alarm[] } & Partial<CleanupMeta>, nowMs: number, reason: 'start' | 'daily'): CleanupRun {
+export function runCleanup(input: { alarms: Alarm[] } & Partial<CleanupMeta>, nowMs: number, reason: 'start' | 'daily' | 'timer'): CleanupRun {   // 'timer': 울린 지 1시간이 지난 타이머를 치우는 중간 정리(그 밖에는 'daily'와 같다)
   const alarms = Array.isArray(input.alarms) ? input.alarms : [];
   const prev: CleanupMeta = { alarmCleanupDay: typeof input.alarmCleanupDay === 'string' ? input.alarmCleanupDay : '', alarmClockMark: Number(input.alarmClockMark) || 0, alarmCleanupUndo: sanitizeUndo(input.alarmCleanupUndo) };
   const plan = planCleanup(alarms, nowMs, prev.alarmClockMark);
@@ -64,7 +69,8 @@ export function runCleanup(input: { alarms: Alarm[] } & Partial<CleanupMeta>, no
   let undo = prev.alarmCleanupUndo;
   if (reason === 'start' && undo && undo.shown) undo = null;
   let next = alarms;
-  if (plan.removed.length > 0) { next = plan.kept; undo = { at: nowMs, alarms: plan.removed, shown: false }; }
+  // 설정창이 아직 안 보여 준 보관분이 있으면 합친다(타이머가 하루에 여러 번 정리돼도 앞선 정리분이 사라지지 않게). 이미 보여 준 것은 대체한다
+  if (plan.removed.length > 0) { next = plan.kept; undo = { at: nowMs, alarms: [...(undo && !undo.shown ? undo.alarms : []), ...plan.removed].slice(-MAX_ALARMS), shown: false }; }
   const meta: CleanupMeta = { alarmCleanupDay: today, alarmClockMark: nowMs, alarmCleanupUndo: undo };
   const changed = next !== alarms || meta.alarmCleanupDay !== prev.alarmCleanupDay || meta.alarmClockMark !== prev.alarmClockMark || JSON.stringify(meta.alarmCleanupUndo) !== JSON.stringify(prev.alarmCleanupUndo);
   return { alarms: next, meta, removedCount: plan.removed.length, verdict: plan.verdict, changed };
