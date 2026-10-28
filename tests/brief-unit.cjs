@@ -153,7 +153,7 @@ t('연결(정적): 앱 시작 때 한 번 판단(os.uptime·시험용 업타임)
   assert.ok(/require\('os'\)\.uptime\(\)/.test(main) && /testEnv\.fakeUptimeSec/.test(main) && /testEnv\.forceBrief/.test(main));
   assert.ok(/briefSchedule\.shouldEnqueue\(/.test(main) && /briefSchedule\.planBrief\(/.test(main));
   assert.ok(/if \(briefTimer\) \{ clearTimeout\(briefTimer\)/.test(main), '종료 때 타이머 정리');
-  assert.ok(/ipcMain\.on\('brief-show'/.test(main) && /ipcMain\.handle\('weather-peek'/.test(main) && /weatherService\.peek\(/.test(main));
+  assert.ok(/trustedOn\('brief-show'/.test(main) && /trustedHandle\('weather-peek'/.test(main) && /weatherService\.peek\(/.test(main));
   assert.ok(/showBrief:/.test(pre) && /peekWeather:/.test(pre) && /weather-peek/.test(pre) && /brief-show/.test(pre));
   assert.ok(/'week'/.test(main) && /alarm-calendar/.test(main), '+N개 더보기 → 알람 캘린더의 오늘 주');
   const page = read('src/pages/NoticePage.tsx'); assert.ok(/peekWeather/.test(page) && !/getWeather/.test(page), '브리핑은 캐시만 쓴다(getWeather 없음)');

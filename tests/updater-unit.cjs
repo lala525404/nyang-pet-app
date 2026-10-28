@@ -209,13 +209,13 @@ t('설치 요청이 없으면 runInstall은 false(그냥 app.quit)', () => { con
 
 // ── 맥 설치 위치 ──────────────────────────────────────────────────────────────
 t('맥: 응용 프로그램 폴더 밖(dmg 안·translocation·다운로드 폴더)은 업데이트 불가, 안은 가능, Windows는 항상 가능', () => {
-  const L = (p, platform = 'darwin') => U.installLocationStatus({ platform, exePath: p, home: '/Users/lala' });
+  const L = (p, platform = 'darwin') => U.installLocationStatus({ platform, exePath: p, home: '/Users/test' });
   assert.deepStrictEqual(L('/Applications/choeae-app.app/Contents/MacOS/choeae-app'), { ok: true, reason: null });
-  assert.deepStrictEqual(L('/Users/lala/Applications/choeae-app.app/Contents/MacOS/choeae-app'), { ok: true, reason: null });
+  assert.deepStrictEqual(L('/Users/test/Applications/choeae-app.app/Contents/MacOS/choeae-app'), { ok: true, reason: null });
   assert.deepStrictEqual(L('/Volumes/choeae-app 1.3.0/choeae-app.app/Contents/MacOS/choeae-app'), { ok: false, reason: 'dmg' });
   assert.deepStrictEqual(L('/private/var/folders/ab/xyz/T/AppTranslocation/1A2B/d/choeae-app.app/Contents/MacOS/choeae-app'), { ok: false, reason: 'translocated' });
-  assert.deepStrictEqual(L('/Users/lala/Downloads/choeae-app.app/Contents/MacOS/choeae-app'), { ok: false, reason: 'location' });
-  assert.deepStrictEqual(L('/Users/lala/Desktop/choeae-app.app/Contents/MacOS/choeae-app'), { ok: false, reason: 'location' });
+  assert.deepStrictEqual(L('/Users/test/Downloads/choeae-app.app/Contents/MacOS/choeae-app'), { ok: false, reason: 'location' });
+  assert.deepStrictEqual(L('/Users/test/Desktop/choeae-app.app/Contents/MacOS/choeae-app'), { ok: false, reason: 'location' });
   assert.deepStrictEqual(L('/Applications2/x.app/Contents/MacOS/x'), { ok: false, reason: 'location' }, '접두사만 비슷한 폴더는 안 된다');
   assert.strictEqual(L('C:\\Users\\a\\AppData\\Local\\Programs\\choeae-app\\choeae-app.exe', 'win32').ok, true);
 });

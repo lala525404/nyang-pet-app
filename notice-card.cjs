@@ -3,7 +3,7 @@
 //  - 카드는 한 번에 하나만 뜨고, 나머지는 큐에서 차례를 기다린다(먼저 들어온 순서).
 //  - 초집중 모드·퀵 메뉴 열림·알람 울림(전체화면 알림)·펫이 안 보임·종료 중에는 끝날 때까지 기다린다(오늘 브리핑은 초집중 모드를 기다리지 않는다). 카드 사이에는 짧은 쉼(GAP)을 둔다.
 //  - 위치·크기는 퀵 메뉴(quick-menu.cjs)와 같은 계산을 쓴다(반올림·유한값 검사·화면 가장자리 보정).
-//  - 시험용 환경변수(기본 꺼짐): CHOEAE_FORCE_WHATSNEW=1, CHOEAE_FAKE_UPDATE_NOTES=<파일>, CHOEAE_FORCE_BRIEF=1, CHOEAE_FAKE_UPTIME_SEC=<초>
+//  - 시험용 환경변수(기본 꺼짐, 배포 빌드에서는 무시): CHOEAE_FORCE_WHATSNEW=1, CHOEAE_FAKE_UPDATE_NOTES=<파일>, CHOEAE_FORCE_BRIEF=1, CHOEAE_FAKE_UPTIME_SEC=<초>
 const quickMenu = require('./quick-menu.cjs');
 
 const KINDS = ['whatsnew', 'update', 'brief'];
@@ -95,7 +95,9 @@ function placeNotice({ pet, size, work, sizePct = 100, focus = false, measured =
 
 // ── 시험용 환경변수 ──
 const on = (v) => { const s = String(v || '').toLowerCase(); return s === '1' || s === 'true'; };
-function readTestEnv(env = {}) {
+// isPackaged(배포 빌드)이면 환경변수를 읽지 않고 전부 꺼진 값을 돌려준다(시험용 스위치와 임의 파일 읽기가 배포판에서 동작하지 않게)
+function readTestEnv(env = {}, { isPackaged = false } = {}) {
+  if (isPackaged) env = {};
   const sec = Number(env.CHOEAE_FAKE_UPTIME_SEC);
   return {
     forceWhatsNew: on(env.CHOEAE_FORCE_WHATSNEW),

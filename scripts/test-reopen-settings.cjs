@@ -5,7 +5,7 @@ const main = read('main.cjs'), pet = read('src/pages/PetPage.tsx'), ob = read('s
 let n = 0; const t = (name, fn) => { fn(); n++; console.log(`  ok  ${name}`); };
 
 t('버디 우클릭은 퀵 메뉴를 열고, 퀵 메뉴의 "메인" 동작이 설정창을 연다', () => {
-  assert.match(main, /ipcMain\.on\('pet-right-click',\s*\(\) => openQuickMenu\(\)\);/);
+  assert.match(main, /trustedOn\('pet-right-click',\s*\(\) => openQuickMenu\(\)\);/);
   assert.match(main, /function openSettingsTo\(target\)[\s\S]*?createSettingsWindow\(\);/);
   assert.match(main, /ipcMain\.on\('quick-action'[\s\S]*?openSettingsTo\(quickMenu\.settingsTargetFor\(action, arg\)\)/);
   assert.match(pet, /onContextMenu=\{\(e\) => \{ e\.preventDefault\(\); window\.electronAPI\?\.petRightClick\(\); \}\}/);

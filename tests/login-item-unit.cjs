@@ -11,7 +11,7 @@ function fakeApp({ initial = false, failWrites = false } = {}) {
     getLoginItemSettings: (opts) => { calls.get.push(opts); return { openAtLogin: os, wasOpenedAtLogin: false }; },
     setLoginItemSettings: (opts) => { calls.set.push(opts); if (!failWrites) os = !!opts.openAtLogin; } };
 }
-const MAC = { platform: 'darwin', isPackaged: true, defaultApp: false, env: {}, exePath: '/Applications/choeae-app.app/Contents/MacOS/choeae-app', home: '/Users/lala' };
+const MAC = { platform: 'darwin', isPackaged: true, defaultApp: false, env: {}, exePath: '/Applications/choeae-app.app/Contents/MacOS/choeae-app', home: '/Users/test' };
 const WIN = { platform: 'win32', isPackaged: true, defaultApp: false, env: {}, exePath: 'C:\\Users\\a\\AppData\\Local\\Programs\\choeae-app\\choeae-app.exe', home: 'C:\\Users\\a' };
 
 t('기본값은 꺼짐: 읽기만 해서는 OS에 아무것도 등록하지 않는다(사용자 동의 없이 켜지지 않는다)', () => {
@@ -51,11 +51,11 @@ t('Windows 포터블(PORTABLE_EXECUTABLE_FILE)과 맥의 응용 프로그램 폴
   const portable = { app: fakeApp({ initial: true }), ...WIN, env: { PORTABLE_EXECUTABLE_FILE: 'C:\\x\\choeae-app-1.3.0.exe' } };
   const p = L.readLoginItem(portable); assert.deepStrictEqual([p.supported, p.enabled, p.reason, p.note], [false, false, 'portable', '설치 버전에서 사용할 수 있어요']);
   L.writeLoginItem(portable, true); assert.strictEqual(portable.app.calls.set.length, 0);
-  for (const exe of ['/Users/lala/Downloads/choeae-app.app/Contents/MacOS/choeae-app', '/Volumes/choeae-app/choeae-app.app/Contents/MacOS/choeae-app', '/private/var/folders/x/AppTranslocation/1/d/choeae-app.app/Contents/MacOS/choeae-app']) {
+  for (const exe of ['/Users/test/Downloads/choeae-app.app/Contents/MacOS/choeae-app', '/Volumes/choeae-app/choeae-app.app/Contents/MacOS/choeae-app', '/private/var/folders/x/AppTranslocation/1/d/choeae-app.app/Contents/MacOS/choeae-app']) {
     const d = { app: fakeApp(), ...MAC, exePath: exe }; const s = L.readLoginItem(d);
     assert.deepStrictEqual([s.supported, s.reason, s.note], [false, 'location', '설치 버전에서 사용할 수 있어요'], exe); L.writeLoginItem(d, true); assert.strictEqual(d.app.calls.set.length, 0, exe);
   }
-  assert.strictEqual(L.readLoginItem({ app: fakeApp(), ...MAC, exePath: '/Users/lala/Applications/choeae-app.app/Contents/MacOS/choeae-app' }).supported, true, '~/Applications 안은 가능');
+  assert.strictEqual(L.readLoginItem({ app: fakeApp(), ...MAC, exePath: '/Users/test/Applications/choeae-app.app/Contents/MacOS/choeae-app' }).supported, true, '~/Applications 안은 가능');
   assert.strictEqual(L.readLoginItem({ app: fakeApp(), ...WIN, env: {} }).supported, true, '설치형 Windows는 가능');
   assert.strictEqual(L.readLoginItem({ app: fakeApp(), ...WIN, platform: 'linux' }).supported, false, '그 밖의 OS는 지원하지 않는다');
 });
@@ -80,7 +80,7 @@ t('자동 실행으로 켜지면 설정창을 만들지 않고 버디·트레이
 });
 t('연결(정적 확인): IPC·preload·타입·기본 꺼짐 UI·빌드 파일', () => {
   const main = read('main.cjs'), pre = read('preload.cjs'), d = read('src/electron.d.ts'), home = read('src/components/settings/HomePane.tsx'), hook = read('src/hooks/useLoginItem.ts'), pkg = JSON.parse(read('package.json'));
-  assert.match(main, /ipcMain\.handle\('login-item-get', \(\) => loginItem\.readLoginItem\(loginItemDeps\(\)\)\);/); assert.match(main, /ipcMain\.handle\('login-item-set', \(_e, enabled\) => loginItem\.writeLoginItem\(loginItemDeps\(\), enabled === true\)\);/);
+  assert.match(main, /trustedHandle\('login-item-get', \(\) => loginItem\.readLoginItem\(loginItemDeps\(\)\)\);/); assert.match(main, /trustedHandle\('login-item-set', \(_e, enabled\) => loginItem\.writeLoginItem\(loginItemDeps\(\), enabled === true\)\);/);
   assert.ok(pre.includes("'login-item-get'") && pre.includes("'login-item-set'")); assert.ok(d.includes('getLoginItem') && d.includes('setLoginItem') && d.includes('LoginItemState'));
   for (const s of ['컴퓨터를 켜면 자동 실행', 'useLoginItem()', 'login.set', 'st-times-login']) assert.ok(home.includes(s), s);
   assert.ok(!home.includes("id: 'login'"), '자동 실행은 칩 목록이 아니라 홈 하단 시간 카드의 남는 자리에 둔다');

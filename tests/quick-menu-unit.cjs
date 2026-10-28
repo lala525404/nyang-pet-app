@@ -293,7 +293,7 @@ t('알람이 없거나 설정을 못 읽으면 빈 목록, 문구·남은 시간
 // ── 연결(정적 확인) ──────────────────────────────────────────────────────────
 t('연결: 우클릭 → 퀵 메뉴, 종료는 정상 종료 경로(requestQuit: 저장·정리 후 app.quit, 시간 초과 시 app.exit), 퀵 창이 보낸 요청만 받음', () => {
   const main = read('main.cjs'), pet = read('src/pages/PetPage.tsx'), page = read('src/pages/QuickPage.tsx');
-  assert.ok(/ipcMain\.on\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main));
+  assert.ok(/trustedOn\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main));
   assert.ok(/if \(action === 'quit'\) \{ requestQuit\(\); return; \}/.test(main));
   assert.ok(/quitTimer = setTimeout\(\(\) => app\.exit\(0\), QUIT_TIMEOUT_MS\)/.test(main) && /QUIT_TIMEOUT_MS = 2000/.test(main) && /app\.quit\(\)/.test(main), '정상 종료를 먼저, 2초 안에 안 끝나면 강제');
   assert.ok(/const fromQuick = \(e\) =>/.test(main) && (main.match(/fromQuick\(e\)/g) || []).length === 7, '닫기·첫 알림·영역·카드·크기·알람 읽기·동작 7곳 모두 퀵 창이 보낸 것인지 확인');
@@ -319,7 +319,7 @@ t('방사형 모션·색(정적 확인): CSS 애니메이션만(rAF 루프 없�
   assert.ok(!/gradient|blur\(/.test(css), '그라데이션·번짐 없음'); assert.ok(/--quick-confirm: #e5484d/.test(css) && (css.match(/#e5484d/gi) || []).length === 1, '붉은색은 종료 확인 한 곳');
   assert.ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(/#e5484d|#ffffff|#111111|#fff\b/gi, '')), '그 밖의 색 없음(블랙 앤 화이트)');
   assert.ok(/'quick-open'/.test(main) && /'quick-closing'/.test(main) && /QUICK_CLOSE_MS/.test(main), '열림·닫힘 모션은 메인이 신호를 주고 닫힘 뒤에 창을 없앤다');
-  assert.ok(/ipcMain\.on\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main) && /closeQuickMenu\(true\); return; \}   \/\/ 열려 있을 때의 우클릭은 닫는다/.test(main), '재우클릭은 닫는다');
+  assert.ok(/trustedOn\('pet-right-click', \(\) => openQuickMenu\(\)\)/.test(main) && /closeQuickMenu\(true\); return; \}   \/\/ 열려 있을 때의 우클릭은 닫는다/.test(main), '재우클릭은 닫는다');
   assert.ok(/if \(st && st\.closing\) return;/.test(main) && /\(quickState && quickState\.closing\)\) return;/.test(main), '닫히는 중의 반복 닫기·눌림은 무시(상태가 꼬이지 않음)');
 });
 t('퀵 메뉴가 열린 동안 펫은 제자리(정적 확인): 초집중 모드의 정지 플래그 재사용, 순간이동·도망·낮잠·반짝임·졸림 방지 멈춤, 모든 말풍선 경로는 showBubble 한 곳에서 쉼, 클릭·드래그 코드는 그대로', () => {
@@ -409,7 +409,7 @@ t('창 좌표 검증: setBounds에는 항상 정수·유한한 값만(NaN·undef
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8');
   assert.ok(!/quickWindow\.setBounds\(/.test(main.replace(/try \{ quickWindow\.setBounds\(r\.bounds\); \}/, '')) && !/\bwin\.setBounds\(\{ x: petAtOpen/.test(main), '퀵 창 setBounds는 setQuickBounds 한 곳');
   assert.ok(/function setQuickBounds[\s\S]*?boundsOrFallback[\s\S]*?console\.warn/.test(main));
-  assert.ok(/ipcMain\.on\('move-pet-window'[\s\S]*?quickMenu\.safePoint\(pos\)/.test(main) && /ipcMain\.on\('resize-pet-window'[\s\S]*?quickMenu\.safeBounds\(/.test(main));
+  assert.ok(/trustedOn\('move-pet-window'[\s\S]*?quickMenu\.safePoint\(pos\)/.test(main) && /trustedOn\('resize-pet-window'[\s\S]*?quickMenu\.safeBounds\(/.test(main));
   assert.ok(!/console\.warn\([^)]*\$\{/.test(main.slice(main.indexOf('function setQuickBounds'), main.indexOf('function placeQuick('))), '경고에 값 전체를 출력하지 않는다');
 });
 t('초집중 모드 바 위치: 모드별 펫 이미지 위치(시계·남은 근무시간만큼 위로), 위 배치 간격 6px, 아래 배치는 시계·진행바 아래, 측정값 검증·모드 전환', () => {

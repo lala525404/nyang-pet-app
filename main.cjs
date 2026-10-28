@@ -12,6 +12,22 @@ function getPageURL(hash) {
 
 const CREDIT_URL = 'https://creativecommons.org/licenses/by/4.0/';
 
+// ★ IPC 안전장치: 메시지를 보낸 프레임이 우리 앱 페이지(배포: dist/index.html, 개발: 개발 서버)일 때만 처리한다. 아니면 조용히 무시한다(오류도 로그도 없다).
+//   퀵·안내 카드 핸들러는 sender 창을 직접 확인하므로 이 래퍼를 쓰지 않는다. 판단은 ipc-guard.cjs(단위 테스트됨).
+const ipcGuard = require('./ipc-guard.cjs');
+const APP_INDEX_PATH = path.join(__dirname, 'dist', 'index.html');
+const DEV_ORIGIN = 'http://localhost:5173';
+function isTrustedSender(e) {
+  try { return ipcGuard.isTrustedUrl(e && e.senderFrame && e.senderFrame.url, { isPackaged: app.isPackaged, indexPath: APP_INDEX_PATH, devOrigin: DEV_ORIGIN }); } catch { return false; }
+}
+const trustedOn = (channel, fn) => ipcMain.on(channel, (e, ...args) => { if (isTrustedSender(e)) fn(e, ...args); });
+const trustedHandle = (channel, fn, fallback = null) => ipcMain.handle(channel, (e, ...args) => (isTrustedSender(e) ? fn(e, ...args) : fallback));
+// 창이 앱 화면 밖으로 가거나 새 창을 열지 못하게 한다(퀵·안내 카드 창과 같은 방식)
+function lockNavigation(win) {
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+}
+
 let settingsWindow = null;
 let petWindow = null;
 let yarWindow = null;
@@ -65,7 +81,7 @@ function trackAlertWindow(win) {
   notifyAlertState();
   win.once('closed', () => { alertCount = Math.max(0, alertCount - 1); notifyAlertState(); });
 }
-ipcMain.handle('get-alert-state', () => alertCount > 0);
+trustedHandle('get-alert-state', () => alertCount > 0, false);
 
 // ★ 야르타임 창 생성
 function createYarWindow() {
@@ -98,6 +114,7 @@ function createYarWindow() {
   yarWindow.setAlwaysOnTop(true, 'screen-saver');
   // 클릭이 뒤로 통과되게 설정 (방해 없이)
   yarWindow.setIgnoreMouseEvents(true, { forward: true });
+  lockNavigation(yarWindow);
   yarWindow.loadURL(getPageURL('/yar'));
 
   // 2초 후 자동으로 닫기
@@ -157,7 +174,7 @@ function markFlag(name, value = true) {
 
 // 설정창 시작 인트로: 이 버전에서 아직 보여 준 적이 없으면 첫 설정창에만 intro=1을 붙인다(새로 설치했거나 새 버전으로 올린 뒤 처음).
 // 보여 줬다는 표시는 설정창이 인트로를 시작할 때 알려 온다. 설정의 "시작 인트로 보기"가 꺼져 있으면 설정창이 알아서 건너뛴다.
-ipcMain.on('intro-seen', () => {
+trustedOn('intro-seen', () => {
   // 완전 새 설치였다는 사실은 flags.json에 남긴다(온보딩을 나중에 마치거나 다시 봐도 새 유저인지 알 수 있게). 기존 사용자에게는 이 표시가 없다.
   if (freshInstall) markFlag('newInstall');
   freshInstall = false;
@@ -269,6 +286,7 @@ function createPetWindow() {
     },
   });
   petWindow.setAlwaysOnTop(alwaysOnTopFlag, 'screen-saver');
+  lockNavigation(petWindow);
   petWindow.loadURL(getPageURL(freshInstall ? '/pet?fresh=1' : '/pet'));
   applyPetMouse();   // 초집중 모드로 시작하면 처음부터 클릭 통과
   petRegions = []; petCT = { interactive: true, miss: 0 };   // 새 창은 영역을 알려 줄 때까지 전부 받는다
@@ -437,11 +455,12 @@ function flushSettings() {
     let timer = null;
     const done = () => {
       clearTimeout(timer);
-      ipcMain.removeListener('settings-flushed', done);
+      ipcMain.removeListener('settings-flushed', onFlushed);
       resolve();
     };
+    const onFlushed = (e) => { if (isTrustedSender(e)) done(); };
     timer = setTimeout(done, SAVE_WAIT_MS);
-    ipcMain.on('settings-flushed', done);
+    ipcMain.on('settings-flushed', onFlushed);
     try { settingsWindow.webContents.send('flush-settings'); } catch { done(); }
   });
 }
@@ -478,7 +497,14 @@ if (!gotLock) {
     createSettingsWindow();
   });
 
+  // 배포 빌드: 기본 앱 메뉴(보기 > 개발자 도구, Ctrl+Shift+I)를 없애고, 어떤 경로로든 개발자 도구가 열리면 바로 닫는다. 개발 모드는 그대로 둔다.
+  //   맥은 메뉴가 없으면 복사·붙여넣기 단축키가 입력칸에서 안 되므로 개발자 도구 항목만 뺀 최소 메뉴를 둔다.
+  if (app.isPackaged) {
+    app.on('web-contents-created', (_e, contents) => { contents.on('devtools-opened', () => { try { contents.closeDevTools(); } catch {} }); });
+  }
+
   app.whenReady().then(() => {
+    if (app.isPackaged) Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }]) : null);
     freshInstall = !fs.existsSync(flagsFile());
     restoreAlarms();   // 저장된 알람 설정으로 바로 시작(창 IPC를 기다리지 않는다)
     focusState = focusMode.loadFocus(focusFile());   // 초집중 모드 상태 복원(자동 실행의 조용한 시작에서도 같은 상태로 시작)
@@ -574,10 +600,10 @@ function updateFocus(change) {
   if (!r.onlyAnchor) broadcastFocus();   // 기준 위치만 바뀐 것은 버디 창이 스스로 알린 것이라 다시 알리지 않는다
   return { ...focusState };
 }
-ipcMain.handle('focus-get', () => ({ ...focusState }));
-ipcMain.handle('focus-set', (_e, change) => updateFocus({ enabled: change && change.enabled, seconds: change && change.seconds }));
-ipcMain.on('focus-anchor', (_e, p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) updateFocus({ anchor: { x: p.x, y: p.y } }); });
-ipcMain.on('pet-interactive', (_e, v) => { const next = v === true; if (next === petInteractive) return; petInteractive = next; applyPetMouse(); });
+trustedHandle('focus-get', () => ({ ...focusState }));
+trustedHandle('focus-set', (_e, change) => updateFocus({ enabled: change && change.enabled, seconds: change && change.seconds }));
+trustedOn('focus-anchor', (_e, p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) updateFocus({ anchor: { x: p.x, y: p.y } }); });
+trustedOn('pet-interactive', (_e, v) => { const next = v === true; if (next === petInteractive) return; petInteractive = next; applyPetMouse(); });
 // 클릭 통과: 버디 창이 보이는 요소(펫 원·말풍선·토스트)의 영역을 알려 준다(바뀔 때만)
 ipcMain.on('pet-regions', (e, list) => {
   if (!petWindow || petWindow.isDestroyed() || e.sender !== petWindow.webContents) return;
@@ -596,8 +622,8 @@ const loginItemDeps = () => ({
   app, platform: process.platform, isPackaged: app.isPackaged, defaultApp: !!process.defaultApp,   // defaultApp: `electron .`(개발·fresh)로 띄운 경우
   env: process.env, exePath: app.getPath('exe'), home: require('os').homedir(),
 });
-ipcMain.handle('login-item-get', () => loginItem.readLoginItem(loginItemDeps()));
-ipcMain.handle('login-item-set', (_e, enabled) => loginItem.writeLoginItem(loginItemDeps(), enabled === true));
+trustedHandle('login-item-get', () => loginItem.readLoginItem(loginItemDeps()));
+trustedHandle('login-item-set', (_e, enabled) => loginItem.writeLoginItem(loginItemDeps(), enabled === true));
 
 // ★ 자동 업데이트(electron-updater + GitHub 릴리스). 판단 로직은 updater.cjs(단위 테스트됨)에 있고, 여기서는 실제 Electron 값을 연결한다.
 //  - 패키징되지 않았거나 app-update.yml이 없으면(개발 모드, npm run fresh) 꺼진다.
@@ -672,25 +698,25 @@ function initUpdater() {
   });
   updater.start();
 }
-ipcMain.handle('update-get-state', () => (updater ? updater.getState() : { status: 'disabled' }));
-ipcMain.handle('update-check', async () => (updater ? updater.check({ manual: true }) : { status: 'disabled' }));
-ipcMain.handle('update-download', async () => (updater ? updater.download() : { status: 'disabled' }));
-ipcMain.handle('update-install', () => (updater ? updater.install() : false));
+trustedHandle('update-get-state', () => (updater ? updater.getState() : { status: 'disabled' }));
+trustedHandle('update-check', async () => (updater ? updater.check({ manual: true }) : { status: 'disabled' }));
+trustedHandle('update-download', async () => (updater ? updater.download() : { status: 'disabled' }));
+trustedHandle('update-install', () => (updater ? updater.install() : false), false);
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
-ipcMain.on('quit-app', () => requestQuit());
+trustedOn('quit-app', () => requestQuit());
 
-ipcMain.on('open-settings', () => createSettingsWindow());
+trustedOn('open-settings', () => createSettingsWindow());
 
-ipcMain.on('show-pet', () => {
+trustedOn('show-pet', () => {
   if (petWindow && !petWindow.isDestroyed()) { petWindow.show(); resumeAlwaysOnTopKeepAlive(); }
   else createPetWindow();
 });
-ipcMain.on('hide-pet', () => {
+trustedOn('hide-pet', () => {
   if (petWindow && !petWindow.isDestroyed()) { petWindow.hide(); stopAlwaysOnTopKeepAlive(); }
 });
-ipcMain.on('set-always-on-top', (_e, flag) => setPetAlwaysOnTop(flag));
-ipcMain.on('resize-pet-window', (_e, size) => {
+trustedOn('set-always-on-top', (_e, flag) => setPetAlwaysOnTop(flag));
+trustedOn('resize-pet-window', (_e, size) => {
   if (petWindow && !petWindow.isDestroyed()) {
     const [x, y] = petWindow.getPosition();
     const b = quickMenu.safeBounds({ x, y, width: size && size.width, height: size && size.height });   // NaN·문자열·0 크기는 무시(예외 방지)
@@ -698,22 +724,22 @@ ipcMain.on('resize-pet-window', (_e, size) => {
     petWindow.setBounds(b, false);
   }
 });
-ipcMain.on('move-pet-window', (_e, pos) => {
+trustedOn('move-pet-window', (_e, pos) => {
   if (petWindow && !petWindow.isDestroyed() && !petWindow._dragging) {
     const p = quickMenu.safePoint(pos);   // NaN·undefined·문자열이면 무시(예외 방지). 정상 값은 예전과 같이 정수로 반올림
     if (!p) { console.warn('[pet] 창 위치 값이 올바르지 않아 건너뛰었어요'); return; }
     petWindow.setPosition(p.x, p.y, false);
   }
 });
-ipcMain.on('call-pet', () => {
+trustedOn('call-pet', () => {
   if (!petWindow || petWindow.isDestroyed()) { createPetWindow(); return; }
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   const [winW, winH] = petWindow.getSize();
   petWindow.setPosition(Math.round((width - winW) / 2), Math.round(height - winH - 40), false);
   petWindow.show();
-  petWindow.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('call-pet'))`);
+  petWindow.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('call-pet'))`);   // 고정 문자열: 값을 끼워 넣지 않는다(값이 필요해지면 webContents.send로)
 });
-ipcMain.on('start-drag', (_e) => {
+trustedOn('start-drag', (_e) => {
   if (!petWindow || petWindow.isDestroyed()) return;
   petWindow._dragging = true;
 
@@ -751,7 +777,8 @@ ipcMain.on('start-drag', (_e) => {
     }
   };
 
-  ipcMain.once('end-drag', stopDrag);
+  const onEndDrag = (e) => { if (!isTrustedSender(e)) return; ipcMain.removeListener('end-drag', onEndDrag); stopDrag(); };
+  ipcMain.on('end-drag', onEndDrag);
 
   // 마우스 버튼이 떼졌을 때 강제 종료
   setTimeout(() => {
@@ -772,7 +799,7 @@ ipcMain.on('start-drag', (_e) => {
 // ─── 처음 안내(온보딩) ────────────────────────────────────────────────────────
 // 안내는 설정창 안에서만 진행되고 버디는 평소처럼 이미 실행 중이다. 마지막 "버디 풀어놓기"는 설정창을 닫는 동작만 한다.
 // 마지막 화면에서 이미 "설정창을 닫아도 버디는 계속 놀아요"를 알려 줬으니 닫을 때 안내 토스트는 다시 띄우지 않는다.
-ipcMain.on('onboarding-finish', () => {
+trustedOn('onboarding-finish', () => {
   markFlag('closeNoticeShown');
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
   // 새 설치 유저에게만, 온보딩을 마친 직후 한 번: 버디 말풍선으로 다시 여는 법을 알려 준다
@@ -889,7 +916,7 @@ function openQuickMenu() {
   win.on('closed', () => { if (quickWindow === win) destroyQuickNow(); });
   notifyQuickState(true);
 }
-ipcMain.on('pet-right-click', () => openQuickMenu());
+trustedOn('pet-right-click', () => openQuickMenu());
 
 const fromQuick = (e) => !!quickWindow && !quickWindow.isDestroyed() && e.sender === quickWindow.webContents;
 ipcMain.on('quick-close', (e) => { if (fromQuick(e)) closeQuickMenu(true); });
@@ -942,7 +969,7 @@ function openSettingsTo(target) {
   createSettingsWindow();
   if (existed && t) { try { settingsWindow.webContents.send('settings-goto', t); } catch {} }
 }
-ipcMain.handle('settings-take-goto', () => { const t = pendingGoto; pendingGoto = null; return t; });
+trustedHandle('settings-take-goto', () => { const t = pendingGoto; pendingGoto = null; return t; });
 
 // ★ 안내 카드(업데이트 소식·새 버전 안내·부팅 브리핑): 펫 옆에 한 번에 하나씩 뜬다. 큐·막힘 규칙·배치 계산은 notice-card.cjs(시험됨).
 //  - 카드 창(/notice)은 퀵 메뉴처럼 투명 창이고, 열 때 만들고 닫을 때 없앤다. 위치는 setQuickBounds와 같은 검사(정수·유한값·가장자리 보정)를 거치고, 클릭은 카드 위에서만 받는다.
@@ -952,7 +979,7 @@ ipcMain.handle('settings-take-goto', () => { const t = pendingGoto; pendingGoto 
 const noticeCard = require('./notice-card.cjs');
 const releaseNotes = require('./release-notes.cjs');
 const briefSchedule = require('./brief-schedule.cjs');   // 부팅 후 오늘 브리핑을 언제 쌓을지(부팅 3분: BRIEF_DELAY_SEC)
-const testEnv = noticeCard.readTestEnv(process.env);   // 시험용 환경변수(기본 꺼짐)
+const testEnv = noticeCard.readTestEnv(process.env, { isPackaged: app.isPackaged });   // 시험용 환경변수(기본 꺼짐, 배포 빌드에서는 무시)
 const noticeQueue = noticeCard.createNoticeQueue();
 const noticeWaiters = new Map();   // 카드 id → [resolve]: 새 버전 안내 카드의 답("yes"|"later")을 기다리는 업데이터 호출들
 const NOTICE_WIN = { w: 368, h: 140 };   // 크기를 알려 오기 전의 임시 크기(카드 320 + 투명 여백 24×2)
@@ -1142,8 +1169,8 @@ ipcMain.on('notice-action', (e, action) => {
   closeNotice('later');
 });
 // 설정창의 링크: 이번 업데이트 소식 다시 보기(저장값은 바꾸지 않는다) · 새 버전 소식 보기(같은 버전에 이미 자동으로 보여 줬어도 다시)
-ipcMain.on('whatsnew-show', () => { enqueueNotice('whatsnew', 'replay', { version: app.getVersion(), force: true, replay: true }); });
-ipcMain.on('update-news-show', () => {
+trustedOn('whatsnew-show', () => { enqueueNotice('whatsnew', 'replay', { version: app.getVersion(), force: true, replay: true }); });
+trustedOn('update-news-show', () => {
   const s = updater && updater.getState();
   if (!s || s.status !== 'available' || !s.version) return;
   enqueueNotice('update', s.version, { version: s.version, notes: Array.isArray(s.notes) ? s.notes.slice(0, 4) : [], force: true });
@@ -1155,7 +1182,7 @@ function requestBrief(target) {
   const t = target === 'tomorrow' ? 'tomorrow' : 'today';
   enqueueNotice('brief', `manual-${t}`, { day: briefSchedule.ymdOf(new Date()), manual: true, target: t }, true);
 }
-ipcMain.on('brief-show', () => { requestBrief('today'); });
+trustedOn('brief-show', () => { requestBrief('today'); });
 // 부팅 후 오늘 브리핑: 앱 시작 때 한 번만 판단한다. 컴퓨터가 켜진 지(os.uptime) 3분이 되면(이미 지났으면 약 10초 뒤) 카드를 쌓고,
 // 기다리다 날짜가 바뀌었으면 포기한다. 오늘 이미 띄웠는지·요일·공휴일·켜기/끄기는 카드 창이 설정 저장값으로 정한다. 새 네트워크 요청은 없다.
 function startBriefCheck() {
@@ -1185,13 +1212,15 @@ function startNoticeChecks() {
 }
 
 // ★ 야르타임 IPC
-ipcMain.handle('get-pet-position', () => {
+trustedHandle('get-pet-position', () => {
   if (!petWindow || petWindow.isDestroyed()) return null;
   const [x, y] = petWindow.getPosition();
   return { x, y };
 });
-ipcMain.on('set-yar-timer', (_e, intervalMinutes) => {
-  yarDesired = intervalMinutes > 0 ? intervalMinutes : 0;
+trustedOn('set-yar-timer', (_e, intervalMinutes) => {
+  const minutes = ipcGuard.clampYarMinutes(intervalMinutes);   // 숫자가 아니면 무시, 0 이하는 끄기, 켜면 1분~24시간
+  if (minutes === null) return;
+  yarDesired = minutes;
   applyYar();
 });
 
@@ -1243,32 +1272,33 @@ function configurePhotoRotation(settings) {
   broadcastPhotoState();
 }
 
-ipcMain.handle('get-photo-state', () => photoState());
+trustedHandle('get-photo-state', () => photoState());
 
 // ★ 날씨 안부(Open-Meteo): 네트워크 호출은 여기(메인)에서만 한다. 판단 로직은 weather.cjs(단위 테스트됨).
 // 동의(weatherConsent)와 동네가 모두 있다고 설정 동기화가 알려 주기 전에는 어떤 요청도 보내지 않는다. 모두 비동기라 알람 1초 타이머를 막지 않는다.
 const weather = require('./weather.cjs');
 const weatherService = weather.createWeatherService({ fetch: (url, opts) => (require('electron').net && require('electron').net.fetch ? require('electron').net.fetch(url, opts) : fetch(url, opts)) });
-ipcMain.handle('weather-get', async (_e, req) => {
+trustedHandle('weather-get', async (_e, req) => {
   try {
     if (!req || typeof req !== 'object') return null;
     return await weatherService.get(req.lat, req.lon);
   } catch { return null; }
 });
 // 이미 받아 둔 날씨만 돌려준다(요청을 보내지 않는다): 부팅 브리핑의 날씨 한 줄. 캐시가 없으면 null
-ipcMain.handle('weather-peek', (_e, req) => {
+trustedHandle('weather-peek', (_e, req) => {
   try { return req && typeof req === 'object' ? weatherService.peek(req.lat, req.lon) : null; } catch { return null; }
 });
 
 // ★ 앱 시작시 설정 동기화 - PetPage에서 설정 로드 후 호출
-ipcMain.on('sync-settings', (_e, settings) => {
+trustedOn('sync-settings', (_e, settings) => {
+  if (!ipcGuard.isPlainObject(settings)) return;   // 객체가 아니면(배열·null·글자) 무시
   if (settings && Number.isFinite(Number(settings.size))) petSizePct = Math.min(200, Math.max(50, Number(settings.size)));   // 퀵 메뉴 호 반지름이 펫 크기에 비례한다
   if (settings && typeof settings.weatherConsent === 'boolean') weatherService.setConsent(settings.weatherConsent && typeof settings.weatherCityId === 'string' && settings.weatherCityId !== '');
   configurePhotoRotation(settings);
   // 버디 창이 2초 폴링을 기다리지 않고 바로 새 설정을 읽게 한다
   if (petWindow && !petWindow.isDestroyed()) { try { petWindow.webContents.send('settings-changed'); } catch {} }
   // 야르타임 설정 동기화
-  yarDesired = settings.yarEnabled && settings.yarInterval > 0 ? settings.yarInterval : 0;
+  yarDesired = settings.yarEnabled ? (ipcGuard.clampYarMinutes(Number(settings.yarInterval)) || 0) : 0;   // 켜도 1분~24시간 안으로
   applyYar();
   if (typeof settings.alwaysOnTop === 'boolean' && settings.alwaysOnTop !== alwaysOnTopFlag) {
     setPetAlwaysOnTop(settings.alwaysOnTop);
@@ -1277,7 +1307,7 @@ ipcMain.on('sync-settings', (_e, settings) => {
   applyAlarmSettings(settings);
 });
 
-ipcMain.on('yar-now', () => {
+trustedOn('yar-now', () => {
   createYarWindow();
 });
 
@@ -1320,6 +1350,7 @@ function createBreakTimeWindow(type, info) {
   // 알람 카드는 이름·시간 범위·참석자·메모를 쿼리로 받아 두 텍스트 칸만 바꾼다(모양과 모션은 그대로)
   const q = new URLSearchParams({ type });
   if (type === 'alarm' && info) for (const [k, v] of Object.entries({ n: info.name, t: info.time, e: info.endTime, a: info.attendees, m: info.memo, x: info.missed ? '1' : '' })) if (v) q.set(k, v);
+  lockNavigation(breakTimeWindow);
   breakTimeWindow.loadURL(getPageURL(`/breaktime?${q.toString()}`));
 
   // 생성 시점의 창을 캡처해 그 창만 닫는다 (연속 생성 시 새 창이 닫히는 것 방지)
@@ -1386,7 +1417,7 @@ function stopBreakTimeChecker() {
   if (breakTimeChecker) { clearInterval(breakTimeChecker); breakTimeChecker = null; }
 }
 
-ipcMain.handle('get-all-displays', () => {
+trustedHandle('get-all-displays', () => {
   const displays = screen.getAllDisplays();
   const minX = Math.min(...displays.map(d => d.bounds.x));
   const minY = Math.min(...displays.map(d => d.bounds.y));
@@ -1405,6 +1436,7 @@ ipcMain.handle('get-all-displays', () => {
 });
 
 // 알람 테스트: 설정창에서 입력한 이름·설명이 반영된 카드로 미리 본다(없으면 기본 카드)
-ipcMain.on('test-break-time', (_e, type, info) => {
+trustedOn('test-break-time', (_e, type, info) => {
+  if (!ipcGuard.isBreakType(type)) return;   // lunch·leave·alarm만
   createBreakTimeWindow(type, type === 'alarm' && info && typeof info === 'object' ? alarms.cardInfo(info) : undefined);
 });

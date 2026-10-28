@@ -271,7 +271,7 @@ t('날씨 값 가져오기: 동네와 동의가 모두 있을 때만 메인에 �
   assert.ok(/!cur\.weatherConsent \|\| !city\) \{ weatherRef\.current = null/.test(fx) && /Date\.now\(\) - w\.at < 25 \* 60 \* 1000\) return/.test(fx) && /weatherCityRef\.current !== city\.id/.test(fx));
   assert.ok(/getWeather\?\.\(city\.lat, city\.lon\)/.test(fx) && /clearInterval\(timer\)/.test(fx) && /catch/.test(fx));
   const main = read('main.cjs'); assert.ok(/weatherService\.setConsent\(settings\.weatherConsent && typeof settings\.weatherCityId === 'string' && settings\.weatherCityId !== ''\)/.test(main), '메인은 동의와 동네가 모두 있을 때만 요청을 허용');
-  assert.ok(/ipcMain\.handle\('weather-get'/.test(main) && /getWeather:\s+\(lat, lon\) => ipcRenderer\.invoke\('weather-get'/.test(read('preload.cjs')));
+  assert.ok(/trustedHandle\('weather-get'/.test(main) && /getWeather:\s+\(lat, lon\) => ipcRenderer\.invoke\('weather-get'/.test(read('preload.cjs')));
   assert.ok(!/fetch\(|XMLHttpRequest/.test(read('src/pages/PetPage.tsx')) && !/fetch\(|XMLHttpRequest/.test(read('src/components/settings/WeatherCityRow.tsx')), '렌더러는 네트워크를 쓰지 않는다');
   assert.ok(read('package.json').includes('"weather.cjs"'), '패키지에 weather.cjs 포함');
 });

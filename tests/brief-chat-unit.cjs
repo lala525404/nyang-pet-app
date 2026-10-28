@@ -126,7 +126,7 @@ t('연결(정적): 퀵 동작 brief, 대화 카드는 확인 없이 바로 요�
   assert.ok(/cmd\.kind === 'brief'\) \{ api\(\)\?\.quickAction\('brief', \{ target: cmd\.target \}\); return; \}/.test(page), '확인 카드(setStep) 없이 바로');
   assert.ok(/function requestBrief\(target\)/.test(main) && /manual: true, target: t \}, true\)/.test(main), 'manual + priority');
   assert.ok(/target === 'tomorrow' \? 'tomorrow' : 'today'/.test(main), 'target은 두 값만');
-  assert.ok(/action === 'brief'\) \{ requestBrief\(arg && arg\.target\)/.test(main) && /ipcMain\.on\('brief-show', \(\) => \{ requestBrief\('today'\)/.test(main));
+  assert.ok(/action === 'brief'\) \{ requestBrief\(arg && arg\.target\)/.test(main) && /trustedOn\('brief-show', \(\) => \{ requestBrief\('today'\)/.test(main));
   assert.ok(!/lastBriefDate/.test(main) && !/lastBriefDate/.test(read('src/utils/alarmCommand.ts')), '메인·파서는 lastBriefDate를 모른다');
   assert.ok(/persist: !force/.test(read('src/utils/brief.ts')));
   assert.ok(!/brief/i.test(read('alarms.cjs')) && !/brief/i.test(read('src/pages/PetPage.tsx')));

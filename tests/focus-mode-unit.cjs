@@ -122,7 +122,7 @@ t('주의를 끄는 동작은 모드에서 꺼진다(정적 확인): 반짝임·
     /!focusRef\.current\.enabled && !quickOpenRef\.current && !stateRef\.current\.escaping && !isSleepingRef\.current\) \{\s*\/\/ 초집중 모드·퀵 메뉴가 열린 동안에는 순간이동/, /if \(focusRef\.current\.enabled \|\| quickOpenRef\.current\) return;\s*\/\/ 초집중 모드·퀵 메뉴가 열린 동안에는 도망가지 않는다/,
     /!s\.distractEmoji \|\| focusRef\.current\.enabled\) \{ elapsed = 0; return; \}/, /cur\.bubbleEnabled !== false && !focusRef\.current\.enabled;/,
     /onShowBubble\?\.\(\(text, ms\) => \{ if \(!focusRef\.current\.enabled\) showBubble/, /if \(focusRef\.current\.enabled\) return;\s*\/\/ 초집중 모드에서는 반응 말풍선·파티클 없음/]) assert.match(pet, re, String(re));
-  assert.match(read('main.cjs'), /yarDesired = settings\.yarEnabled && settings\.yarInterval > 0 \? settings\.yarInterval : 0;\s*applyYar\(\);/);   // 야르도 멈춘다
+  assert.match(read('main.cjs'), /yarDesired = settings\.yarEnabled \? \(ipcGuard\.clampYarMinutes\(Number\(settings\.yarInterval\)\) \|\| 0\) : 0;[^\n]*\s*applyYar\(\);/);   // 야르도 멈춘다
 });
 t('켜는 순간 버디 창이 자기 상태에도 기준점을 반영한다(메인은 위치만 바뀐 것을 다시 알리지 않으므로) — 안 그러면 이동 루프가 기준점을 못 얻어 멈춘다(실제 앱에서 발견한 버그)', () => {
   const pet = read('src/pages/PetPage.tsx');

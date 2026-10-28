@@ -163,6 +163,17 @@ t('환경변수: 아무것도 없으면 전부 꺼짐. 1·true만 켜짐, 업타
   assert.strictEqual(N.readTestEnv({ CHOEAE_FAKE_UPTIME_SEC: '0' }).fakeUptimeSec, 0);
   assert.strictEqual(N.readTestEnv({ CHOEAE_FAKE_UPDATE_NOTES: '   ' }).fakeNotesPath, null);
 });
+t('환경변수: 배포(패키지) 상태에서는 전부 무시하고, 개발 상태에서는 그대로 동작한다', () => {
+  const env = { CHOEAE_FORCE_WHATSNEW: '1', CHOEAE_FORCE_BRIEF: '1', CHOEAE_FAKE_UPDATE_NOTES: 'C:\\x\\notes.md', CHOEAE_FAKE_UPTIME_SEC: '179' };
+  const off = { forceWhatsNew: false, fakeNotesPath: null, forceBrief: false, fakeUptimeSec: null };
+  const on = { forceWhatsNew: true, fakeNotesPath: 'C:\\x\\notes.md', forceBrief: true, fakeUptimeSec: 179 };
+  assert.deepStrictEqual(N.readTestEnv(env, { isPackaged: true }), off);
+  assert.deepStrictEqual(N.readTestEnv(env, { isPackaged: false }), on);
+  assert.deepStrictEqual(N.readTestEnv(env), on);
+  assert.deepStrictEqual(N.readTestEnv(undefined, { isPackaged: true }), off);
+  assert.ok(/readTestEnv\(process\.env, \{ isPackaged: app\.isPackaged \}\)/.test(read('main.cjs')), '메인이 isPackaged를 넘긴다');
+  assert.strictEqual(require('../click-through.cjs').isEnabled({ CHOEAE_DISABLE_CLICKTHROUGH: '1' }), false);   // 비상 스위치는 배포에서도 유지
+});
 t('파일에 깨진 글자(U+FFFD)·???가 없다', () => {
   const src = read('notice-card.cjs'); assert.ok(!src.includes(FFFD) && !/\?{3}/.test(src));
 });

@@ -128,7 +128,7 @@ t('연결: 메인이 커서로 판정(40ms), 종료 때 멈춤, 영역 알림은
   // 펫 이동·드래그·우클릭·클릭·호버 핸들러는 이 변경으로 바뀌지 않았다
   assert.match(pet, /const handleMouseDown = \(e: React\.MouseEvent\) => \{\s*if \(e\.button !== 0\) return;\s*e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*isDragging\.current = true;/);
   assert.match(pet, /onMouseDown=\{handleMouseDown\}\s*onClick=\{handleCatClick\}\s*onMouseEnter=\{handleMouseEnter\}\s*onMouseLeave=\{handleMouseLeave\}\s*onContextMenu=\{\(e\) => \{ e\.preventDefault\(\); window\.electronAPI\?\.petRightClick\(\); \}\}/);
-  assert.match(main, /ipcMain\.on\('start-drag'/); assert.match(main, /petWindow\._dragging = true;/);
+  assert.match(main, /trustedOn\('start-drag'/); assert.match(main, /petWindow\._dragging = true;/);
   for (const f of ['click-through.cjs', 'tests/click-through-unit.cjs']) assert.ok(!read(f).includes(FFFD), f);
 });
 
